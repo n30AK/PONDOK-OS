@@ -8,7 +8,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node --test test/*.test.mjs",
     "start": "node dist/main.js",
-    "db:migrate": "pnpm build && node dist/run-migrations.js"
+    "db:migrate": "pnpm build && node dist/run-migrations.js",
+    "db:bootstrap": "pnpm build && node dist/bootstrap-organization.js"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
