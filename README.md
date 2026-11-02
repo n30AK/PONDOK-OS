@@ -32,7 +32,9 @@ Requirements: Node.js 22+, pnpm 10.20.0, PostgreSQL 18 for local migration tests
 ```bash
 pnpm install
 cp apps/web/.env.example apps/web/.env.local
-pnpm --filter @pondok-os/api dev
+pnpm --filter @pondok-os/api build
+pnpm --filter @pondok-os/api start
+# In a second terminal:
 pnpm --filter @pondok-os/web dev
 ```
 
@@ -62,4 +64,4 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 
 ## Development
 
-See [architecture blueprint](docs/architecture/blueprint.md), [implementation roadmap](docs/roadmap/implementation.md), [API runtime](apps/api/README.md), and [web workspace](apps/web/README.md).
+See [architecture blueprint](docs/architecture/blueprint.md), [implementation status](docs/architecture/implementation-status.md), [implementation roadmap](docs/roadmap/implementation.md), [production readiness gate](docs/runbooks/production-readiness.md), [backup/restore drill](docs/runbooks/backup-restore.md), [API runtime](apps/api/README.md), and [web workspace](apps/web/README.md).
