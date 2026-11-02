@@ -9,6 +9,7 @@ import { handleFinanceRequest } from "./finance.js";
 import { handleInventoryRequest } from "./inventory.js";
 import { handleHrRequest } from "./hr.js";
 import { handleFirstOrganizationBootstrap } from "./first-organization-bootstrap.js";
+import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -16,7 +17,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 export interface ApiDependencies {
   jwks?: JWTVerifyGetKey;
   issuer?: string;
-  pool?: Pick<Pool, "query">;
+  pool?: TenantDatabase;
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
@@ -115,7 +116,7 @@ export async function handleRequest(
     }
 
     try {
-      const context = await loadTenantContext(dependencies.pool, identity.userId, organizationId);
+      const context = await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => loadTenantContext(tenantPool, identity.userId, organizationId));
       if (!context) {
         sendJson(response, 403, { error: "active_membership_required" });
         return;
@@ -151,7 +152,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await handleAcademicRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleAcademicRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch {
       sendJson(response, 500, { error: "academic_service_unavailable" }); return;
     }
@@ -175,7 +176,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await handleSyncRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleSyncRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch {
       sendJson(response, 500, { error: "sync_service_unavailable" }); return;
     }
@@ -200,9 +201,9 @@ export async function handleRequest(
     }
     try {
       if (pathname.startsWith("/v1/finance/") &&
-          await handleFinanceRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+          await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleFinanceRequest(request, response, tenantPool, identity.userId, organizationId))) return;
       if (pathname.startsWith("/v1/inventory/") &&
-          await handleInventoryRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+          await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleInventoryRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch {
       sendJson(response, 500, { error: "operational_service_unavailable" }); return;
     }
@@ -226,7 +227,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await handleHrRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleHrRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch {
       sendJson(response, 500, { error: "hr_service_unavailable" }); return;
     }
