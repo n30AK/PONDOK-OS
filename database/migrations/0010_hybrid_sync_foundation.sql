@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS sync.inbox_events (
   processing_error text,
   processed_at timestamptz,
   FOREIGN KEY (organization_id, device_id) REFERENCES sync.devices (organization_id, id),
+  UNIQUE (organization_id, id),
   UNIQUE (organization_id, event_id),
   UNIQUE (organization_id, idempotency_key),
   CHECK (jsonb_typeof(payload) = 'object')
