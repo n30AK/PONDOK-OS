@@ -1,0 +1,85 @@
+name: PONDOK OS Release Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "database/**"
+      - "docs/**"
+      - "scripts/**"
+      - "Dockerfile"
+      - "compose.yaml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pondok_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pondok_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Validate migrations
+        run: pnpm db:check
+      - name: Execute migrations on disposable PostgreSQL
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Typecheck, build and test
+        run: |
+          pnpm typecheck
+          pnpm build
+          pnpm test
+      - name: Build container images
+        run: |
+          docker build --target api -t pondok-os-api:bundle .
+          docker build --target web --build-arg VITE_NEON_AUTH_URL=https://auth.invalid/neondb/auth -t pondok-os-web:bundle .
+      - name: Create source and deployment bundle
+        run: |
+          mkdir -p release
+          git archive --format=tar HEAD | tar -xf - -C release
+          cp README.md release/README.md
+          cat > release/BUILD-VERIFICATION.txt <<EOF
+          Commit: $GITHUB_SHA
+          Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Node: $(node --version)
+          pnpm: $(pnpm --version)
+          PostgreSQL migration test: passed on disposable PostgreSQL 18
+          Workspace typecheck/build/unit tests: passed
+          Docker API/web image builds: passed
+          Live institution acceptance: not implied by CI
+          EOF
+          cd release
+          zip -qr ../PONDOK-OS-source-and-deployment.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PONDOK-OS-source-and-deployment
+          path: PONDOK-OS-source-and-deployment.zip
+          if-no-files-found: error
+          retention-days: 30
