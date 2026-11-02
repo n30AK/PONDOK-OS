@@ -10,7 +10,7 @@ try {
   await client.query("CREATE ROLE pondok_rls_test NOLOGIN").catch((error) => {
     if (error?.code !== "42710") throw error;
   });
-  await client.query("GRANT USAGE ON SCHEMA academic, finance, hr, inventory, sync TO pondok_rls_test");
+  await client.query("GRANT USAGE ON SCHEMA core, academic, finance, hr, inventory, sync TO pondok_rls_test");
   await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA academic, finance, hr, inventory, sync TO pondok_rls_test");
   const result = await client.query(`
     SELECT n.nspname AS schema_name, c.relname AS table_name,
