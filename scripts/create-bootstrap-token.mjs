@@ -14,7 +14,7 @@ process.stdout.write([
   "RAW TOKEN (do not commit or send in chat):",
   token,
   "",
-  "SHA-256 DIGEST (safe to configure as a server-side secret):",
+  "SHA-256 DIGEST (configure as a server-side secret):",
   digest,
   "",
 ].join("\n"));
