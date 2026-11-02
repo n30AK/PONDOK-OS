@@ -58,13 +58,13 @@ try {
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-A','Tenant A account','asset')",
     [accountA, tenantA],
   );
-  await client.query("SELECT set_config('app.organization_id', $1, true)", [tenantB]);
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-B','Tenant B account','asset')",
     [accountB, tenantB],
   );
 
-  await client.query("SELECT set_config('app.organization_id', $1, true)", [tenantA]);
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantA]);
   const tenantAOwn = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountA]);
   const tenantASeesB = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
   assert.equal(tenantAOwn.rowCount, 1, "tenant A must read its own account");
@@ -80,6 +80,10 @@ try {
   );
   await client.query("ROLLBACK TO SAVEPOINT cross_tenant_write");
   await client.query("RELEASE SAVEPOINT cross_tenant_write");
+
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
+  const tenantAWithWrongOrg = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
+  assert.equal(tenantAWithWrongOrg.rowCount, 0, "user A must not access tenant B even when the requested organization header is B");
 
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   const tenantBOwn = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
