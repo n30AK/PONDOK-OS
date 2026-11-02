@@ -2,7 +2,7 @@ name: PONDOK OS CI
 
 on:
   push:
-    branches: [main, "feat/**", "fix/**", "chore/**", "ops/**"]
+    branches: [main, "feat/**", "fix/**", "chore/**", "ops/**", "security/**"]
   pull_request:
     branches: [main]
 
@@ -44,6 +44,10 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Verify accounting, inventory and payroll invariants
         run: node apps/api/scripts/test-ledger-invariants.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify tenant row-level security
+        run: node apps/api/scripts/test-tenant-rls.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
