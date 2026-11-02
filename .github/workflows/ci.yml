@@ -50,5 +50,26 @@ jobs:
         run: docker build --target api -t pondok-os-api:ci .
       - name: Build web container image
         run: docker build --target web --build-arg VITE_NEON_AUTH_URL=https://auth.invalid/neondb/auth -t pondok-os-web:ci .
+      - name: Smoke-test API and Nginx web container runtime
+        run: |
+          set -euo pipefail
+          docker network create pondok-smoke
+          cleanup() {
+            docker rm -f pondok-web-smoke pondok-api-smoke >/dev/null 2>&1 || true
+            docker network rm pondok-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run -d --name pondok-api-smoke --network pondok-smoke --network-alias api pondok-os-api:ci
+          docker run -d --name pondok-web-smoke --network pondok-smoke -p 8080:80 pondok-os-web:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null && curl -fsS http://127.0.0.1:8080/health/live >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/ >/dev/null
+          curl -fsS http://127.0.0.1:8080/health/live >/dev/null
+          nginx_config_status=$(docker exec pondok-web-smoke nginx -t 2>&1)
+          printf '%s\\n' "$nginx_config_status"
       - name: Run unit tests
         run: pnpm test
