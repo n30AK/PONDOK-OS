@@ -35,7 +35,7 @@ The script prints a random 256-bit token and its SHA-256 digest. It does not wri
 5. Submit once. The API verifies the Neon JWT, checks the token digest in constant time, serializes initialization with a PostgreSQL advisory transaction lock, and creates the organization, campus, active membership, owner role assignment and audit event atomically.
 6. Save the returned organization ID in the institution's secure administrative record.
 
-The endpoint refuses initialization if any organization already exists. A failed attempt may leave an unassigned Neon Auth user if sign-up succeeded but the bootstrap token or database step failed; delete that unused identity through the approved identity-administration procedure or sign in and retry with the same email after correcting the configuration.
+The endpoint refuses initialization if any organization already exists. A failed attempt may leave an unassigned Neon Auth user if sign-up succeeded but the bootstrap token or database step failed. Correct the configuration and sign in with the same account before retrying; do not create additional administrator identities unnecessarily.
 
 ## 4. Remove the bootstrap credential
 
