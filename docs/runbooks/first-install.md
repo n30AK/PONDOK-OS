@@ -30,7 +30,7 @@ The script prints a random 256-bit token and its SHA-256 digest. It does not wri
 
 1. Open the PONDOK OS web workspace.
 2. Choose **Penyiapan pertama kali**.
-3. Register the first administrator using the email/password form.
+3. Register the first administrator using the email/password form. If the administrator account was already created during an earlier failed attempt, switch the form to **Gunakan akun yang ada** and sign in instead.
 4. Enter the institution name, unique slug, main campus code/name, and raw one-time token.
 5. Submit once. The API verifies the Neon JWT, checks the token digest in constant time, serializes initialization with a PostgreSQL advisory transaction lock, and creates the organization, campus, active membership, owner role assignment and audit event atomically.
 6. Save the returned organization ID in the institution's secure administrative record.
