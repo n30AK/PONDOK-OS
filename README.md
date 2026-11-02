@@ -12,14 +12,14 @@ The repository currently contains:
 - Neon Managed Auth JWT verification and server-side organization membership/permission resolution.
 - Guarded first-institution setup flow using a one-time server-side SHA-256 token.
 - Tenant-scoped API foundations for student records, finance journals, inventory items/warehouses/stock movements, HR employees and payroll transitions.
-- Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection and student list/create screens.
+- Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
 - PostgreSQL domain foundations for library, PPDB, CMS, boarding, procurement, fixed assets, CRM and hybrid sync.
 - Global system role templates and bootstrap workflows.
 - PWA shell caching, Docker images, Nginx reverse proxy and Compose deployment for cloud-connected mode.
 - CI executes migrations on disposable PostgreSQL 18, typechecks, builds workspaces and containers, and runs unit tests.
 - A release workflow prepares a source/deployment ZIP without environment secrets or institution data.
 
-**This is not yet a complete production ERP.** Finance, inventory and HR have initial API operations but not complete user interfaces or full domain acceptance. Library, PPDB, CMS, boarding, procurement, assets and CRM still need operational workflows. The PWA caches the static shell only. Hybrid sync has an authenticated pending-event inbox but no full domain processor/local outbox/conflict UI. Flutter mobile apps, Tauri desktop installer, kiosk mode and commercial Control Center are not production deliverables yet.
+**This is not yet a complete production ERP.** Finance, inventory and HR have initial APIs and basic list/create screens; journal posting, stock movement workflows, payroll processing screens and full domain acceptance remain incomplete. Library, PPDB, CMS, boarding, procurement, assets and CRM still need operational workflows. The PWA caches the static shell only. Hybrid sync has an authenticated pending-event inbox but no full domain processor/local outbox/conflict UI. Flutter mobile apps, Tauri desktop installer, kiosk mode and commercial Control Center are not production deliverables yet.
 
 ## Deployment modes
 
