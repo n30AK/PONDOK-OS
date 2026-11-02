@@ -62,7 +62,7 @@ export default function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [studentNumber, setStudentNumber] = useState("");
   const [legalName, setLegalName] = useState("");
-  const [campusId, setCampusId] = useState(() => localStorage.getItem("pondok.campusId") ?? "");
+  const [campusId, setCampusId] = useState(() => "");
   const [birthDate, setBirthDate] = useState("");
   const [genderCode, setGenderCode] = useState("unspecified");
 
@@ -122,7 +122,7 @@ export default function App() {
       const orgId = result.data.organizationId as string;
       const firstCampusId = result.data.campusId as string;
       localStorage.setItem("pondok.organizationId", orgId);
-      localStorage.setItem("pondok.campusId", firstCampusId);
+      localStorage.setItem(`pondok.campusId.${orgId}`, firstCampusId);
       setCampusId(firstCampusId);
       setOrganizationId(orgId);
       setUser(await getCurrentUser());
@@ -143,6 +143,7 @@ export default function App() {
       if (!id) throw new Error("Masukkan ID organisasi.");
       const context = await apiRequest<Tenant>("/v1/tenant/context", id);
       setTenant(context);
+      setCampusId(localStorage.getItem(`pondok.campusId.${id}`) ?? "");
       localStorage.setItem("pondok.organizationId", id);
       setScreen("overview");
       setNotice("Workspace organisasi berhasil dibuka.");
