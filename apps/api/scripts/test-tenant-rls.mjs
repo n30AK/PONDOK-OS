@@ -7,6 +7,11 @@ const pool = new Pool({ connectionString, max: 1 });
 const client = await pool.connect();
 
 try {
+  await client.query("CREATE ROLE pondok_rls_test NOLOGIN").catch((error) => {
+    if (error?.code !== "42710") throw error;
+  });
+  await client.query("GRANT USAGE ON SCHEMA academic, finance, hr, inventory, sync TO pondok_rls_test");
+  await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA academic, finance, hr, inventory, sync TO pondok_rls_test");
   const result = await client.query(`
     SELECT n.nspname AS schema_name, c.relname AS table_name,
            c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced,
@@ -26,6 +31,7 @@ try {
   }
 
   await client.query("BEGIN");
+  await client.query("SET LOCAL ROLE pondok_rls_test");
   await client.query("SELECT set_config('app.organization_id', '', true)");
   const noContext = await client.query("SELECT count(*)::int AS count FROM academic.student_profiles");
   assert.equal(noContext.rows[0].count, 0, "missing tenant context must see no tenant rows");
@@ -40,6 +46,7 @@ try {
     "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1,$2,$3,'pesantren','active'),($4,$5,$6,'pesantren','active')",
     [tenantA, "rls-ci-tenant-a", "RLS CI Tenant A", tenantB, "rls-ci-tenant-b", "RLS CI Tenant B"],
   );
+  await client.query("SET LOCAL ROLE pondok_rls_test");
   await client.query("SELECT set_config('app.organization_id', $1, true)", [tenantA]);
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-A','Tenant A account','asset')",
