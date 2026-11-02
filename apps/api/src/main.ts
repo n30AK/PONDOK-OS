@@ -32,8 +32,10 @@ export async function handleRequest(
   const method = request.method ?? "GET";
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
 
-  if (method !== "GET" && method !== "HEAD") {
-    response.setHeader("allow", "GET, HEAD");
+  const academicRoute = pathname.startsWith("/v1/academic/");
+  const allowedMethods = academicRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
+  if (!allowedMethods.includes(method)) {
+    response.setHeader("allow", allowedMethods.join(", "));
     sendJson(response, 405, { error: "method_not_allowed" });
     return;
   }
@@ -99,11 +101,16 @@ export async function handleRequest(
     if (typeof organizationId !== "string" || !UUID_PATTERN.test(organizationId)) {
       sendJson(response, 400, { error: "invalid_organization_id" }); return;
     }
+    let identity;
     try {
-      const identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" }); return;
+    }
+    try {
       if (await handleAcademicRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
     } catch {
-      sendJson(response, 401, { error: "invalid_token_or_request" }); return;
+      sendJson(response, 500, { error: "academic_service_unavailable" }); return;
     }
   }
 
