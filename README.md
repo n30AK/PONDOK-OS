@@ -1,50 +1,65 @@
 # PONDOK OS
 
-Integrated Islamic Boarding School Operating System.
+Integrated operating system for pesantren and Islamic boarding schools.
 
-PONDOK OS is designed as a configurable, offline-first and cloud-capable platform for pesantren and modern Islamic boarding schools. It combines academic management, student affairs, boarding operations, ERP, CRM, HR & payroll, accounting, inventory, library, CMS, admissions, mobile experiences, smart kiosks, and a separate commercial Control Center.
+PONDOK OS is being developed as a configurable modular platform for academic management, student affairs, boarding, finance, accounting, inventory, procurement, assets, HR/payroll, library, PPDB, CMS, CRM, and institution operations. The commercial Control Center is designed as a separate security plane from institution-owned records.
 
-## Product principles
+## Current implementation snapshot
 
-- **Offline-first:** core campus operations continue on a local network without internet access.
-- **Cloud and hybrid capable:** controlled synchronization connects local installations with cloud services.
-- **Configurable:** organization structures, academic models, forms, workflows, reports, and enabled modules are configurable per institution.
-- **Tenant isolation:** each organization’s data is isolated and access is enforced by the backend.
-- **Auditable:** important business and academic changes are traceable.
-- **Open standards:** PostgreSQL, REST/OpenAPI, and documented export formats reduce vendor lock-in.
-- **Cost-conscious:** local deployment is a first-class option; cloud services are optional and designed around free-tier constraints where practical.
+The repository now contains:
+
+- TypeScript monorepo foundation and PostgreSQL migration runner with checksums and advisory locking.
+- Neon Managed Auth JWT verification and server-side organization membership/permission resolution.
+- Tenant-scoped student listing and creation API.
+- Initial React/Vite Indonesian admin workspace with Neon Auth sign-in and student list/create UI.
+- PostgreSQL domain foundations for finance/accounting, inventory, HR/payroll, library, PPDB, CMS, boarding, procurement, fixed assets, CRM, and sync inbox.
+- Global system role templates and guarded first-organization bootstrap CLI.
+- PWA shell caching, Docker images, Nginx reverse proxy and Compose deployment for cloud-connected mode.
+- CI executes migrations on disposable PostgreSQL 18, typechecks, builds workspaces and containers, and runs unit tests.
+
+**This is not yet a complete production ERP.** Most business modules currently have database foundations but not full workflows, screens, reporting, audit coverage, or end-to-end acceptance tests. The PWA caches the static shell only. Hybrid sync accepts pending events but has no domain processor or full offline outbox. Flutter mobile apps, Tauri desktop installer, kiosk mode and the commercial Control Center are not production deliverables yet.
 
 ## Deployment modes
 
-1. **Local:** application and PostgreSQL run on infrastructure operated by the institution.
-2. **Cloud:** centrally hosted application and database.
-3. **Hybrid:** local operations with controlled synchronization to cloud services.
+- **Cloud-connected container:** available as an initial deployment path using an external PostgreSQL/Neon database and matching Neon Auth branch. See [container deployment](docs/deployment/container-cloud.md).
+- **Local/offline:** planned; local identity, local database installer, LAN acceptance tests and offline outbox are not complete.
+- **Hybrid:** foundation only; full event processing and conflict-resolution workflows are not complete.
 
-## Product areas
+## Quick start — web/API development
 
-- Core identity, organizations, campuses, roles, permissions, and configuration
-- Academic, curriculum, assessment, attendance, and report cards
-- Student records, guardians, boarding, dormitories, and student activities
-- Finance, accounting, budgeting, procurement, inventory, and fixed assets
-- HR, attendance, leave, and payroll
-- Library, digital learning, health, canteen, transportation, alumni, and donors
-- CMS, public websites, SEO, and PPDB admissions
-- Parent, student, and staff applications
-- Smart campus kiosks and operational dashboards
-- Separate PONDOK OS Control Center for customers, licenses, subscriptions, releases, billing, partners, and support
+Requirements: Node.js 22+, pnpm 10.20.0, PostgreSQL 18 for local migration tests.
 
-## Architecture status
+```bash
+pnpm install
+cp apps/web/.env.example apps/web/.env.local
+pnpm --filter @pondok-os/api dev
+pnpm --filter @pondok-os/web dev
+```
 
-This repository is being initialized. The product blueprint is not a claim that these modules are already implemented. Each capability will be marked complete only after implementation and verification.
+Configure API environment variables for the same development branch:
 
-See [docs/architecture/blueprint.md](docs/architecture/blueprint.md) and [docs/roadmap/implementation.md](docs/roadmap/implementation.md).
+- `DATABASE_URL`
+- `NEON_AUTH_BASE_URL`
+- `NEON_AUTH_JWKS_URL`
 
-## Technology direction
+For container deployment, copy `.env.compose.example` to `.env` and follow [docs/deployment/container-cloud.md](docs/deployment/container-cloud.md).
 
-The initial implementation uses TypeScript, a modular monolith backend, PostgreSQL, a web frontend, Flutter for mobile, and Tauri for desktop packaging. Exact framework versions and package choices are recorded in the implementation manifests as they are introduced.
+## Database safety
+
+- Neon development branch: `br-proud-paper-b312lfxi`.
+- Neon production branch: `br-late-cherry-b3uqtuvh` — do not run migrations here during development.
+- Existing manually applied migrations 0001–0003 must be reconciled with `core.schema_migrations` before the standard migration runner is used on that development database.
+- CI migrations use a disposable PostgreSQL 18 service; CI success does not mean the live Neon branch was changed.
+- Bootstrap and migration commands are explicit; they are not run automatically at application startup.
+
+## Security boundaries
+
+- The backend verifies JWTs and resolves membership/permissions from the selected organization.
+- The UI never supplies trusted role or permission claims.
+- Tenant-owned records carry organization scope and composite foreign keys where applicable.
+- RLS is not yet enabled for all tenant schemas; do not treat current tenant protection as a completed security certification.
+- Never commit database URLs, passwords, signing keys, or student/guardian production data.
 
 ## Development
 
-Development is performed on feature branches. Database migrations are versioned and tested against a non-production Neon branch before any production rollout.
-
-Never commit credentials, database URLs, private signing keys, personal student data, or production exports.
+See [architecture blueprint](docs/architecture/blueprint.md), [implementation roadmap](docs/roadmap/implementation.md), [API runtime](apps/api/README.md), and [web workspace](apps/web/README.md).
