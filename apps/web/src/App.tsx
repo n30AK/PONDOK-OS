@@ -49,6 +49,7 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstSetup, setFirstSetup] = useState(false);
+  const [existingAdminAccount, setExistingAdminAccount] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [bootstrapToken, setBootstrapToken] = useState("");
   const [organizationName, setOrganizationName] = useState("");
@@ -98,8 +99,10 @@ export default function App() {
     if (!authClient) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const signup = await authClient.signUp.email({ email, password, name: adminName.trim() });
-      if (signup.error) throw new Error(signup.error.message);
+      if (!existingAdminAccount) {
+        const signup = await authClient.signUp.email({ email, password, name: adminName.trim() });
+        if (signup.error) throw new Error(signup.error.message);
+      }
       const signin = await authClient.signIn.email({ email, password });
       if (signin.error) throw new Error(signin.error.message);
       const token = await getAccessToken();
@@ -209,16 +212,17 @@ export default function App() {
           <h2>Aktifkan pesantren</h2>
           <p className="muted">Hanya dapat berhasil jika database belum memiliki organisasi dan operator telah menyiapkan token satu kali.</p>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Isi VITE_NEON_AUTH_URL pada .env.local.</div>}
-          <label>Nama administrator<input value={adminName} onChange={(e) => setAdminName(e.target.value)} required maxLength={120} /></label>
+          {!existingAdminAccount && <label>Nama administrator<input value={adminName} onChange={(e) => setAdminName(e.target.value)} required maxLength={120} /></label>}
           <label>Email administrator<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
-          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required /></label>
+          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={existingAdminAccount ? "current-password" : "new-password"} minLength={8} required /></label>
           <label>Nama pesantren<input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} required minLength={3} maxLength={180} /></label>
           <label>Slug organisasi<input value={organizationSlug} onChange={(e) => setOrganizationSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} placeholder="pondok-contoh" required maxLength={80} /></label>
           <div className="form-grid setup-grid"><label>Kode kampus<input value={firstCampusCode} onChange={(e) => setFirstCampusCode(e.target.value.toUpperCase())} required maxLength={24} /></label><label>Nama kampus<input value={firstCampusName} onChange={(e) => setFirstCampusName(e.target.value)} required maxLength={120} /></label></div>
           <label>Token setup satu kali<input type="password" value={bootstrapToken} onChange={(e) => setBootstrapToken(e.target.value)} required minLength={24} maxLength={256} autoComplete="off" /></label>
           {error && <div className="alert error">{error}</div>}
-          <button className="primary full" disabled={busy || !authClient}>{busy ? "Menginisialisasi…" : "Buat institusi pertama"} <span>→</span></button>
+          <button className="primary full" disabled={busy || !authClient}>{busy ? "Menginisialisasi…" : existingAdminAccount ? "Masuk dan lanjutkan setup" : "Buat institusi pertama"} <span>→</span></button>
           <p className="login-note">Token tidak disimpan di browser. Setelah organisasi pertama dibuat, endpoint setup akan menolak permintaan berikutnya.</p>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setExistingAdminAccount((value) => !value); setError(""); }}>{existingAdminAccount ? "Belum punya akun? Daftarkan administrator" : "Sudah punya akun? Gunakan akun yang ada"}</button>
           <button type="button" className="text-button auth-toggle" onClick={() => { setFirstSetup(false); setError(""); }}>← Kembali ke login</button>
         </form> : <form className="login-card" onSubmit={signIn}>
           <div className="eyebrow">SELAMAT DATANG</div>
