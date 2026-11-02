@@ -2,7 +2,7 @@ name: PONDOK OS CI
 
 on:
   push:
-    branches: [main, "feat/**", "fix/**", "chore/**", "ops/**"]
+    branches: [main, "feat/**", "fix/**", "chore/**", "ops/**", "security/**"]
   pull_request:
     branches: [main]
 
