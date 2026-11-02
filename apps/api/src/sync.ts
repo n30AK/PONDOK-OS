@@ -132,18 +132,19 @@ export async function handleSyncRequest(
     );
     if (inserted.rows[0]) { reply(res, 202, { data: inserted.rows[0], acceptedForProcessing: false }); return true; }
     const existing = await pool.query(
-      `SELECT event_id AS "eventId", aggregate_type AS "aggregateType", aggregate_id AS "aggregateId",
-              event_type AS "eventType", schema_version AS "schemaVersion", payload,
-              processing_status AS status
+      `SELECT event_id AS "eventId", device_id AS "deviceId",
+              aggregate_type AS "aggregateType", aggregate_id AS "aggregateId",
+              event_type AS "eventType", schema_version AS "schemaVersion",
+              payload = $3::jsonb AS "samePayload", processing_status AS status
        FROM sync.inbox_events WHERE organization_id = $1::uuid AND idempotency_key = $2`,
       [organizationId, body.idempotencyKey, JSON.stringify(body.payload)],
     );
     if (existing.rows[0]) {
       const row = existing.rows[0] as Record<string, unknown>;
-      const same = row.eventId === body.eventId && row.aggregateType === body.aggregateType
-        && row.aggregateId === body.aggregateId && row.eventType === body.eventType
-        && Number(row.schemaVersion) === body.schemaVersion
-        && JSON.stringify(row.payload) === JSON.stringify(body.payload);
+      const same = row.eventId === body.eventId && row.deviceId === body.deviceId
+        && row.aggregateType === body.aggregateType && row.aggregateId === body.aggregateId
+        && row.eventType === body.eventType && Number(row.schemaVersion) === body.schemaVersion
+        && row.samePayload === true;
       if (!same) { reply(res, 409, { error: "idempotency_key_payload_mismatch" }); return true; }
       reply(res, 200, { data: { eventId: row.eventId, status: row.status }, duplicate: true, acceptedForProcessing: false }); return true;
     }
