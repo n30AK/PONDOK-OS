@@ -40,14 +40,20 @@ try {
   const tenantA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const tenantB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
   const accountA = "aaaaaaaa-0001-4000-8000-000000000001";
+  const userA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const userB = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
   const accountB = "bbbbbbbb-0001-4000-8000-000000000001";
   await client.query("BEGIN");
   await client.query(
     "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1,$2,$3,'pesantren','active'),($4,$5,$6,'pesantren','active')",
     [tenantA, "rls-ci-tenant-a", "RLS CI Tenant A", tenantB, "rls-ci-tenant-b", "RLS CI Tenant B"],
   );
+  await client.query(
+    "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1,$2,'active'),($3,$4,'active')",
+    [tenantA, userA, tenantB, userB],
+  );
   await client.query("SET LOCAL ROLE pondok_rls_test");
-  await client.query("SELECT set_config('app.organization_id', $1, true)", [tenantA]);
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantA]);
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-A','Tenant A account','asset')",
     [accountA, tenantA],
@@ -75,7 +81,7 @@ try {
   await client.query("ROLLBACK TO SAVEPOINT cross_tenant_write");
   await client.query("RELEASE SAVEPOINT cross_tenant_write");
 
-  await client.query("SELECT set_config('app.organization_id', $1, true)", [tenantB]);
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   const tenantBOwn = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
   const tenantBSeesA = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountA]);
   assert.equal(tenantBOwn.rowCount, 1, "tenant B must read its own account");
