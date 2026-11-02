@@ -70,3 +70,40 @@ test("academic routes advertise POST while rejecting unsupported methods", async
   assert.equal(response.status, 405);
   assert.equal(response.headers.get("allow"), "GET, HEAD, POST");
 });
+
+test("readiness is distinct from liveness and requires database connectivity", async (context) => {
+  const unavailable = createApiServer();
+  await new Promise((resolve) => unavailable.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve, reject) => unavailable.close((error) => error ? reject(error) : resolve())));
+  const first = unavailable.address();
+  assert.ok(first && typeof first === "object");
+  const notReady = await fetch(`http://127.0.0.1:${first.port}/health/ready`);
+  assert.equal(notReady.status, 503);
+  assert.deepEqual(await notReady.json(), { status: "not_ready", dependency: "database_not_configured" });
+});
+
+test("readiness returns ready only after a database query succeeds", async (context) => {
+  const server = createApiServer({ pool: { query: async () => ({ rows: [{ "?column?": 1 }] }) } });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const response = await fetch(`http://127.0.0.1:${address.port}/health/ready`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: "ready", service: "pondok-os-api", dependencies: { database: "ok" } });
+});
+
+test("development CORS preflight allows the local Vite origin", async (context) => {
+  const server = createApiServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const response = await fetch(`http://127.0.0.1:${address.port}/v1/academic/students`, {
+    method: "OPTIONS",
+    headers: { origin: "http://localhost:5173", "access-control-request-method": "POST" }
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:5173");
+  assert.match(response.headers.get("access-control-allow-headers") ?? "", /X-Organization-Id/i);
+});
