@@ -71,7 +71,7 @@ test("strips transaction wrappers after leading SQL comments", async () => {
   const commented = {
     version: "0002",
     name: "commented",
-    sql: "-- heading comment\\n/* block comment */\\nBEGIN;\\nCREATE TABLE wrapped_example (id integer);\\nCOMMIT;\\n",
+    sql: "-- heading comment\n/* block comment */\nBEGIN;\nCREATE TABLE wrapped_example (id integer);\nCOMMIT;\n",
   };
   await applyMigrationFiles(pool, [commented]);
   assert.ok(pool.statements.some((item) => item.sql === "CREATE TABLE wrapped_example (id integer);"));
