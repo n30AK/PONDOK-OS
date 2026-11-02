@@ -60,8 +60,15 @@ export async function handleRequest(
       return;
     }
 
+    let identity;
     try {
-      const identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" });
+      return;
+    }
+
+    try {
       const context = await loadTenantContext(dependencies.pool, identity.userId, organizationId);
       if (!context) {
         sendJson(response, 403, { error: "active_membership_required" });
@@ -118,14 +125,14 @@ function start(): void {
 
   const server = createApiServer(dependencies);
   server.listen(port, "0.0.0.0", () => {
-    process.stdout.write(`PONDOK OS API listening on port ${port}\\n`);
+    process.stdout.write(`PONDOK OS API listening on port ${port}\n`);
   });
 
   const shutdown = (signal: string) => {
-    process.stdout.write(`Received ${signal}; closing HTTP server\\n`);
+    process.stdout.write(`Received ${signal}; closing HTTP server\n`);
     server.close((error) => {
       if (error) {
-        process.stderr.write(`${error.message}\\n`);
+        process.stderr.write(`${error.message}\n`);
         process.exitCode = 1;
       }
       if (pool) void pool.end();
