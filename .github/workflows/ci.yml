@@ -46,6 +46,10 @@ jobs:
         run: node apps/api/scripts/test-ledger-invariants.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify tenant row-level security
+        run: node apps/api/scripts/test-tenant-rls.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
       - name: Build all deployable workspaces
