@@ -10,16 +10,18 @@ try {
   await client.query("CREATE ROLE pondok_rls_test NOLOGIN").catch((error) => {
     if (error?.code !== "42710") throw error;
   });
-  await client.query("GRANT USAGE ON SCHEMA core, academic, finance, hr, inventory, sync TO pondok_rls_test");
-  await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA academic, finance, hr, inventory, sync TO pondok_rls_test");
+  await client.query("GRANT USAGE ON SCHEMA academic, admissions, assets, audit, boarding, cms, config, core, crm, finance, hr, inventory, library, procurement, sync TO pondok_rls_test");
+  await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA academic, admissions, assets, audit, boarding, cms, config, crm, finance, hr, inventory, library, procurement, sync TO pondok_rls_test");
+  await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON core.campuses, core.roles TO pondok_rls_test");
   const result = await client.query(`
     SELECT n.nspname AS schema_name, c.relname AS table_name,
            c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced,
            EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'tenant_isolation') AS has_tenant_policy
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname IN ('academic','finance','hr','inventory','sync')
+    WHERE n.nspname IN ('academic','admissions','assets','audit','boarding','cms','config','core','crm','finance','hr','inventory','library','procurement','sync')
       AND c.relkind = 'r'
+      AND NOT (n.nspname = 'core' AND c.relname = 'organization_memberships')
       AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='organization_id' AND a.attnum>0 AND NOT a.attisdropped)
     ORDER BY n.nspname,c.relname
   `);
