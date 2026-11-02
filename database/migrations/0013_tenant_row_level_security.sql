@@ -27,8 +27,9 @@ BEGIN
     SELECT n.nspname AS schema_name, c.relname AS table_name
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname IN ('academic', 'finance', 'hr', 'inventory', 'sync')
+    WHERE n.nspname IN ('academic', 'admissions', 'assets', 'audit', 'boarding', 'cms', 'config', 'core', 'crm', 'finance', 'hr', 'inventory', 'library', 'procurement', 'sync')
       AND c.relkind = 'r'
+      AND NOT (n.nspname = 'core' AND c.relname = 'organization_memberships')
       AND EXISTS (
         SELECT 1 FROM pg_attribute a
         WHERE a.attrelid = c.oid
@@ -41,10 +42,17 @@ BEGIN
     EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', target.schema_name, target.table_name);
     EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', target.schema_name, target.table_name);
     EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I.%I', target.schema_name, target.table_name);
-    EXECUTE format(
-      'CREATE POLICY tenant_isolation ON %I.%I USING (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id)) WITH CHECK (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id))',
-      target.schema_name, target.table_name
-    );
+    IF target.schema_name = 'core' AND target.table_name = 'roles' THEN
+      EXECUTE format(
+        'CREATE POLICY tenant_isolation ON %I.%I USING (organization_id IS NULL OR (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id))) WITH CHECK (organization_id IS NOT NULL AND organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id))',
+        target.schema_name, target.table_name
+      );
+    ELSE
+      EXECUTE format(
+        'CREATE POLICY tenant_isolation ON %I.%I USING (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id)) WITH CHECK (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id))',
+        target.schema_name, target.table_name
+      );
+    END IF;
   END LOOP;
 END
 $migration$;
@@ -57,8 +65,9 @@ BEGIN
   SELECT count(*) INTO unsafe_count
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname IN ('academic', 'finance', 'hr', 'inventory', 'sync')
+  WHERE n.nspname IN ('academic', 'admissions', 'assets', 'audit', 'boarding', 'cms', 'config', 'core', 'crm', 'finance', 'hr', 'inventory', 'library', 'procurement', 'sync')
     AND c.relkind = 'r'
+    AND NOT (n.nspname = 'core' AND c.relname = 'organization_memberships')
     AND EXISTS (
       SELECT 1 FROM pg_attribute a
       WHERE a.attrelid = c.oid AND a.attname = 'organization_id'
