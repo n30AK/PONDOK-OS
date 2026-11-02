@@ -100,6 +100,63 @@ export async function handleFinanceRequest(
     return true;
   }
 
+  if (path === "/v1/finance/periods" && req.method === "GET") {
+    if (!tenant.permissions.includes("finance.journals.read")) { reply(res, 403, { error: "permission_required", permission: "finance.journals.read" }); return true; }
+    const result = await pool.query(
+      `SELECT id, code, name, starts_on AS "startsOn", ends_on AS "endsOn",
+              status, closed_at AS "closedAt"
+       FROM finance.fiscal_periods WHERE organization_id = $1::uuid
+       ORDER BY starts_on DESC LIMIT 100`, [organizationId],
+    );
+    reply(res, 200, { data: result.rows }); return true;
+  }
+
+  if (path === "/v1/finance/periods" && req.method === "POST") {
+    if (!tenant.permissions.includes("finance.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "finance.periods.manage" }); return true; }
+    const body = await readJson(req);
+    if (!body || typeof body.code !== "string" || !/^[A-Za-z0-9._/-]{1,32}$/.test(body.code)
+      || typeof body.name !== "string" || body.name.trim().length < 2 || body.name.length > 120
+      || typeof body.startsOn !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(body.startsOn)
+      || typeof body.endsOn !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(body.endsOn)
+      || body.endsOn < body.startsOn) {
+      reply(res, 422, { error: "invalid_fiscal_period_input" }); return true;
+    }
+    try {
+      const result = await pool.query(
+        `INSERT INTO finance.fiscal_periods (organization_id, code, name, starts_on, ends_on)
+         VALUES ($1::uuid, $2, $3, $4::date, $5::date)
+         RETURNING id, code, name, starts_on AS "startsOn", ends_on AS "endsOn", status`,
+        [organizationId, body.code, (body.name as string).trim(), body.startsOn, body.endsOn],
+      );
+      reply(res, 201, { data: result.rows[0] });
+    } catch (reason) {
+      const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
+      reply(res, code === "23505" ? 409 : code === "23514" ? 422 : 500, { error: code === "23505" ? "fiscal_period_code_exists" : code === "23514" ? "invalid_fiscal_period_range" : "fiscal_period_create_failed" });
+    }
+    return true;
+  }
+
+  const closePeriodMatch = path.match(/^\\/v1\\/finance\\/periods\\/([0-9a-f-]{36})\\/close$/i);
+  if (closePeriodMatch && req.method === "POST") {
+    if (!tenant.permissions.includes("finance.periods.close")) { reply(res, 403, { error: "permission_required", permission: "finance.periods.close" }); return true; }
+    const periodId = closePeriodMatch[1];
+    if (!periodId || !UUID.test(periodId)) { reply(res, 400, { error: "invalid_fiscal_period_id" }); return true; }
+    const result = await pool.query(
+      `UPDATE finance.fiscal_periods fp
+       SET status = 'closed', closed_at = now(), closed_by = $3::uuid
+       WHERE fp.organization_id = $1::uuid AND fp.id = $2::uuid AND fp.status = 'open'
+         AND NOT EXISTS (
+           SELECT 1 FROM finance.journal_entries je
+           WHERE je.organization_id = fp.organization_id
+             AND je.fiscal_period_id = fp.id AND je.status = 'draft'
+         )
+       RETURNING id, code, status, closed_at AS "closedAt"`,
+      [organizationId, periodId, userId],
+    );
+    if (!result.rows[0]) { reply(res, 409, { error: "period_not_found_closed_or_contains_draft_journals" }); return true; }
+    reply(res, 200, { data: result.rows[0] }); return true;
+  }
+
   if (path === "/v1/finance/journals" && req.method === "GET") {
     if (!tenant.permissions.includes("finance.journals.read")) { reply(res, 403, { error: "permission_required", permission: "finance.journals.read" }); return true; }
     const limitRaw = Number(url.searchParams.get("limit") ?? "50");
