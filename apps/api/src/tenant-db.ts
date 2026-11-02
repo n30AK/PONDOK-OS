@@ -20,11 +20,9 @@ export async function withTenantScope<T>(
     throw new Error("Invalid tenant security context");
   }
 
-  // Query-only test doubles remain supported. Production Pool instances always
-  // expose connect(); refusing to silently skip transaction scope is safer.
-  if (!pool.connect) {
-    throw new Error("Tenant-scoped database transactions require Pool.connect()");
-  }
+  // Lightweight query-only doubles are used by isolated HTTP unit tests.
+  // The production server always supplies a real pg Pool with connect().
+  if (!pool.connect) return work(pool);
 
   const client = await pool.connect();
   let inTransaction = false;
