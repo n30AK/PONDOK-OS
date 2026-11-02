@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Enforce tenant isolation in PostgreSQL, not only in API query predicates.
 -- Context is transaction-local and is set by apps/api/src/tenant-db.ts.
 DO $migration$
@@ -53,3 +55,5 @@ BEGIN
   END IF;
 END
 $validation$;
+
+COMMIT;
