@@ -1,7 +1,17 @@
 import { createAuthClient } from "@neondatabase/auth";
 
+type AuthResult<T> = { data: T | null; error: { message: string } | null };
+type AuthClient = {
+  token(): Promise<AuthResult<{ token?: string }>>;
+  getSession(): Promise<AuthResult<{ user?: unknown }>>;
+  signIn: { email(input: { email: string; password: string }): Promise<AuthResult<{ user?: unknown }>> };
+  signOut(): Promise<unknown>;
+};
+
 const authUrl = import.meta.env.VITE_NEON_AUTH_URL?.trim();
-export const authClient = authUrl ? createAuthClient(authUrl) : null;
+export const authClient: AuthClient | null = authUrl
+  ? createAuthClient(authUrl) as unknown as AuthClient
+  : null;
 
 export type PondokUser = {
   id: string;
