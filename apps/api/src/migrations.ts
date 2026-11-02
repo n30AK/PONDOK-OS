@@ -19,8 +19,13 @@ function checksum(sql: string): string {
 }
 
 function migrationBody(sql: string): string {
-  return sql
-    .replace(/^\s*BEGIN\s*;\s*/i, "")
+  // Migration files may begin with SQL comments before the transaction wrapper.
+  // Remove those comments before stripping BEGIN so the runner owns the transaction.
+  const withoutHeaderComments = sql
+    .replace(/^\uFEFF/, "")
+    .replace(/^\s*(?:(?:--[^\r\n]*(?:\r?\n|$))|(?:\/\*[\s\S]*?\*\/\s*))*\s*/i, "");
+  return withoutHeaderComments
+    .replace(/^BEGIN\s*;\s*/i, "")
     .replace(/\s*COMMIT\s*;\s*$/i, "");
 }
 

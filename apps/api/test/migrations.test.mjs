@@ -65,3 +65,16 @@ test("rolls back a migration when its SQL fails", async () => {
   await assert.rejects(applyMigrationFiles(pool, [broken]), /syntax error/);
   assert.ok(pool.statements.some((item) => item.sql === "ROLLBACK"));
 });
+
+test("strips transaction wrappers after leading SQL comments", async () => {
+  const pool = fakePool();
+  const commented = {
+    version: "0002",
+    name: "commented",
+    sql: "-- heading comment\n/* block comment */\nBEGIN;\nCREATE TABLE wrapped_example (id integer);\nCOMMIT;\n",
+  };
+  await applyMigrationFiles(pool, [commented]);
+  assert.ok(pool.statements.some((item) => item.sql === "CREATE TABLE wrapped_example (id integer);"));
+  assert.equal(pool.statements.filter((item) => item.sql === "BEGIN").length, 1);
+  assert.equal(pool.statements.filter((item) => item.sql === "COMMIT").length, 1);
+});
