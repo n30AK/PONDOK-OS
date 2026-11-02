@@ -7,6 +7,7 @@ import { handleAcademicRequest } from "./academic.js";
 import { handleSyncRequest } from "./sync.js";
 import { handleFinanceRequest } from "./finance.js";
 import { handleInventoryRequest } from "./inventory.js";
+import { handleHrRequest } from "./hr.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -59,7 +60,7 @@ export async function handleRequest(
     return;
   }
 
-  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/");
+  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/");
   const allowedMethods = writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
   if (!allowedMethods.includes(method)) {
     response.setHeader("allow", allowedMethods.join(", "));
@@ -203,6 +204,30 @@ export async function handleRequest(
           await handleInventoryRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
     } catch {
       sendJson(response, 500, { error: "operational_service_unavailable" }); return;
+    }
+  }
+
+  if (pathname.startsWith("/v1/hr/")) {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    const organizationId = request.headers["x-organization-id"];
+    if (typeof organizationId !== "string" || !UUID_PATTERN.test(organizationId)) {
+      sendJson(response, 400, { error: "invalid_organization_id" }); return;
+    }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" }); return;
+    }
+    try {
+      if (await handleHrRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+    } catch {
+      sendJson(response, 500, { error: "hr_service_unavailable" }); return;
     }
   }
 
