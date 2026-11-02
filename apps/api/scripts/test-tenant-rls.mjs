@@ -81,7 +81,7 @@ try {
   await client.query("ROLLBACK TO SAVEPOINT cross_tenant_write");
   await client.query("RELEASE SAVEPOINT cross_tenant_write");
 
-  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantB]);
   const tenantAWithWrongOrg = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
   assert.equal(tenantAWithWrongOrg.rowCount, 0, "user A must not access tenant B even when the requested organization header is B");
 
