@@ -32,7 +32,9 @@ Requirements: Node.js 22+, pnpm 10.20.0, PostgreSQL 18 for local migration tests
 ```bash
 pnpm install
 cp apps/web/.env.example apps/web/.env.local
-pnpm --filter @pondok-os/api dev
+pnpm --filter @pondok-os/api build
+pnpm --filter @pondok-os/api start
+# In a second terminal:
 pnpm --filter @pondok-os/web dev
 ```
 
