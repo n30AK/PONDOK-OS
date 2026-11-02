@@ -116,8 +116,8 @@ export async function handleFinanceRequest(
     const body = await readJson(req);
     if (!body || typeof body.code !== "string" || !/^[A-Za-z0-9._/-]{1,32}$/.test(body.code)
       || typeof body.name !== "string" || body.name.trim().length < 2 || body.name.length > 120
-      || typeof body.startsOn !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(body.startsOn)
-      || typeof body.endsOn !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(body.endsOn)
+      || typeof body.startsOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.startsOn)
+      || typeof body.endsOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.endsOn)
       || body.endsOn < body.startsOn) {
       reply(res, 422, { error: "invalid_fiscal_period_input" }); return true;
     }
@@ -136,7 +136,7 @@ export async function handleFinanceRequest(
     return true;
   }
 
-  const closePeriodMatch = path.match(/^\\/v1\\/finance\\/periods\\/([0-9a-f-]{36})\\/close$/i);
+  const closePeriodMatch = path.match(/^\/v1\/finance\/periods\/([0-9a-f-]{36})\/close$/i);
   if (closePeriodMatch && req.method === "POST") {
     if (!tenant.permissions.includes("finance.periods.close")) { reply(res, 403, { error: "permission_required", permission: "finance.periods.close" }); return true; }
     const periodId = closePeriodMatch[1];
