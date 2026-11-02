@@ -32,6 +32,30 @@ export async function handleRequest(
 ): Promise<void> {
   const method = request.method ?? "GET";
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+  const origin = request.headers.origin;
+  const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
+    .split(",").map((value) => value.trim()).filter(Boolean);
+  const developmentOrigins = process.env.NODE_ENV === "production"
+    ? []
+    : ["http://localhost:5173", "http://127.0.0.1:5173"];
+  const originAllowed = typeof origin === "string"
+    && [...configuredOrigins, ...developmentOrigins].includes(origin);
+  if (originAllowed && origin) {
+    response.setHeader("access-control-allow-origin", origin);
+    response.setHeader("access-control-allow-methods", "GET, HEAD, POST, OPTIONS");
+    response.setHeader("access-control-allow-headers", "Authorization, Content-Type, X-Organization-Id");
+    response.setHeader("access-control-max-age", "600");
+    response.setHeader("vary", "Origin");
+  }
+  if (method === "OPTIONS") {
+    if (!originAllowed) {
+      sendJson(response, 403, { error: "cors_origin_not_allowed" });
+      return;
+    }
+    response.writeHead(204);
+    response.end();
+    return;
+  }
 
   const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/");
   const allowedMethods = writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
