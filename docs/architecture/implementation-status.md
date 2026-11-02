@@ -4,29 +4,29 @@ This file separates shipped code from roadmap intent. "CI passed" means the repo
 
 | Area | Current state | Evidence / remaining work |
 |---|---|---|
-| Monorepo and CI | Implemented | pnpm/Turbo workspace; migration, typecheck, build, container and unit-test jobs |
+| Monorepo and CI | Implemented foundation | pnpm/Turbo workspace; migration runner with checksums/advisory locking; disposable PostgreSQL migration integration; workspace build/typecheck/tests and Docker image builds |
 | Core tenant schema | Foundation implemented | organizations, campuses, memberships, roles, permissions, settings and audit event table |
-| Identity | Foundation implemented | Neon Managed Auth JWT verification, active membership lookup and server-side role/permission resolution |
-| Academic/student | Partial | student list/create API and first PWA screens; years, terms, programs, classes, attendance and enrollment tables exist; workflows remain |
-| Finance/accounting | Schema foundation | chart of accounts, periods, journal entries/lines; balanced posting and immutability triggers; no complete finance UI or posting service |
-| Inventory | Schema foundation | item, warehouse and append-only stock movement ledger; no receiving/issue/stock opname workflow |
-| HR/payroll | Schema foundation | employee/contract/payroll tables; approval and immutability constraints; no complete attendance or payroll calculation engine |
+| Identity and onboarding | Initial implementation | Neon Managed Auth EdDSA JWT verification; guarded first-organization bootstrap with one-time SHA-256 token, advisory lock, owner assignment and audit event; live sign-in/first-setup acceptance still pending |
+| Tenant authorization | Partial | API verifies active membership and resolves permissions server-side; academic, finance, inventory and HR endpoints enforce permission keys and organization filters; global PostgreSQL RLS and campus-level authorization are not enabled |
+| Academic/student | Partial operational API | student list/create API and PWA student list/create screens; academic years, terms, programs, classes, subjects, enrollments, guardians and attendance tables exist; remaining academic workflows and screens are incomplete |
+| Finance/accounting | Partial operational API | chart of accounts, fiscal periods, journal draft creation/listing, balanced posting guard, period close and immutable posted journal records; full statements, budgeting, cash/bank reconciliation and UI pending |
+| Inventory | Partial operational API | item, warehouse and append-only stock movement endpoints; receiving/issue/transfer operations exist; stock opname, valuation, procurement integration and UI acceptance pending |
+| HR/payroll | Partial operational API | employee, payroll period/run, approval and payment endpoints with immutable approved payroll; attendance, leave, payroll formulas/tax rules, payslips and UI pending |
 | Library | Schema foundation | catalog, copies and loan tables; circulation API/UI pending |
 | PPDB/admissions | Schema foundation | periods, applications, document metadata and review history; secure object storage and admissions workflows pending |
 | CMS | Schema foundation | pages and announcements; authoring/publishing UI pending |
 | Boarding | Schema foundation | dormitory, room, bed, assignments, leave and incident tables; workflows/UI pending |
-| Procurement/assets/CRM | Schema foundation | supplier, requisition, purchase order, asset, contact, interaction and donor pledge tables |
-| Sync | Partial foundation | device registry, pending event inbox, idempotency and checkpoints; no domain event processor, local outbox or conflict UI |
-| Web workspace | Initial implementation | Neon Auth sign-in, tenant selector, student listing and creation |
+| Procurement/assets/CRM | Schema foundation | supplier, requisition, purchase order, asset, contact, interaction and donor pledge tables; operational workflows/UI pending |
+| Sync | Partial foundation | device registry, authenticated event inbox, idempotency and checkpoints; domain event processor, local outbox and conflict review UI pending |
+| Web workspace | Initial implementation | Neon Auth sign-in, guarded first setup, tenant selector, dashboard and student list/create; finance/inventory/HR and other module screens pending |
 | PWA offline | Shell only | static shell cache; no private data cache or offline mutation queue |
-| Cloud-connected containers | Build-verified | Docker API/web targets and Compose; requires external PostgreSQL and matching Neon Auth |
-| Local/offline installer | Not implemented | local identity, DB installer, LAN testing and backup automation required |
+| Cloud-connected containers | Build-verified | Docker API/web targets and Compose; requires external PostgreSQL, Neon Auth and TLS reverse proxy |
+| Local/offline installer | Not implemented | local identity provider, local DB provisioning, LAN acceptance and backup automation required |
 | Flutter mobile | Not implemented | Android/iOS clients and release signing required |
 | Tauri desktop | Not implemented | installer, local services and auto-update required |
 | Kiosk | Not implemented | kiosk UX, device registration and hardened browser policy required |
 | Commercial Control Center | Not implemented | separate provider plane, billing, license issuance and support CRM required |
-| Tenant RLS | Not implemented globally | all tenant schemas need RLS and transaction-scoped tenant context before production |
-| Live acceptance | Not completed | no live sign-in-to-API test with a provisioned organization owner and no real institution workflow acceptance |
+| Live acceptance | Not completed | no verified live first-owner setup/sign-in, two-tenant isolation test, or real institution workflow acceptance |
 
 ## Completion criteria
 
