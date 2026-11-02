@@ -2,7 +2,7 @@ BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS academic;
 
-CREATE TABLE academic.academic_years (
+CREATE TABLE IF NOT EXISTS academic.academic_years (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES core.organizations(id),
   code text NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE academic.academic_years (
   CHECK (ends_on >= starts_on)
 );
 
-CREATE TABLE academic.academic_terms (
+CREATE TABLE IF NOT EXISTS academic.academic_terms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   academic_year_id uuid NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE academic.academic_terms (
   CHECK (ends_on >= starts_on)
 );
 
-CREATE TABLE academic.programs (
+CREATE TABLE IF NOT EXISTS academic.programs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES core.organizations(id),
   code text NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE academic.programs (
   UNIQUE (organization_id, code)
 );
 
-CREATE TABLE academic.student_profiles (
+CREATE TABLE IF NOT EXISTS academic.student_profiles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   campus_id uuid NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE academic.student_profiles (
     REFERENCES core.campuses (organization_id, id)
 );
 
-CREATE TABLE academic.guardians (
+CREATE TABLE IF NOT EXISTS academic.guardians (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES core.organizations(id),
   display_name text NOT NULL,
@@ -79,7 +79,7 @@ CREATE TABLE academic.guardians (
   UNIQUE (organization_id, id)
 );
 
-CREATE TABLE academic.student_guardians (
+CREATE TABLE IF NOT EXISTS academic.student_guardians (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   student_id uuid NOT NULL,
@@ -94,7 +94,7 @@ CREATE TABLE academic.student_guardians (
     REFERENCES academic.guardians (organization_id, id)
 );
 
-CREATE TABLE academic.class_groups (
+CREATE TABLE IF NOT EXISTS academic.class_groups (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   campus_id uuid NOT NULL,
@@ -117,7 +117,7 @@ CREATE TABLE academic.class_groups (
     REFERENCES academic.programs (organization_id, id)
 );
 
-CREATE TABLE academic.enrollments (
+CREATE TABLE IF NOT EXISTS academic.enrollments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   student_id uuid NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE academic.enrollments (
   CHECK (ended_on IS NULL OR ended_on >= enrolled_on)
 );
 
-CREATE TABLE academic.subjects (
+CREATE TABLE IF NOT EXISTS academic.subjects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES core.organizations(id),
   code text NOT NULL,
@@ -155,7 +155,7 @@ CREATE TABLE academic.subjects (
   UNIQUE (organization_id, code)
 );
 
-CREATE TABLE academic.class_subjects (
+CREATE TABLE IF NOT EXISTS academic.class_subjects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   class_group_id uuid NOT NULL,
@@ -169,7 +169,7 @@ CREATE TABLE academic.class_subjects (
     REFERENCES academic.subjects (organization_id, id)
 );
 
-CREATE TABLE academic.attendance_sessions (
+CREATE TABLE IF NOT EXISTS academic.attendance_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   class_group_id uuid NOT NULL,
@@ -186,7 +186,7 @@ CREATE TABLE academic.attendance_sessions (
     REFERENCES academic.class_groups (organization_id, id)
 );
 
-CREATE TABLE academic.attendance_records (
+CREATE TABLE IF NOT EXISTS academic.attendance_records (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   attendance_session_id uuid NOT NULL,
@@ -202,15 +202,15 @@ CREATE TABLE academic.attendance_records (
     REFERENCES academic.student_profiles (organization_id, id)
 );
 
-CREATE INDEX idx_academic_years_org_status
+CREATE INDEX IF NOT EXISTS idx_academic_years_org_status
   ON academic.academic_years (organization_id, status);
-CREATE INDEX idx_academic_students_campus_status
+CREATE INDEX IF NOT EXISTS idx_academic_students_campus_status
   ON academic.student_profiles (organization_id, campus_id, status);
-CREATE INDEX idx_academic_enrollments_year_status
+CREATE INDEX IF NOT EXISTS idx_academic_enrollments_year_status
   ON academic.enrollments (organization_id, academic_year_id, status);
-CREATE INDEX idx_academic_attendance_session_date
+CREATE INDEX IF NOT EXISTS idx_academic_attendance_session_date
   ON academic.attendance_sessions (organization_id, session_date DESC);
-CREATE INDEX idx_academic_attendance_records_student
+CREATE INDEX IF NOT EXISTS idx_academic_attendance_records_student
   ON academic.attendance_records (organization_id, student_id);
 
 COMMIT;
