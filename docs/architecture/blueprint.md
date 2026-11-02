@@ -13,14 +13,19 @@ Provider staff do not receive implicit access to operational student or financia
 
 Start with a modular monolith and domain boundaries. Do not introduce microservices until independently deployable scaling or reliability needs are demonstrated.
 
-- Web: Next.js + TypeScript
-- API: NestJS + TypeScript, REST/OpenAPI
-- Data: PostgreSQL
-- Data access: Prisma for application persistence; reviewed SQL migrations for database features and constraints
-- Mobile: Flutter (Android/iOS)
-- Desktop packaging: Tauri plus managed local API/database services
-- CI: GitHub Actions
-- Tests: Vitest/Jest and Playwright as appropriate
+### Implemented foundation (verified in repository)
+- Web: React + TypeScript + Vite PWA workspace.
+- API: Node.js 22 HTTP server with TypeScript, REST endpoints, Neon Managed Auth JWT verification and PostgreSQL access via `pg`.
+- Data: PostgreSQL 18 migrations, checksum ledger and advisory-lock migration runner.
+- Deployment: Docker API image, Nginx web image and Docker Compose for cloud-connected mode.
+- CI: GitHub Actions with disposable PostgreSQL 18; migrations, typecheck, workspace builds, container builds and Node tests.
+
+### Target architecture (not yet implemented)
+- A larger modular API framework may be introduced if the codebase demonstrates a need; the current API is not NestJS.
+- Prisma is a future option; the current persistence layer uses reviewed SQL and `pg`.
+- Mobile: Flutter Android/iOS apps.
+- Desktop packaging: Tauri with managed local API/database services.
+- Offline/hybrid: local-first transactional outbox, device identity, domain processors and human conflict workflows.
 
 ## Deployment modes
 
