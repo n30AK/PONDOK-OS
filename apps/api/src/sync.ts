@@ -34,10 +34,10 @@ export function validateSyncEventInput(value: Json): string | null {
   if (typeof value.aggregateType !== "string" || !KEY.test(value.aggregateType)) return "invalid_aggregate_type";
   if (typeof value.aggregateId !== "string" || value.aggregateId.length < 1 || value.aggregateId.length > 128) return "invalid_aggregate_id";
   if (typeof value.eventType !== "string" || !KEY.test(value.eventType)) return "invalid_event_type";
-  if (!Number.isInteger(value.schemaVersion) || Number(value.schemaVersion) < 1 || Number(value.schemaVersion) > 1000) return "invalid_schema_version";
+  if (typeof value.schemaVersion !== "number" || !Number.isInteger(value.schemaVersion) || value.schemaVersion < 1 || value.schemaVersion > 1000) return "invalid_schema_version";
   if (typeof value.occurredAt !== "string" || Number.isNaN(Date.parse(value.occurredAt))) return "invalid_occurred_at";
   if (value.payload === null || typeof value.payload !== "object" || Array.isArray(value.payload)) return "invalid_payload";
-  if (Buffer.byteLength(JSON.stringify(value.payload), "utf8") > 48_000) return "payload_too_large";
+  const payloadText = JSON.stringify(value.payload);\n  if (!payloadText || Buffer.byteLength(payloadText, "utf8") > 48_000) return "payload_too_large";
   return null;
 }
 
@@ -85,7 +85,7 @@ export async function handleSyncRequest(
               approved_at = now()
        WHERE organization_id = $1::uuid AND id = $2::uuid AND device_status = 'pending'
        RETURNING id, device_key AS "deviceKey", device_name AS "deviceName", device_status AS status`,
-      [organizationId, approveMatch[1], userId],
+      [organizationId, deviceId, userId],
     );
     if (!result.rows[0]) { reply(res, 409, { error: "device_not_pending_or_not_found" }); return true; }
     reply(res, 200, { data: result.rows[0] }); return true;
@@ -134,7 +134,7 @@ export async function handleSyncRequest(
               event_type AS "eventType", schema_version AS "schemaVersion", payload,
               processing_status AS status
        FROM sync.inbox_events WHERE organization_id = $1::uuid AND idempotency_key = $2`,
-      [organizationId, body.idempotencyKey],
+      [organizationId, body.idempotencyKey, JSON.stringify(body.payload)],
     );
     if (existing.rows[0]) {
       const row = existing.rows[0] as Record<string, unknown>;
