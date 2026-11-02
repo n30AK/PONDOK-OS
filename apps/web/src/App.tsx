@@ -62,7 +62,7 @@ export default function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [studentNumber, setStudentNumber] = useState("");
   const [legalName, setLegalName] = useState("");
-  const [campusId, setCampusId] = useState("");
+  const [campusId, setCampusId] = useState(() => localStorage.getItem("pondok.campusId") ?? "");
   const [birthDate, setBirthDate] = useState("");
   const [genderCode, setGenderCode] = useState("unspecified");
 
@@ -120,7 +120,10 @@ export default function App() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? `Inisialisasi gagal (${response.status})`);
       const orgId = result.data.organizationId as string;
+      const firstCampusId = result.data.campusId as string;
       localStorage.setItem("pondok.organizationId", orgId);
+      localStorage.setItem("pondok.campusId", firstCampusId);
+      setCampusId(firstCampusId);
       setOrganizationId(orgId);
       setUser(await getCurrentUser());
       const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
