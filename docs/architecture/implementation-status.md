@@ -9,16 +9,16 @@ This file separates shipped code from roadmap intent. "CI passed" means the repo
 | Identity and onboarding | Initial implementation | Neon Managed Auth EdDSA JWT verification; guarded first-organization bootstrap with one-time SHA-256 token, advisory lock, owner assignment and audit event; live sign-in/first-setup acceptance still pending |
 | Tenant authorization | Partial | API verifies active membership and resolves permissions server-side; academic, finance, inventory and HR endpoints enforce permission keys and organization filters; global PostgreSQL RLS and campus-level authorization are not enabled |
 | Academic/student | Partial operational API | student list/create API and PWA student list/create screens; academic years, terms, programs, classes, subjects, enrollments, guardians and attendance tables exist; remaining academic workflows and screens are incomplete |
-| Finance/accounting | Partial operational API | chart of accounts, fiscal periods, journal draft creation/listing, balanced posting guard, period close and immutable posted journal records; full statements, budgeting, cash/bank reconciliation and UI pending |
-| Inventory | Partial operational API | item, warehouse and append-only stock movement endpoints; receiving/issue/transfer operations exist; stock opname, valuation, procurement integration and UI acceptance pending |
-| HR/payroll | Partial operational API | employee, payroll period/run, approval and payment endpoints with immutable approved payroll; attendance, leave, payroll formulas/tax rules, payslips and UI pending |
+| Finance/accounting | Partial operational UI/API | chart of accounts, fiscal periods, journal draft creation/listing, balanced posting guard, period close and immutable posted journal records; basic account/period list and create screens; journal posting, full statements, budgeting and cash/bank reconciliation UI pending |
+| Inventory | Partial operational UI/API | item, warehouse and append-only stock movement endpoints; basic item/warehouse list and create screens; receiving/issue/transfer UI, stock opname, valuation and procurement integration pending |
+| HR/payroll | Partial operational UI/API | employee, payroll period/run, approval and payment endpoints with immutable approved payroll; basic employee/payroll-period list and create screens; attendance, leave, payroll formulas/tax rules, payslips and payroll processing UI pending |
 | Library | Schema foundation | catalog, copies and loan tables; circulation API/UI pending |
 | PPDB/admissions | Schema foundation | periods, applications, document metadata and review history; secure object storage and admissions workflows pending |
 | CMS | Schema foundation | pages and announcements; authoring/publishing UI pending |
 | Boarding | Schema foundation | dormitory, room, bed, assignments, leave and incident tables; workflows/UI pending |
 | Procurement/assets/CRM | Schema foundation | supplier, requisition, purchase order, asset, contact, interaction and donor pledge tables; operational workflows/UI pending |
 | Sync | Partial foundation | device registry, authenticated event inbox, idempotency and checkpoints; domain event processor, local outbox and conflict review UI pending |
-| Web workspace | Initial implementation | Neon Auth sign-in, guarded first setup, tenant selector, dashboard and student list/create; finance/inventory/HR and other module screens pending |
+| Web workspace | Initial implementation | Neon Auth sign-in, guarded first setup, tenant selector, dashboard, student list/create and basic finance/inventory/HR list/create screens; other module screens pending |
 | PWA offline | Shell only | static shell cache; no private data cache or offline mutation queue |
 | Cloud-connected containers | Build-verified | Docker API/web targets and Compose; requires external PostgreSQL, Neon Auth and TLS reverse proxy |
 | Local/offline installer | Not implemented | local identity provider, local DB provisioning, LAN acceptance and backup automation required |
