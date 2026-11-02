@@ -52,7 +52,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Verify accounting, inventory and payroll invariants
-        run: node scripts/test-ledger-invariants.mjs
+        run: node apps/api/scripts/test-ledger-invariants.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck, build and test
