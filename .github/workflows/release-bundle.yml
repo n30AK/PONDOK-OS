@@ -64,6 +64,11 @@ jobs:
         run: |
           docker build --target api -t pondok-os-api:bundle .
           docker build --target web --build-arg VITE_NEON_AUTH_URL=https://auth.invalid/neondb/auth -t pondok-os-web:bundle .
+      - name: Validate Docker Compose configuration
+        run: |
+          cp .env.compose.example .env
+          docker compose config --quiet
+          rm .env
       - name: Smoke-test built API and web containers
         run: |
           set -euo pipefail
