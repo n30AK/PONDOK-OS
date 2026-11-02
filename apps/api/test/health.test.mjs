@@ -70,3 +70,20 @@ test("academic routes advertise POST while rejecting unsupported methods", async
   assert.equal(response.status, 405);
   assert.equal(response.headers.get("allow"), "GET, HEAD, POST");
 });
+
+test("development CORS preflight allows the local Vite origin", async (context) => {
+  const server = createApiServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const response = await fetch(`http://127.0.0.1:${address.port}/v1/academic/students`, {
+    method: "OPTIONS",
+    headers: { origin: "http://localhost:5173", "access-control-request-method": "POST" }
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:5173");
+  assert.match(response.headers.get("access-control-allow-headers") ?? "", /X-Organization-Id/i);
+});
