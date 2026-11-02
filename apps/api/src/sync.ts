@@ -37,7 +37,8 @@ export function validateSyncEventInput(value: Json): string | null {
   if (typeof value.schemaVersion !== "number" || !Number.isInteger(value.schemaVersion) || value.schemaVersion < 1 || value.schemaVersion > 1000) return "invalid_schema_version";
   if (typeof value.occurredAt !== "string" || Number.isNaN(Date.parse(value.occurredAt))) return "invalid_occurred_at";
   if (value.payload === null || typeof value.payload !== "object" || Array.isArray(value.payload)) return "invalid_payload";
-  const payloadText = JSON.stringify(value.payload);\n  if (!payloadText || Buffer.byteLength(payloadText, "utf8") > 48_000) return "payload_too_large";
+  const payloadText = JSON.stringify(value.payload);
+  if (!payloadText || Buffer.byteLength(payloadText, "utf8") > 48_000) return "payload_too_large";
   return null;
 }
 
