@@ -7,7 +7,7 @@ export interface VerifiedIdentity {
 
 export function readBearerToken(header: string | undefined): string | null {
   if (!header) return null;
-  const match = /^Bearer ([A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+)$/i.exec(header);
+  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i.exec(header);
   return match?.[1] ?? null;
 }
 
