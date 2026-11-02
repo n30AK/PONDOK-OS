@@ -60,6 +60,26 @@ jobs:
         run: |
           docker build --target api -t pondok-os-api:bundle .
           docker build --target web --build-arg VITE_NEON_AUTH_URL=https://auth.invalid/neondb/auth -t pondok-os-web:bundle .
+      - name: Smoke-test built API and web containers
+        run: |
+          set -euo pipefail
+          docker network create pondok-release-smoke
+          cleanup() {
+            docker rm -f pondok-release-web pondok-release-api >/dev/null 2>&1 || true
+            docker network rm pondok-release-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run -d --name pondok-release-api --network pondok-release-smoke --network-alias api pondok-os-api:bundle
+          docker run -d --name pondok-release-web --network pondok-release-smoke -p 8080:80 pondok-os-web:bundle
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null && curl -fsS http://127.0.0.1:8080/health/live >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/ >/dev/null
+          curl -fsS http://127.0.0.1:8080/health/live >/dev/null
+          docker exec pondok-release-web nginx -t
       - name: Create source and deployment bundle
         run: |
           mkdir -p release
