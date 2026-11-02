@@ -56,6 +56,7 @@ try {
   const tenantASeesB = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
   assert.equal(tenantAOwn.rowCount, 1, "tenant A must read its own account");
   assert.equal(tenantASeesB.rowCount, 0, "tenant A must not read tenant B data");
+  await client.query("SAVEPOINT cross_tenant_write");
   await assert.rejects(
     () => client.query(
       "INSERT INTO finance.accounts (organization_id, account_code, account_name, account_type) VALUES ($1,'RLS-X','Cross-tenant insert','asset')",
@@ -64,6 +65,8 @@ try {
     (error) => error && error.code === "42501",
     "tenant A must not insert rows for tenant B",
   );
+  await client.query("ROLLBACK TO SAVEPOINT cross_tenant_write");
+  await client.query("RELEASE SAVEPOINT cross_tenant_write");
 
   await client.query("SELECT set_config('app.organization_id', $1, true)", [tenantB]);
   const tenantBOwn = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
