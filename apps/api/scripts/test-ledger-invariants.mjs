@@ -37,6 +37,7 @@ async function expectSqlCode(action, expectedCode, label) {
 
 try {
   await client.query("BEGIN");
+  await client.query("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
   await client.query(
     "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1, $2, $3, 'pesantren', 'active')",
     [organizationId, `ci-${organizationId.slice(0, 8)}`, "PONDOK CI INVARIANT TEST"],
