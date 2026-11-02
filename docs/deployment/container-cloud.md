@@ -13,12 +13,13 @@ This deployment packages the API and PWA web workspace in Docker. PostgreSQL and
 
 ## Configure
 
-For the very first institution only, generate a high-entropy setup token and configure its SHA-256 digest as `PONDOK_BOOTSTRAP_TOKEN_SHA256` in `.env`. Enter the raw token once in the first-setup form. Remove the hash from the API environment after the first organization is created. The endpoint is additionally locked once any organization exists.
-
 1. Copy `.env.compose.example` to `.env`.
-2. Set `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL` from the same development or production branch. Never mix URLs from different branches.
-3. Ensure the database has the required migrations. Existing manually created objects must be reconciled with `core.schema_migrations` before running the migration profile.
-4. Set a strong database credential and keep `.env` outside version control.
+2. Set `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL` from the same Neon branch. Never mix URLs from different branches.
+3. Set `CORS_ALLOWED_ORIGINS` to the exact public HTTPS origin used by the browser.
+4. Ensure the database migration ledger matches the repository before running the migration profile.
+5. Keep the populated `.env` private and outside version control.
+
+For the first institution only, follow [the first-install runbook](../runbooks/first-install.md). Generate a one-time token locally using `node scripts/create-bootstrap-token.mjs`, configure only the digest as `PONDOK_BOOTSTRAP_TOKEN_SHA256`, and enter the raw token once in the first-setup screen. Remove the digest from the API environment immediately after initialization.
 
 ## Build and run
 
@@ -39,7 +40,7 @@ Migrations are deliberately not run automatically when containers start.
 docker compose --profile migration run --rm migrate
 ```
 
-Run this only after verifying the target Neon branch and checking that any pre-existing tables have been reconciled. The runner uses checksums and will stop if a previously recorded migration has changed.
+Run this only after verifying the target branch and checking that any pre-existing tables have been reconciled. The runner uses checksums and stops if a previously recorded migration has changed.
 
 ## Health checks
 
