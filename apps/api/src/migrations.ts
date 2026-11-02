@@ -22,11 +22,11 @@ function migrationBody(sql: string): string {
   // Migration files may begin with SQL comments before the transaction wrapper.
   // Remove those comments before stripping BEGIN so the runner owns the transaction.
   const withoutHeaderComments = sql
-    .replace(/^\\uFEFF/, "")
-    .replace(/^\\s*(?:(?:--[^\\r\\n]*(?:\\r?\\n|$))|(?:\\/\\*[\\s\\S]*?\\*\\/\\s*))*\\s*/i, "");
+    .replace(/^\uFEFF/, "")
+    .replace(/^\s*(?:(?:--[^\r\n]*(?:\r?\n|$))|(?:\/\*[\s\S]*?\*\/\s*))*\s*/i, "");
   return withoutHeaderComments
-    .replace(/^BEGIN\\s*;\\s*/i, "")
-    .replace(/\\s*COMMIT\\s*;\\s*$/i, "");
+    .replace(/^BEGIN\s*;\s*/i, "")
+    .replace(/\s*COMMIT\s*;\s*$/i, "");
 }
 
 export async function applyMigrationFiles(
