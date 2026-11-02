@@ -170,7 +170,7 @@ BEGIN
       RAISE EXCEPTION 'posted journal entries are immutable; create a reversal or adjustment'
         USING ERRCODE = '55000';
     END IF;
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
   END IF;
   SELECT status INTO current_status FROM finance.journal_entries
    WHERE organization_id = OLD.organization_id AND id = OLD.journal_entry_id;
@@ -178,7 +178,7 @@ BEGIN
     RAISE EXCEPTION 'lines of posted journal entries are immutable'
       USING ERRCODE = '55000';
   END IF;
-  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END $$;
 
 CREATE OR REPLACE FUNCTION inventory.prevent_stock_movement_mutation()
