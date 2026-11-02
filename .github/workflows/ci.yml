@@ -24,3 +24,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Validate migration conventions
         run: pnpm db:check
+      - name: Typecheck workspace
+        run: pnpm typecheck
+      - name: Run unit tests
+        run: pnpm test
