@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { readBearerToken, verifyAccessToken } from "./identity.js";
 import { loadTenantContext } from "./tenant-access.js";
 import { handleAcademicRequest } from "./academic.js";
+import { handleSyncRequest } from "./sync.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,8 +33,8 @@ export async function handleRequest(
   const method = request.method ?? "GET";
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
 
-  const academicRoute = pathname.startsWith("/v1/academic/");
-  const allowedMethods = academicRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
+  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/");
+  const allowedMethods = writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
   if (!allowedMethods.includes(method)) {
     response.setHeader("allow", allowedMethods.join(", "));
     sendJson(response, 405, { error: "method_not_allowed" });
@@ -111,6 +112,30 @@ export async function handleRequest(
       if (await handleAcademicRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
     } catch {
       sendJson(response, 500, { error: "academic_service_unavailable" }); return;
+    }
+  }
+
+  if (pathname.startsWith("/v1/sync/")) {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    const organizationId = request.headers["x-organization-id"];
+    if (typeof organizationId !== "string" || !UUID_PATTERN.test(organizationId)) {
+      sendJson(response, 400, { error: "invalid_organization_id" }); return;
+    }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" }); return;
+    }
+    try {
+      if (await handleSyncRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
+    } catch {
+      sendJson(response, 500, { error: "sync_service_unavailable" }); return;
     }
   }
 
