@@ -44,5 +44,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
+      - name: Build all deployable workspaces
+        run: pnpm build
       - name: Run unit tests
         run: pnpm test
