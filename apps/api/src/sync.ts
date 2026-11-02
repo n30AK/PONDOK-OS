@@ -77,6 +77,8 @@ export async function handleSyncRequest(
 
   const approveMatch = path.match(/^\/v1\/sync\/devices\/([0-9a-f-]{36})\/approve$/i);
   if (approveMatch && req.method === "POST") {
+    const deviceId = approveMatch[1];
+    if (!deviceId || !UUID.test(deviceId)) { reply(res, 400, { error: "invalid_device_id" }); return true; }
     if (!tenant.permissions.includes("sync.devices.manage")) {
       reply(res, 403, { error: "permission_required", permission: "sync.devices.manage" }); return true;
     }
