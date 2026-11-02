@@ -1,6 +1,6 @@
 # PONDOK OS Web Workspace
 
-React + Vite administrative workspace with Neon Managed Auth, guarded first-institution setup, tenant context, student listing/creation, and an installable PWA shell.
+React + Vite administrative workspace with Neon Managed Auth, guarded first-institution setup, tenant context, student listing/creation, basic finance/inventory/HR operations, and an installable PWA shell.
 
 ## Local development
 
@@ -17,11 +17,11 @@ The Vite proxy forwards `/v1` and `/health` to `http://127.0.0.1:3001`. Set `API
 - The browser requests a short-lived JWT using `authClient.token()`.
 - Every protected API call includes the bearer token and selected `x-organization-id`.
 - Organization membership and permissions are resolved server-side; the UI does not trust client role claims.
-- Public sign-up is not exposed as a general registration route. A dedicated first-setup flow is available only for initial institution initialization and requires a one-time server-side token. Follow [the first-install runbook](../../docs/runbooks/first-install.md).
+- Public sign-up is not exposed as a general registration route. A dedicated first-setup flow is available only for initial institution initialization and requires a one-time server-side token. It supports either creating the first administrator account or continuing with an existing account after a failed first attempt. Follow [the first-install runbook](../../docs/runbooks/first-install.md).
 
 ## PWA / offline boundary
 
-The service worker caches the application shell only. It does **not** cache student records, queue offline writes, or synchronize local/cloud data. Do not use this shell as an offline-first production client until the local database, transactional outbox, sync conflict workflow, and restore drills are implemented and tested.
+The service worker caches the application shell and same-origin static JS/CSS/font/image assets; it does not cache private API responses. It does **not** cache student records, queue offline writes, or synchronize local/cloud data. Do not use this shell as an offline-first production client until the local database, transactional outbox, sync conflict workflow, and restore drills are implemented and tested.
 
 ## Deployment
 
