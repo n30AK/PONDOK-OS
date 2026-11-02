@@ -1,5 +1,22 @@
 BEGIN;
 
+-- RLS checks both the requested organization and the authenticated user's active membership.
+CREATE OR REPLACE FUNCTION core.has_active_tenant_membership(p_organization_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, core
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM core.organization_memberships om
+    WHERE om.organization_id = p_organization_id
+      AND om.user_id = nullif(current_setting('app.user_id', true), '')::uuid
+      AND om.membership_status = 'active'
+  )
+$function$;
+
 -- Enforce tenant isolation in PostgreSQL, not only in API query predicates.
 -- Context is transaction-local and is set by apps/api/src/tenant-db.ts.
 DO $migration$
@@ -25,7 +42,7 @@ BEGIN
     EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', target.schema_name, target.table_name);
     EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I.%I', target.schema_name, target.table_name);
     EXECUTE format(
-      'CREATE POLICY tenant_isolation ON %I.%I USING (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid) WITH CHECK (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid)',
+      'CREATE POLICY tenant_isolation ON %I.%I USING (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id)) WITH CHECK (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND core.has_active_tenant_membership(organization_id))',
       target.schema_name, target.table_name
     );
   END LOOP;
