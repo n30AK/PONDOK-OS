@@ -70,6 +70,20 @@ export async function handleRequest(
     return;
   }
 
+  if (pathname === "/health/ready") {
+    if (!dependencies.pool) {
+      sendJson(response, 503, { status: "not_ready", dependency: "database_not_configured" });
+      return;
+    }
+    try {
+      await dependencies.pool.query("SELECT 1");
+      sendJson(response, 200, { status: "ready", service: SERVICE_NAME, dependencies: { database: "ok" } });
+    } catch {
+      sendJson(response, 503, { status: "not_ready", dependency: "database_unavailable" });
+    }
+    return;
+  }
+
   if (pathname === "/v1/tenant/context") {
     if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
       sendJson(response, 503, { error: "identity_or_database_not_configured" });
