@@ -3,6 +3,7 @@ import { getAccessToken } from "./auth";
 
 type Area = "finance" | "inventory" | "hr";
 type Row = Record<string, unknown>;
+type AreaData = Partial<Record<Area, Record<string, Row[]>>>;
 type Props = { organizationId: string };
 
 const columns: Record<Area, { title: string; path: string; fields: string[]; labels: string[] }[]> = {
@@ -32,7 +33,7 @@ function display(value: unknown): string {
 
 export default function Operations({ organizationId }: Props) {
   const [area, setArea] = useState<Area>("finance");
-  const [data, setData] = useState<Record<string, Row[]>>({});
+  const [data, setData] = useState<AreaData>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -62,7 +63,7 @@ export default function Operations({ organizationId }: Props) {
         const result = await request(item.path);
         return [item.path, Array.isArray(result) ? result : result ? [result] : []] as const;
       }));
-      setData((previous) => ({ ...previous, [selected]: Object.fromEntries(results) }));
+      setData((previous) => ({ ...previous, [selected]: Object.fromEntries(results) as Record<string, Row[]> }));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional.");
     } finally { setBusy(false); }
