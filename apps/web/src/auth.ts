@@ -5,6 +5,7 @@ type AuthClient = {
   token(): Promise<AuthResult<{ token?: string }>>;
   getSession(): Promise<AuthResult<{ user?: unknown }>>;
   signIn: { email(input: { email: string; password: string }): Promise<AuthResult<{ user?: unknown }>> };
+  signUp: { email(input: { email: string; password: string; name: string }): Promise<AuthResult<{ user?: unknown }>> };
   signOut(): Promise<unknown>;
 };
 

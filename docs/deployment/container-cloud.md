@@ -13,6 +13,8 @@ This deployment packages the API and PWA web workspace in Docker. PostgreSQL and
 
 ## Configure
 
+For the very first institution only, generate a high-entropy setup token and configure its SHA-256 digest as `PONDOK_BOOTSTRAP_TOKEN_SHA256` in `.env`. Enter the raw token once in the first-setup form. Remove the hash from the API environment after the first organization is created. The endpoint is additionally locked once any organization exists.
+
 1. Copy `.env.compose.example` to `.env`.
 2. Set `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL` from the same development or production branch. Never mix URLs from different branches.
 3. Ensure the database has the required migrations. Existing manually created objects must be reconciled with `core.schema_migrations` before running the migration profile.

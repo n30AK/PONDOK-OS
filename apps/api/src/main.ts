@@ -8,6 +8,7 @@ import { handleSyncRequest } from "./sync.js";
 import { handleFinanceRequest } from "./finance.js";
 import { handleInventoryRequest } from "./inventory.js";
 import { handleHrRequest } from "./hr.js";
+import { handleFirstOrganizationBootstrap } from "./first-organization-bootstrap.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -46,7 +47,7 @@ export async function handleRequest(
   if (originAllowed && origin) {
     response.setHeader("access-control-allow-origin", origin);
     response.setHeader("access-control-allow-methods", "GET, HEAD, POST, OPTIONS");
-    response.setHeader("access-control-allow-headers", "Authorization, Content-Type, X-Organization-Id");
+    response.setHeader("access-control-allow-headers", "Authorization, Content-Type, X-Organization-Id, X-Bootstrap-Token");
     response.setHeader("access-control-max-age", "600");
     response.setHeader("vary", "Origin");
   }
@@ -60,7 +61,7 @@ export async function handleRequest(
     return;
   }
 
-  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/");
+  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/bootstrap/");
   const allowedMethods = writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
   if (!allowedMethods.includes(method)) {
     response.setHeader("allow", allowedMethods.join(", "));
@@ -228,6 +229,28 @@ export async function handleRequest(
       if (await handleHrRequest(request, response, dependencies.pool, identity.userId, organizationId)) return;
     } catch {
       sendJson(response, 500, { error: "hr_service_unavailable" }); return;
+    }
+  }
+
+  if (pathname === "/v1/bootstrap/organization") {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" }); return;
+    }
+    try {
+      if (await handleFirstOrganizationBootstrap(
+        request, response, dependencies.pool, identity.userId, process.env.PONDOK_BOOTSTRAP_TOKEN_SHA256,
+      )) return;
+    } catch {
+      sendJson(response, 500, { error: "organization_bootstrap_unavailable" }); return;
     }
   }
 

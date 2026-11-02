@@ -14,6 +14,7 @@ Required for authenticated routes:
 Endpoints currently implemented:
 
 - `GET /health/live`: process liveness only.
+- `POST /v1/bootstrap/organization`: one-time first-tenant setup; requires a verified Neon JWT and server-side SHA-256 bootstrap token, and locks permanently after the first organization exists.
 - `GET /v1/tenant/context`: verify Neon JWT, active organization membership, and resolve server-side roles/permissions.
 - `GET /v1/academic/students`: permission-gated, tenant-scoped student listing.
 - `POST /v1/academic/students`: permission-gated student creation.
