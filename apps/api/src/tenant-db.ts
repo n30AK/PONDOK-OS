@@ -1,4 +1,4 @@
-import type { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 export type TenantQueryClient = Pick<PoolClient, "query">;
 export type TenantDatabase = Pick<Pool, "query"> & Partial<Pick<Pool, "connect">>;
