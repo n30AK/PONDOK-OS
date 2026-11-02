@@ -17,7 +17,9 @@ async function main(): Promise<void> {
   const migrations: MigrationFile[] = await Promise.all(
     names.map(async (name) => {
       const match = /^(\d{4})_(.+)\.sql$/.exec(name);
-      if (!match) throw new Error(`Invalid migration filename: ${name}`);
+      if (!match || !match[1] || !match[2]) {
+        throw new Error(`Invalid migration filename: ${name}`);
+      }
       return {
         version: match[1],
         name: match[2],
