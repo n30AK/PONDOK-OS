@@ -121,6 +121,15 @@ BEGIN
      OR predicate_role.rolcreaterole OR predicate_role.rolinherit THEN
     RAISE EXCEPTION 'Tenant membership predicate must be owned by a NOLOGIN/NOBYPASSRLS helper role, found %', predicate_owner;
   END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members m
+    JOIN pg_roles granted_role ON granted_role.oid = m.roleid
+    WHERE granted_role.rolname = 'pondok_rls_owner'
+  ) THEN
+    RAISE EXCEPTION 'pondok_rls_owner must not retain role memberships after function ownership transfer';
+  END IF;
 END
 $validation$;
 
