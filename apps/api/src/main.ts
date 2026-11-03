@@ -276,7 +276,7 @@ function start(): void {
 
   const authBaseUrl = process.env.NEON_AUTH_BASE_URL;
   const jwksUrl = process.env.NEON_AUTH_JWKS_URL;
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.PONDOK_DATABASE_URL;
   const dependencies: ApiDependencies = {};
 
   if (authBaseUrl && jwksUrl) {
