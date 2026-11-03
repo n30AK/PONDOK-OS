@@ -28,12 +28,7 @@ try {
     DO $ownership$
     DECLARE
       migration_role text := current_user;
-      migration_is_superuser boolean;
-      added_membership boolean := false;
     BEGIN
-      SELECT rolsuper INTO migration_is_superuser
-      FROM pg_roles WHERE rolname = migration_role;
-
       IF NOT EXISTS (
         SELECT 1
         FROM pg_auth_members m
@@ -73,7 +68,7 @@ try {
   `);
   assert.equal(retainedMembership.rows[0].retained, false, "temporary helper-role membership must be revoked");
   await client.query("ROLLBACK");
-  process.stdout.write("Non-superuser migration role safely transferred the RLS predicate owner without retaining helper-role membership.\n");
+  process.stdout.write("Non-superuser migration role safely transferred function ownership through temporary ADMIN membership and revoked it.\n");
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
   throw error;
