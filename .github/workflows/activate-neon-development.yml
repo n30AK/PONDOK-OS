@@ -1,0 +1,49 @@
+name: Activate PONDOK OS Neon Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type ACTIVATE_NEON_DEV to deploy the API, provision NOBYPASSRLS, and apply pending development migrations
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pondok-neon-development-activation
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    if: inputs.confirmation == 'ACTIVATE_NEON_DEV'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Bundle Neon Functions API
+        run: pnpm --filter @pondok-os/api bundle:function
+      - name: Deploy API code to the fixed development branch
+        run: pnpm --filter @pondok-os/api deploy:function
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      - name: Provision NOBYPASSRLS role, apply migrations, and configure API
+        run: pnpm --filter @pondok-os/api activate:neon-dev
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
