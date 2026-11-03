@@ -36,6 +36,7 @@ async function readJson(req: IncomingMessage): Promise<Json | null> {
 
 const STUDENT_PROFILE_FIELDS: Record<string, number> = {
   fatherName: 160, motherName: 160, guardianName: 160, guardianRelation: 40,
+  placeOfBirth: 120, religion: 60, nationality: 80,
   guardianPhone: 32, guardianEmail: 254, homeAddress: 1000, province: 100,
   regency: 100, district: 100, village: 100, postalCode: 10,
   originSchool: 180, previousEducation: 120, entryDate: 10,
