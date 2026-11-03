@@ -40,7 +40,7 @@ $grants$;
 
 -- Identity lookup is read-only for normal requests. Bootstrap creates the first
 -- organization and membership before switching into pondok_runtime.
-GRANT SELECT ON core.organizations, core.organization_memberships, core.roles, core.role_permissions TO pondok_runtime;
+GRANT SELECT ON core.organization_memberships, core.roles, core.role_permissions TO pondok_runtime;
 GRANT SELECT, INSERT ON core.membership_roles TO pondok_runtime;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA academic, admissions, assets, audit, boarding, cms, config, core, crm, finance, hr, inventory, library, procurement, sync TO pondok_runtime;
 
