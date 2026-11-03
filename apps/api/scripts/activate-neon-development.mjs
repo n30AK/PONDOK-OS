@@ -84,9 +84,9 @@ try {
       throw new Error("The application connection is not a restricted NOBYPASSRLS role.");
     }
     const predicateRole = await appPool.query(
-      "SELECT rolcanlogin, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = 'pondok_rls_owner'",
+      "SELECT rolcanlogin, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolinherit FROM pg_roles WHERE rolname = 'pondok_rls_owner'",
     );
-    if (predicateRole.rowCount !== 1 || predicateRole.rows[0].rolcanlogin || predicateRole.rows[0].rolsuper || predicateRole.rows[0].rolbypassrls || predicateRole.rows[0].rolcreatedb || predicateRole.rows[0].rolcreaterole) {
+    if (predicateRole.rowCount !== 1 || predicateRole.rows[0].rolcanlogin || predicateRole.rows[0].rolsuper || predicateRole.rows[0].rolbypassrls || predicateRole.rows[0].rolcreatedb || predicateRole.rows[0].rolcreaterole || predicateRole.rows[0].rolinherit) {
       throw new Error("The membership predicate owner is not a restricted NOLOGIN/NOBYPASSRLS role.");
     }
     const protectedTables = await appPool.query(`
