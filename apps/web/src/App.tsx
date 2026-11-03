@@ -257,7 +257,7 @@ export default function App() {
       <div className="sidebar-bottom"><div className="secure-note"><span className="secure-dot" /> Data tenant terisolasi</div><div className="profile"><div className="avatar">{initials}</div><div className="profile-text"><strong>{user.name || user.email}</strong><small>{user.email}</small></div><button className="icon-button" title="Keluar" onClick={() => void signOut()}>↗</button></div></div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? "Modul Sistem" : screen === "operations" ? "Operasional" : "Ringkasan"}</strong></div><div className="top-actions"><span className="live-pill"><i /> Sistem siap</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
+      <header className="topbar"><div><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? "Modul Sistem" : screen === "operations" ? "Operasional" : "Ringkasan"}</strong></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
