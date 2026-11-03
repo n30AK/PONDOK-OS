@@ -60,12 +60,14 @@ try {
 
   const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
   console.log("Applying pending development migrations with the managed admin connection.");
+  const migrationEnv = { ...process.env, DATABASE_URL: adminUri };
+  delete migrationEnv.NEON_API_KEY;
   const migration = spawnSync(
     process.platform === "win32" ? "pnpm.cmd" : "pnpm",
     ["db:migrate"],
     {
       cwd: repoRoot,
-      env: { ...process.env, DATABASE_URL: adminUri },
+      env: migrationEnv,
       stdio: "inherit",
       shell: process.platform === "win32",
     },
@@ -143,7 +145,7 @@ try {
 
   console.log("Development activation complete.");
   console.log(`NEON_FUNCTION_URL=${deployedFunction.invocation_url}`);
-  console.log("Verified: pondok_app is NOBYPASSRLS/NOINHERIT; 60 organization-owned tables have ENABLE + FORCE RLS.");
+  console.log("Verified: pondok_app is NOBYPASSRLS/NOINHERIT, pondok_rls_owner is NOLOGIN/NOBYPASSRLS, and 60 organization-owned tables have ENABLE + FORCE RLS.");
   console.log("Database URLs and generated role password were not printed.");
 } finally {
   await adminPool.end();
