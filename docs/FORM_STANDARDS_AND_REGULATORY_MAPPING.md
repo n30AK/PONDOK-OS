@@ -53,7 +53,7 @@ Pada 4 Oktober 2026 Kemenag menyampaikan proses pemutakhiran data santri berbasi
 - **Status:** belum tersedia; tidak boleh dianggap tercakup hanya karena profil santri dapat dibuat.
 
 ### C. Data Induk Santri
-- **Inti:** nomor induk, nama sesuai dokumen, nama panggilan, kampus, tanggal lahir, jenis kelamin.
+- **Inti:** nomor induk, nama sesuai dokumen, nama panggilan, tempat/tanggal lahir, jenis kelamin, agama, kewarganegaraan, kampus.
 - **Keluarga:** nama ayah/ibu, nama wali bila berbeda, hubungan, telepon/email wali.
 - **Domisili:** alamat, provinsi, kabupaten/kota, kecamatan, desa/kelurahan, kode pos.
 - **Riwayat:** asal sekolah, pendidikan sebelumnya, tahun masuk, tanggal mulai mondok.
