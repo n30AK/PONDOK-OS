@@ -106,6 +106,10 @@ try {
   const membershipAId = membershipA.rows[0].id;
   const membershipBId = membershipB.rows[0].id;
 
+  await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid)", [membershipAId]);
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
+  await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid)", [membershipBId]);
+
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantA]);
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-A','Tenant A account','asset')",
@@ -115,10 +119,16 @@ try {
   const foreignMembership = await client.query("SELECT id FROM core.organization_memberships WHERE id = $1", [membershipBId]);
   const ownOrganization = await client.query("SELECT id FROM core.organizations WHERE id = $1", [tenantA]);
   const foreignOrganization = await client.query("SELECT id FROM core.organizations WHERE id = $1", [tenantB]);
+  const ownRoleAssignment = await client.query("SELECT role_id FROM core.membership_roles WHERE membership_id = $1", [membershipAId]);
+  const foreignRoleAssignment = await client.query("SELECT role_id FROM core.membership_roles WHERE membership_id = $1", [membershipBId]);
+  const ownAccount = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountA]);
   assert.equal(ownMembership.rowCount, 1, "user A must read its own membership");
   assert.equal(foreignMembership.rowCount, 0, "user A must not read user B membership");
   assert.equal(ownOrganization.rowCount, 1, "user A must read its own organization");
   assert.equal(foreignOrganization.rowCount, 0, "user A must not read tenant B organization metadata");
+  assert.equal(ownRoleAssignment.rowCount, 1, "user A must read its own role assignment");
+  assert.equal(foreignRoleAssignment.rowCount, 0, "user A must not read user B role assignment");
+  assert.equal(ownAccount.rowCount, 1, "user A must read its own finance row");
 
   await client.query("SAVEPOINT cross_tenant_membership");
   await assert.rejects(
@@ -144,17 +154,23 @@ try {
   await client.query("ROLLBACK TO SAVEPOINT cross_tenant_write");
   await client.query("RELEASE SAVEPOINT cross_tenant_write");
 
-  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantB]);
-  const tenantAWithWrongOrg = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
-  const membershipWithWrongOrg = await client.query("SELECT id FROM core.organization_memberships WHERE id = $1", [membershipBId]);
-  assert.equal(tenantAWithWrongOrg.rowCount, 0, "user A must not access tenant B even when the organization header is spoofed");
-  assert.equal(membershipWithWrongOrg.rowCount, 0, "user A must not access tenant B membership after organization spoofing");
-
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-B','Tenant B account','asset')",
     [accountB, tenantB],
   );
+
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantB]);
+  const tenantAWithWrongOrg = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
+  const membershipWithWrongOrg = await client.query("SELECT id FROM core.organization_memberships WHERE id = $1", [membershipBId]);
+  const roleWithWrongOrg = await client.query("SELECT role_id FROM core.membership_roles WHERE membership_id = $1", [membershipBId]);
+  const organizationWithWrongOrg = await client.query("SELECT id FROM core.organizations WHERE id = $1", [tenantB]);
+  assert.equal(tenantAWithWrongOrg.rowCount, 0, "user A must not access tenant B even when the organization header is spoofed");
+  assert.equal(membershipWithWrongOrg.rowCount, 0, "user A must not access tenant B membership after organization spoofing");
+  assert.equal(roleWithWrongOrg.rowCount, 0, "user A must not access tenant B role assignments after organization spoofing");
+  assert.equal(organizationWithWrongOrg.rowCount, 0, "user A must not access tenant B organization metadata after organization spoofing");
+
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   const tenantBOwn = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountB]);
   const tenantBSeesA = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountA]);
   assert.equal(tenantBOwn.rowCount, 1, "tenant B must read its own account");
