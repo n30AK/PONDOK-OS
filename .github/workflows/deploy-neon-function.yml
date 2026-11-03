@@ -1,0 +1,44 @@
+name: Deploy PONDOK OS API to Neon Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DEPLOY_DEV_API to deploy only to the PONDOK OS development branch
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pondok-neon-development-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: inputs.confirmation == 'DEPLOY_DEV_API'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Build Neon Functions bundle
+        run: pnpm --filter @pondok-os/api bundle:function
+      - name: Deploy to development branch
+        run: pnpm --filter @pondok-os/api deploy:function
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
