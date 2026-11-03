@@ -21,6 +21,25 @@ const neon = createNeonClient({
   requestTimeoutMs: 60_000,
 });
 
+// Neon Functions injects DATABASE_URL automatically. Neon Auth URLs are
+// branch-managed values but are not automatically injected into Function
+// runtimes, so pass the exact URLs for this fixed development branch.
+const environment = {
+  CORS_ALLOWED_ORIGINS: "https://n30ak.github.io",
+  NEON_AUTH_BASE_URL: "https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth",
+  NEON_AUTH_JWKS_URL: "https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth/.well-known/jwks.json",
+};
+
+// The digest is optional and should only be set temporarily for the first
+// institution bootstrap. Never pass the raw one-time token to this workflow.
+const bootstrapDigest = process.env.PONDOK_BOOTSTRAP_TOKEN_SHA256?.trim();
+if (bootstrapDigest) {
+  if (!/^[a-f0-9]{64}$/i.test(bootstrapDigest)) {
+    throw new Error("PONDOK_BOOTSTRAP_TOKEN_SHA256 must be a 64-character SHA-256 hex digest.");
+  }
+  environment.PONDOK_BOOTSTRAP_TOKEN_SHA256 = bootstrapDigest;
+}
+
 console.log("Deploying PONDOK OS API to the development branch only.");
 await neon.functions.deploy({
   projectId,
@@ -28,9 +47,7 @@ await neon.functions.deploy({
   slug,
   zip: new File([zipBytes], "pondok-api-function.zip", { type: "application/zip" }),
   runtime: "nodejs24",
-  environment: JSON.stringify({
-    CORS_ALLOWED_ORIGINS: "https://n30ak.github.io",
-  }),
+  environment: JSON.stringify(environment),
 });
 
 const deadline = Date.now() + 5 * 60_000;
@@ -55,4 +72,6 @@ if (!deployedFunction.invocation_url) {
 console.log(`NEON_FUNCTION_URL=${deployedFunction.invocation_url}`);
 console.log("Runtime: nodejs24");
 console.log("Target: development branch br-proud-paper-b312lfxi");
-console.log("Bootstrap remains disabled until PONDOK_BOOTSTRAP_TOKEN_SHA256 is configured.");
+console.log(bootstrapDigest
+  ? "A temporary bootstrap digest is configured; remove the GitHub secret and redeploy immediately after first setup."
+  : "No bootstrap digest configured; first-organization setup remains disabled.");
