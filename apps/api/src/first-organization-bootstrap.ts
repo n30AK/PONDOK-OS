@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Pool } from "pg";
+import type { TenantDatabase } from "./tenant-db.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -32,10 +32,16 @@ export function validateFirstOrganizationInput(value: Json): string | null {
   return null;
 }
 
+/**
+ * Creates the first tenant in ordered statements inside one transaction.
+ * The membership authority table intentionally has no RLS policy, so the
+ * owner membership must exist before tenant-scoped campus/audit writes run.
+ * After membership creation, transaction-local context satisfies FORCE RLS.
+ */
 export async function handleFirstOrganizationBootstrap(
   req: IncomingMessage,
   res: ServerResponse,
-  pool: Pick<Pool, "query">,
+  pool: TenantDatabase,
   userId: string,
   expectedTokenHash: string | undefined,
 ): Promise<boolean> {
@@ -59,56 +65,89 @@ export async function handleFirstOrganizationBootstrap(
   if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
   const validationError = validateFirstOrganizationInput(body);
   if (validationError) { reply(res, 422, { error: validationError }); return true; }
+  if (!pool.connect) { reply(res, 503, { error: "bootstrap_transaction_unavailable" }); return true; }
 
+  const client = await pool.connect();
+  let inTransaction = false;
   try {
-    const result = await pool.query(
-      `WITH bootstrap_lock AS MATERIALIZED (
-         SELECT pg_advisory_xact_lock(hashtext('pondok-os-first-organization')::bigint)
-       ), owner_role AS MATERIALIZED (
-         SELECT id FROM core.roles
-         WHERE organization_id IS NULL AND role_key = 'institution_owner' AND is_system = true
-       ), created_org AS (
-         INSERT INTO core.organizations (slug, name, organization_type, status)
-         SELECT $1, $2, 'pesantren', 'active'
-         FROM bootstrap_lock CROSS JOIN owner_role
-         WHERE NOT EXISTS (SELECT 1 FROM core.organizations)
-         RETURNING id
-       ), created_campus AS (
-         INSERT INTO core.campuses (organization_id, code, name, campus_type, status)
-         SELECT id, $3, $4, 'main', 'active' FROM created_org
-         RETURNING id, organization_id
-       ), created_membership AS (
-         INSERT INTO core.organization_memberships (organization_id, user_id, membership_status)
-         SELECT id, $5::uuid, 'active' FROM created_org
-         RETURNING id, organization_id
-       ), assigned_role AS (
-         INSERT INTO core.membership_roles (membership_id, role_id)
-         SELECT m.id, r.id FROM created_membership m CROSS JOIN owner_role r
-         RETURNING membership_id
-       ), audit AS (
-         INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
-         SELECT m.organization_id, $5::uuid, 'organization.bootstrap', 'organization',
-                m.organization_id::text,
-                jsonb_build_object('campus_id', c.id::text, 'membership_id', m.id::text, 'role_key', 'institution_owner')
-         FROM created_membership m
-         JOIN created_campus c ON c.organization_id = m.organization_id
-         JOIN assigned_role ar ON ar.membership_id = m.id
-         RETURNING id
-       )
-       SELECT o.id AS "organizationId", c.id AS "campusId", m.id AS "membershipId"
-       FROM created_org o
-       JOIN created_campus c ON c.organization_id = o.id
-       JOIN created_membership m ON m.organization_id = o.id
-       JOIN assigned_role ar ON ar.membership_id = m.id
-       CROSS JOIN audit`,
-      [body.slug, (body.organizationName as string).trim(), body.campusCode, (body.campusName as string).trim(), userId],
+    await client.query("BEGIN");
+    inTransaction = true;
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('pondok-os-first-organization')::bigint)");
+
+    const existing = await client.query<{ exists: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM core.organizations) AS exists",
     );
-    if (!result.rows[0]) { reply(res, 409, { error: "first_organization_already_initialized_or_owner_role_missing" }); return true; }
-    reply(res, 201, { data: result.rows[0], message: "First institution owner initialized. Store the organization ID securely." });
+    if (existing.rows[0]?.exists) {
+      await client.query("ROLLBACK");
+      inTransaction = false;
+      reply(res, 409, { error: "first_organization_already_initialized" });
+      return true;
+    }
+
+    const ownerRole = await client.query<{ id: string }>(
+      "SELECT id FROM core.roles WHERE organization_id IS NULL AND role_key = 'institution_owner' AND is_system = true LIMIT 1",
+    );
+    const roleId = ownerRole.rows[0]?.id;
+    if (!roleId) {
+      await client.query("ROLLBACK");
+      inTransaction = false;
+      reply(res, 409, { error: "first_organization_owner_role_missing" });
+      return true;
+    }
+
+    const organization = await client.query<{ id: string }>(
+      "INSERT INTO core.organizations (slug, name, organization_type, status) VALUES ($1, $2, 'pesantren', 'active') RETURNING id",
+      [body.slug, (body.organizationName as string).trim()],
+    );
+    const organizationId = organization.rows[0]?.id;
+    if (!organizationId) throw new Error("Organization creation returned no ID");
+
+    // This table is the membership authority and is intentionally excluded
+    // from tenant RLS to avoid recursive policy evaluation.
+    const membership = await client.query<{ id: string }>(
+      "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1::uuid, $2::uuid, 'active') RETURNING id",
+      [organizationId, userId],
+    );
+    const membershipId = membership.rows[0]?.id;
+    if (!membershipId) throw new Error("Owner membership creation returned no ID");
+
+    // Subsequent organization-owned inserts are protected by FORCE RLS.
+    await client.query(
+      "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
+      [userId, organizationId],
+    );
+
+    const campus = await client.query<{ id: string }>(
+      "INSERT INTO core.campuses (organization_id, code, name, campus_type, status) VALUES ($1::uuid, $2, $3, 'main', 'active') RETURNING id",
+      [organizationId, body.campusCode, (body.campusName as string).trim()],
+    );
+    const campusId = campus.rows[0]?.id;
+    if (!campusId) throw new Error("Main campus creation returned no ID");
+
+    await client.query(
+      "INSERT INTO core.membership_roles (membership_id, role_id) VALUES ($1::uuid, $2::uuid)",
+      [membershipId, roleId],
+    );
+    await client.query(
+      `INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+       VALUES ($1::uuid, $2::uuid, 'organization.bootstrap', 'organization', $3,
+         jsonb_build_object('campus_id', $4::text, 'membership_id', $5::text, 'role_key', 'institution_owner'))`,
+      [organizationId, userId, organizationId, campusId, membershipId],
+    );
+
+    await client.query("COMMIT");
+    inTransaction = false;
+    reply(res, 201, {
+      data: { organizationId, campusId, membershipId },
+      message: "First institution owner initialized. Store the organization ID securely.",
+    });
   } catch (reason) {
+    if (inTransaction) await client.query("ROLLBACK").catch(() => undefined);
     const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
     reply(res, code === "23505" ? 409 : code === "23503" ? 422 : 500,
       { error: code === "23505" ? "organization_slug_or_campus_code_exists" : code === "23503" ? "bootstrap_role_or_reference_missing" : "organization_bootstrap_failed" });
+  } finally {
+    client.release();
   }
   return true;
 }
