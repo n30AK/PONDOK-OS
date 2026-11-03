@@ -32,11 +32,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
       - name: Build Neon Functions bundle
         run: pnpm --filter @pondok-os/api bundle:function
+      - name: Smoke-test bundled Neon Function module
+        run: node apps/api/scripts/smoke-test-neon-bundle.mjs
       - name: Deploy to development branch
         run: pnpm --filter @pondok-os/api deploy:function
         env:
