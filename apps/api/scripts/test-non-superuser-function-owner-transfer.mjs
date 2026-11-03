@@ -11,7 +11,10 @@ try {
   await client.query(
     "CREATE ROLE pondok_migration_transfer_test NOLOGIN CREATEROLE NOBYPASSRLS NOINHERIT",
   );
-  await client.query("GRANT CREATE ON SCHEMA core TO pondok_rls_owner");
+  await client.query(
+    "CREATE ROLE pondok_transfer_owner_test NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT ADMIN pondok_migration_transfer_test",
+  );
+  await client.query("GRANT CREATE ON SCHEMA core TO pondok_transfer_owner_test");
   await client.query("GRANT CREATE ON SCHEMA core TO pondok_migration_transfer_test");
   await client.query(
     "CREATE FUNCTION core.migration_owner_transfer_test() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$",
@@ -31,23 +34,20 @@ try {
       SELECT rolsuper INTO migration_is_superuser
       FROM pg_roles WHERE rolname = migration_role;
 
-      IF NOT migration_is_superuser AND NOT EXISTS (
+      IF NOT EXISTS (
         SELECT 1
         FROM pg_auth_members m
         JOIN pg_roles granted_role ON granted_role.oid = m.roleid
         JOIN pg_roles member_role ON member_role.oid = m.member
-        WHERE granted_role.rolname = 'pondok_rls_owner'
+        WHERE granted_role.rolname = 'pondok_transfer_owner_test'
           AND member_role.rolname = migration_role
+          AND m.admin_option
       ) THEN
-        EXECUTE format('GRANT pondok_rls_owner TO %I', migration_role);
-        added_membership := true;
+        RAISE EXCEPTION 'Migration role must have ADMIN membership in the helper owner role';
       END IF;
 
-      EXECUTE 'ALTER FUNCTION core.migration_owner_transfer_test() OWNER TO pondok_rls_owner';
-
-      IF added_membership THEN
-        EXECUTE format('REVOKE pondok_rls_owner FROM %I', migration_role);
-      END IF;
+      EXECUTE 'ALTER FUNCTION core.migration_owner_transfer_test() OWNER TO pondok_transfer_owner_test';
+      EXECUTE format('REVOKE pondok_transfer_owner_test FROM %I', migration_role);
     END
     $ownership$;
   `);
@@ -60,14 +60,14 @@ try {
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'core' AND p.proname = 'migration_owner_transfer_test'
   `);
-  assert.equal(owner.rows[0]?.rolname, "pondok_rls_owner", "non-superuser migrator must transfer function ownership");
+  assert.equal(owner.rows[0]?.rolname, "pondok_transfer_owner_test", "non-superuser migrator must transfer function ownership");
   const retainedMembership = await client.query(`
     SELECT EXISTS (
       SELECT 1
       FROM pg_auth_members m
       JOIN pg_roles granted_role ON granted_role.oid = m.roleid
       JOIN pg_roles member_role ON member_role.oid = m.member
-      WHERE granted_role.rolname = 'pondok_rls_owner'
+      WHERE granted_role.rolname = 'pondok_transfer_owner_test'
         AND member_role.rolname = 'pondok_migration_transfer_test'
     ) AS retained
   `);
