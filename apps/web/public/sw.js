@@ -6,7 +6,7 @@ const SHELL = [
   new URL("manifest.webmanifest", BASE).href,
   new URL("icon.svg", BASE).href
 ];
-const STATIC_ASSET = /\\.(?:js|css|woff2?|ttf|svg|png|webp|ico)$/i;
+const STATIC_ASSET = /\.(?:js|css|woff2?|ttf|svg|png|webp|ico)$/i;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
