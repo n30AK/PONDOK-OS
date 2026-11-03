@@ -128,8 +128,8 @@ export async function handleFirstOrganizationBootstrap(
   } catch (reason) {
     if (inTransaction) await client.query("ROLLBACK").catch(() => undefined);
     const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
-    reply(res, code === "23505" ? 409 : code === "23503" ? 422 : 500,
-      { error: code === "23505" ? "organization_slug_or_campus_code_exists" : code === "23503" ? "bootstrap_role_or_reference_missing" : "organization_bootstrap_failed" });
+    reply(res, code === "23505" ? 409 : code === "23503" ? 422 : code === "42501" ? 403 : 500,
+      { error: code === "23505" ? "organization_slug_or_campus_code_exists" : code === "23503" ? "bootstrap_role_or_reference_missing" : code === "42501" ? "bootstrap_authorization_failed" : "organization_bootstrap_failed" });
   } finally {
     client.release();
   }
