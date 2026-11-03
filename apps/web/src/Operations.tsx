@@ -6,6 +6,8 @@ type Row = Record<string, unknown>;
 type AreaData = Partial<Record<Area, Record<string, Row[]>>>;
 type Props = { organizationId: string };
 
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
 const columns: Record<Area, { title: string; path: string; fields: string[]; labels: string[] }[]> = {
   finance: [
     { title: "Bagan akun", path: "/v1/finance/accounts", fields: ["accountCode", "accountName", "accountType", "isActive"], labels: ["Kode", "Nama akun", "Jenis", "Aktif"] },
@@ -42,7 +44,7 @@ export default function Operations({ organizationId }: Props) {
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const token = await getAccessToken();
-    const response = await fetch(path, {
+    const response = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
         authorization: `Bearer ${token}`,
