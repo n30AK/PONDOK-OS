@@ -4,14 +4,16 @@ Node.js 22+ HTTP API for PONDOK OS. The current implementation is intentionally 
 
 ## Runtime configuration
 
-Authenticated routes require:
+Authenticated API runtime requires:
 
-- `DATABASE_URL`: PostgreSQL URL for the same environment as Neon Auth.
+- `PONDOK_DATABASE_URL`: PostgreSQL URL for the dedicated `pondok_app` role (NOBYPASSRLS, NOINHERIT). This is the only database URL the API process may use.
 - `NEON_AUTH_BASE_URL`: exact issuer/base URL from that Neon Auth branch.
 - `NEON_AUTH_JWKS_URL`: exact JWKS URL from that same branch.
 - `PORT`: optional, defaults to 3001.
 - `CORS_ALLOWED_ORIGINS`: comma-separated exact browser origins for deployed clients.
 - `PONDOK_BOOTSTRAP_TOKEN_SHA256`: temporary SHA-256 digest for first-organization setup only; remove immediately after initialization.
+
+`DATABASE_URL` is reserved for the migration runner and controlled operator CLI. Neon Functions automatically injects a managed-owner `DATABASE_URL`; the function adapter intentionally ignores it because the owner role has BYPASSRLS. Never use that owner URL for the API runtime.
 
 Never commit populated environment files or print database URLs in logs.
 
@@ -27,15 +29,15 @@ Never commit populated environment files or print database URLs in logs.
 - `/v1/hr/*`: employee and payroll period/run workflows, approval and payment transitions.
 - `/v1/sync/*`: authenticated device and pending event inbox foundation.
 
-Each protected operation verifies identity, active organization membership and the required permission. Tenant-owned queries also include organization scope. Authenticated tenant handlers run on one checked-out PostgreSQL connection and set `app.user_id` and `app.organization_id` with transaction-local scope.
+Each protected operation verifies identity, active organization membership and the required permission. Tenant-owned queries also include organization scope. Authenticated tenant handlers run on one checked-out PostgreSQL connection and set `app.user_id` and `app.organization_id` with transaction-local scope before membership lookup and tenant queries.
 
 ## Database row-level security
 
-Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 59 organization-owned tables across 15 schema groups. Policies require both the selected organization and an active membership for the verified API user. CI tests the policies using a restricted non-owner PostgreSQL role, including cross-tenant read/write denial and first-bootstrap writes under FORCE RLS.
+Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 60 organization-owned tables across 15 schema groups. Dedicated policies also protect `core.organizations`, `core.organization_memberships`, and `core.membership_roles`. The membership predicate function is transferred to the restricted `pondok_app` role so its reads are subject to membership RLS.
 
-**Important:** this migration is present in the repository but has not yet been applied to the Neon development branch. Deploy the API build containing transaction-scoped tenant context and the RLS-compatible bootstrap before applying migration 0013. Do not apply it to production without an approved production-readiness gate.
+Migration `0014_application_runtime_role.sql` creates/grants `pondok_app` as NOBYPASSRLS, NOINHERIT, non-superuser, non-admin. It grants runtime access to domain tables while keeping global RBAC dictionaries read-only and denying access to `core.schema_migrations`. Initial owner assignment is performed by a narrow SECURITY DEFINER helper; the application role cannot directly insert or change role assignments.
 
-The table `core.organization_memberships` is intentionally excluded as the membership authority to avoid recursive policy evaluation. The API resolves membership using the verified JWT subject and selected organization. Direct database access to this table remains a separate hardening boundary.
+**Important:** migrations 0013 and 0014 are present in the repository but have not yet been applied to Neon development. The matching API build must be deployed and configured with `PONDOK_DATABASE_URL` before activating these migrations. Do not apply them to production without an approved production-readiness gate.
 
 ## First institution setup
 
@@ -47,18 +49,10 @@ node scripts/create-bootstrap-token.mjs
 
 Only its SHA-256 digest belongs in the API environment. The raw token is entered once in the web setup form. Remove the digest from the API environment immediately after success. The endpoint refuses to create a second organization.
 
-The API bootstrap now uses ordered statements in one transaction: it creates the organization, inserts the owner membership, sets transaction-local tenant context, then creates the main campus, owner role assignment and audit event. The CLI bootstrap follows the same membership-before-tenant-write order. This is required for the campus and audit RLS policies to pass after migration 0013 is active.
+The API bootstrap runs one transaction: it checks the global first-organization gate through a narrow definer helper, sets verified user/tenant context, inserts the organization and self-membership under RLS, creates the main campus, calls the one-time initial-owner helper, and appends the audit event. The helper only assigns the system owner role to the sole active member of a tenant with no prior role assignments.
 
-The separate CLI bootstrap command remains available for controlled operator workflows:
-
-```powershell
-$env:DATABASE_URL = "<development database URL>"
-$env:PONDOK_BOOTSTRAP_CONFIRM = "CREATE_ORGANIZATION"
-pnpm --filter @pondok-os/api db:bootstrap -- --user-id "<existing Neon Auth user UUID>" --slug "pondok-contoh" --name "Pondok Contoh" --campus-code "UTAMA" --campus-name "Kampus Utama"
-```
-
-Only run the CLI against the explicitly intended non-production branch. It verifies the user exists in `neon_auth."user"`, creates the tenant/membership/campus/owner assignment and audit event in one transaction.
+The operator CLI bootstrap follows the same transaction/context sequence. It uses the admin `DATABASE_URL` only for controlled operator setup and verifies the supplied user exists in `neon_auth."user"`.
 
 ## Migrations
 
-Run `pnpm db:migrate` only after checking the target connection string and reconciling any manually applied schema objects with `core.schema_migrations`. The runner serializes execution, verifies SHA-256 checksums, and applies each migration in its own transaction. For a branch moving to migration 0013, deploy the matching API build first.
+Run `pnpm db:migrate` only with the explicitly intended admin `DATABASE_URL`, after checking the target branch and reconciling manually applied objects with `core.schema_migrations`. The runner serializes execution, verifies SHA-256 checksums, and applies each migration in its own transaction. Deploy the matching API build and configure its restricted `PONDOK_DATABASE_URL` before applying migrations 0013/0014.
