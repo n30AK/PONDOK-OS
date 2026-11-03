@@ -59,7 +59,7 @@ export function validateStudentInput(value: Json): string | null {
   if (typeof value.studentNumber !== "string" || value.studentNumber.trim().length < 1 || value.studentNumber.trim().length > 64) return "invalid_student_number";
   if (typeof value.legalName !== "string" || value.legalName.trim().length < 2 || value.legalName.trim().length > 160) return "invalid_legal_name";
   if (value.preferredName !== undefined && value.preferredName !== null && (typeof value.preferredName !== "string" || value.preferredName.length > 160)) return "invalid_preferred_name";
-  if (value.birthDate !== undefined && value.birthDate !== null && (typeof value.birthDate !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.birthDate))) return "invalid_birth_date";
+  if (value.birthDate !== undefined && value.birthDate !== null && (typeof value.birthDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.birthDate))) return "invalid_birth_date";
   if (value.genderCode !== undefined && value.genderCode !== null && !["male", "female", "unspecified"].includes(String(value.genderCode))) return "invalid_gender_code";
   return null;
 }
