@@ -56,8 +56,8 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 
 - Neon development branch: `br-proud-paper-b312lfxi`.
 - Neon production branch: `br-late-cherry-b3uqtuvh` — do not run development migrations here.
-- The Neon development migration ledger currently contains versions 0001–0012. Migration 0013 is in `main` but has **not** been applied to Neon development.
-- CI applies all migrations to a disposable PostgreSQL 18 service; CI success does not mean the Neon development or production branch was changed.
+- The Neon development migration ledger includes migrations 0013 and 0014. Migration 0013 forces tenant RLS on 59 organization-owned tables; migration 0014 creates the `pondok_runtime` NOLOGIN/NOBYPASSRLS role and protects membership-role/role-permission reads.
+- CI applies all migrations to disposable PostgreSQL 18; migrations 0013 and 0014 have also been explicitly applied and verified on Neon Development. Production remains untouched.
 - Bootstrap and migration commands are explicit; they are not run automatically at application startup.
 
 ## Security boundaries
@@ -65,7 +65,7 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 - The backend verifies JWTs and resolves membership/permissions from the selected organization.
 - Authenticated tenant requests set `app.user_id` and `app.organization_id` transaction-locally before tenant queries.
 - Migration 0013 enables and forces RLS on 59 organization-owned tables across 15 schema groups. Its integration test verifies missing-context denial, bidirectional tenant isolation, and cross-tenant write rejection.
-- Migration 0013 is **not yet active in Neon development**. Deploy the matching API build first, then apply the migration on development and verify live sign-in/bootstrap and two-tenant isolation.
+- Migrations 0013 and 0014 are active on Neon Development. API tenant transactions switch to `pondok_runtime` before tenant queries so the `neondb_owner` connection cannot bypass RLS. Live sign-in/bootstrap and two-tenant API acceptance remain pending.
 - `core.organization_memberships` is intentionally excluded from that RLS migration as the membership authority; API lookups filter by the verified user ID and selected organization. This remains a separate hardening boundary.
 - These controls are not a completed security certification. The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
 - Never commit database URLs, passwords, signing keys, bootstrap tokens, or personal data.
