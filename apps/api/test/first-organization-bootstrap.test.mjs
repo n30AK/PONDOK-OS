@@ -96,7 +96,7 @@ test("rolls back and releases the connection when an RLS-protected insert fails"
   const res = response();
   const pool = bootstrapPool({ failAt: "INSERT INTO core.campuses" });
   await handleFirstOrganizationBootstrap(request(validBody, token), res, pool, userId, hash);
-  assert.equal(res.status, 500);
+  assert.equal(res.status, 403);
   assert.ok(pool.statements.some((entry) => entry.sql === "ROLLBACK"));
   assert.equal(pool.released, true);
 });
