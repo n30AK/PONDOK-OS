@@ -1,6 +1,11 @@
 name: Deploy PONDOK OS API to Neon Development
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/deploy-neon-function.yml"
   workflow_dispatch:
     inputs:
       confirmation:
