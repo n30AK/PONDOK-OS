@@ -2,7 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 process.env.CORS_ALLOWED_ORIGINS = "https://n30ak.github.io";
+process.env.DATABASE_URL = "postgresql://neondb_owner:owner-password@127.0.0.1:5432/pondok";
+delete process.env.PONDOK_DATABASE_URL;
 const { default: adapter } = await import("../dist/neon-function.js");
+
+test("Neon fetch adapter refuses the managed owner DATABASE_URL fallback", async () => {
+  const response = await adapter.fetch(new Request("https://pondok.invalid/health/ready"));
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    status: "not_ready",
+    dependency: "database_not_configured",
+  });
+});
 
 test("Neon fetch adapter serves the existing API liveness route", async () => {
   const response = await adapter.fetch(new Request("https://pondok.invalid/health/live"));
