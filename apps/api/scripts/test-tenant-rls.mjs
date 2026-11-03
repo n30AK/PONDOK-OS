@@ -140,9 +140,14 @@ try {
     "SELECT membership_id FROM core.membership_roles WHERE membership_id = $1::uuid",
     [bootstrapMembership.rows[0].id],
   );
+  const bootstrapPermissionsVisible = await client.query(
+    "SELECT permission_key FROM core.role_permissions WHERE role_id = $1::uuid",
+    [ownerRole.rows[0].id],
+  );
   assert.equal(bootstrapCampusVisible.rowCount, 1, "first bootstrap must create its campus under FORCE RLS");
   assert.equal(bootstrapAuditVisible.rowCount, 1, "first bootstrap must write its audit event under FORCE RLS");
   assert.equal(bootstrapRoleVisible.rowCount, 1, "first bootstrap must assign the owner role under RLS");
+  assert.ok(bootstrapPermissionsVisible.rowCount > 0, "global owner permissions must remain visible under RLS");
   await client.query("ROLLBACK");
 
   process.stdout.write(`Tenant RLS passed: ${result.rowCount} protected tables, fail-closed context, bidirectional tenant isolation, and RLS-compatible first bootstrap.\\n`);
