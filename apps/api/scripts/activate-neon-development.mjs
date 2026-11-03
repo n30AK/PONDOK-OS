@@ -41,13 +41,19 @@ let appUri;
 try {
   const client = await adminPool.connect();
   try {
-    const roleExists = await client.query("SELECT 1 FROM pg_roles WHERE rolname = 'pondok_app'");
-    const password = randomBytes(48).toString("base64url");
-    const statement = roleExists.rowCount
-      ? "ALTER ROLE pondok_app WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD %L"
-      : "CREATE ROLE pondok_app WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD %L";
-    const command = await client.query("SELECT format($1, $2) AS sql", [statement, password]);
-    await client.query(command.rows[0].sql);
+    const roleState = await client.query("SELECT rolcanlogin FROM pg_roles WHERE rolname = 'pondok_app'");
+    if (roleState.rowCount === 0 || !roleState.rows[0].rolcanlogin) {
+      const password = randomBytes(48).toString("base64url");
+      const statement = roleState.rowCount === 0
+        ? "CREATE ROLE pondok_app WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD %L"
+        : "ALTER ROLE pondok_app WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT PASSWORD %L";
+      const command = await client.query("SELECT format($1, $2) AS sql", [statement, password]);
+      await client.query(command.rows[0].sql);
+    } else {
+      await client.query(
+        "ALTER ROLE pondok_app WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT",
+      );
+    }
   } finally {
     client.release();
   }
