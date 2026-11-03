@@ -11,8 +11,9 @@ This is the zero-additional-hosting-cost development path for PONDOK OS. Neon Fu
 - GitHub Pages project URL: `https://n30ak.github.io/PONDOK-OS/`
 - GitHub Pages origin / CORS origin: `https://n30ak.github.io`
 - Neon Auth base URL: `https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth`
+- Neon Auth JWKS URL: `https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth/.well-known/jwks.json`
 
-The deployment workflow hardcodes the development project and branch. Do not change it to the production branch as part of a routine deploy.
+The deployment workflow and script hardcode the development project and branch. Do not change them to the production branch as part of a routine deploy.
 
 ## 1. Add the scoped deployment credential
 
@@ -38,6 +39,8 @@ Add it to GitHub:
 
 The deployment script bundles the API and deploys slug `pondokapi` to branch `br-proud-paper-b312lfxi` only. It prints the invocation URL when Neon reports the deployment as completed.
 
+Neon Functions injects the branch's `DATABASE_URL` automatically. The deployment script explicitly sets the matching branch's `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL`, and `CORS_ALLOWED_ORIGINS`; do not assume the Auth URLs are automatically present in the Function runtime.
+
 Verify the function URL:
 
 ```bash
@@ -46,8 +49,6 @@ curl -i https://<function-invocation-host>/health/ready
 ```
 
 Expected: `/health/live` returns HTTP 200. `/health/ready` returns HTTP 200 when the branch-injected database connection is available.
-
-Neon injects `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL` for this branch. The function deployment sets `CORS_ALLOWED_ORIGINS=https://n30ak.github.io`.
 
 ## 3. Enable GitHub Pages once
 
@@ -65,17 +66,29 @@ The repository includes a manual workflow named **PONDOK OS GitHub Pages**. It b
 4. Keep the default Neon Auth URL unless the development branch/Auth integration is deliberately changed.
 5. Run the workflow and open the resulting Pages URL.
 
-The expected URL is `https://n30ak.github.io/PONDOK-OS/`. Add `https://n30ak.github.io` as a trusted domain in Neon Auth for the **development branch only** before testing sign-in.
+The expected URL is `https://n30ak.github.io/PONDOK-OS/`. The origin `https://n30ak.github.io` has been added to Neon Auth trusted domains on the **development branch only**.
 
-## 5. Remaining gates after hosting
+## 5. First-institution bootstrap
+
+The API does not enable first-organization setup unless a one-time SHA-256 digest is configured.
+
+1. Generate the one-time token locally from the repository root with `node scripts/create-bootstrap-token.mjs`.
+2. Keep the raw token private; do not paste it into chat, GitHub, or logs.
+3. Add only the 64-character SHA-256 digest as a temporary GitHub Actions repository secret named `PONDOK_BOOTSTRAP_TOKEN_SHA256`.
+4. Run **Deploy PONDOK OS API to Neon Development** again with `DEPLOY_DEV_API`.
+5. Use the raw token once in the first-setup screen after the web workspace is live.
+6. Immediately delete the `PONDOK_BOOTSTRAP_TOKEN_SHA256` GitHub secret and redeploy the API without it.
+7. Verify that a second bootstrap attempt is rejected and that the owner can sign in.
+
+The deployment script validates the digest format and never prints its value. Do not set this secret before the API and web workspace are ready for first setup.
+
+## 6. Remaining gates after hosting
 
 Hosting the API and static workspace does not activate database RLS or initialize an institution.
 
 - Deploy the matching API build first. This is required because the API sets transaction-local tenant context.
 - Apply migration 0013 to the development branch using the repository migration runner, then verify all 59 protected tables have ENABLE + FORCE RLS.
 - Verify live Neon Auth sign-in, owner bootstrap and two-tenant isolation.
-- The API function currently has no `PONDOK_BOOTSTRAP_TOKEN_SHA256` environment variable, so first-organization setup remains intentionally disabled until the one-time bootstrap digest is configured securely.
-- Remove the bootstrap digest immediately after first-organization setup and verify a second bootstrap attempt is rejected.
 - Do not apply the migration or deploy this workflow to `br-late-cherry-b3uqtuvh` (production) without a separate production-readiness approval.
 
 ## Free-plan note
