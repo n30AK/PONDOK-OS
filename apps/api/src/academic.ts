@@ -46,9 +46,9 @@ export function validateStudentProfileData(value: unknown): string | null {
     if (raw !== null && (typeof raw !== "string" || raw.length > max)) return "invalid_student_profile_field";
     if (typeof raw === "string" && raw.trim().length === 0) return "empty_student_profile_field";
   }
-  if (data.guardianEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(data.guardianEmail))) return "invalid_guardian_email";
-  if (data.entryDate && (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(data.entryDate)) || Number.isNaN(Date.parse(String(data.entryDate))))) return "invalid_entry_date";
-  if (data.admissionYear && !/^20\\d{2}$/.test(String(data.admissionYear))) return "invalid_admission_year";
+  if (data.guardianEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.guardianEmail))) return "invalid_guardian_email";
+  if (data.entryDate && (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.entryDate)) || Number.isNaN(Date.parse(String(data.entryDate))))) return "invalid_entry_date";
+  if (data.admissionYear && !/^20\d{2}$/.test(String(data.admissionYear))) return "invalid_admission_year";
   if (data.educationTrack && !["formal", "muadalah", "nonformal", "salafiyah", "other"].includes(String(data.educationTrack))) return "invalid_education_track";
   if (data.boardingStatus && !["mukim", "non_mukim", "commuter"].includes(String(data.boardingStatus))) return "invalid_boarding_status";
   return null;
@@ -91,7 +91,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
       `SELECT sp.id, sp.campus_id AS "campusId", sp.student_number AS "studentNumber",
               sp.legal_name AS "legalName", sp.preferred_name AS "preferredName",
               sp.birth_date AS "birthDate", sp.gender_code AS "genderCode",
-              sp.status, sp.created_at AS "createdAt"
+              sp.profile_data AS "profileData", sp.status, sp.created_at AS "createdAt"
        FROM academic.student_profiles sp
        WHERE sp.organization_id = $1
          AND ($2 = '%%' OR sp.student_number ILIKE $2 OR sp.legal_name ILIKE $2)
@@ -111,11 +111,11 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
   try {
     const result = await pool.query(
       `INSERT INTO academic.student_profiles
-         (organization_id, campus_id, student_number, legal_name, preferred_name, birth_date, gender_code)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::date, $7)
+         (organization_id, campus_id, student_number, legal_name, preferred_name, birth_date, gender_code, profile_data)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::date, $7, $8::jsonb)
        RETURNING id, campus_id AS "campusId", student_number AS "studentNumber",
                  legal_name AS "legalName", preferred_name AS "preferredName",
-                 birth_date AS "birthDate", gender_code AS "genderCode", status,
+                 birth_date AS "birthDate", gender_code AS "genderCode", profile_data AS "profileData", status,
                  created_at AS "createdAt"`,
       [organizationId, body.campusId, (body.studentNumber as string).trim(), (body.legalName as string).trim(),
        body.preferredName ?? null, body.birthDate ?? null, body.genderCode ?? null, JSON.stringify(body.profileData ?? {})],
