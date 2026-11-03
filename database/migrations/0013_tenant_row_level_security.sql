@@ -134,11 +134,11 @@ BEGIN
       );
     ELSIF target.schema_name = 'core' AND target.table_name = 'organization_memberships' THEN
       EXECUTE format(
-        'CREATE POLICY tenant_isolation ON %I.%I FOR SELECT USING (user_id = nullif(current_setting(''app.user_id'', true), '''')::uuid AND organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid)',
+        'CREATE POLICY tenant_isolation ON %I.%I FOR SELECT USING (user_id = nullif(current_setting(''app.user_id'', true), '''')::uuid AND organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND membership_status = ''active'')',
         target.schema_name, target.table_name
       );
       EXECUTE format(
-        'CREATE POLICY tenant_membership_self_insert ON %I.%I FOR INSERT WITH CHECK (user_id = nullif(current_setting(''app.user_id'', true), '''')::uuid AND organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid)',
+        'CREATE POLICY tenant_membership_self_insert ON %I.%I FOR INSERT WITH CHECK (user_id = nullif(current_setting(''app.user_id'', true), '''')::uuid AND organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid AND membership_status = ''active'')',
         target.schema_name, target.table_name
       );
     ELSE
