@@ -27,31 +27,16 @@ TO pondok_app;
 
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA core TO pondok_app;
 
--- Ensure future migrations grant the same runtime privileges to new objects.
-DO $defaults$
-DECLARE
-  schema_name text;
-BEGIN
-  FOREACH schema_name IN ARRAY ARRAY[
-    'academic', 'admissions', 'assets', 'audit', 'boarding', 'cms', 'config',
-    'core', 'crm', 'finance', 'hr', 'inventory', 'library', 'procurement', 'sync'
-  ]
-  LOOP
-    EXECUTE format(
-      'ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pondok_app',
-      schema_name
-    );
-    EXECUTE format(
-      'ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO pondok_app',
-      schema_name
-    );
-    EXECUTE format(
-      'ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT EXECUTE ON FUNCTIONS TO pondok_app',
-      schema_name
-    );
-  END LOOP;
-END
-$defaults$;
+-- No blanket default privileges are installed: new tables must receive
+-- explicit runtime grants in their migration, so future global tables fail closed.
+
+-- Global RBAC dictionaries are read-only to the runtime. Membership role
+-- assignment is performed only by the guarded SECURITY DEFINER bootstrap helper.
+REVOKE INSERT, UPDATE, DELETE ON core.permissions, core.role_permissions, core.roles, core.membership_roles
+FROM pondok_app;
+REVOKE UPDATE, DELETE ON core.organizations, core.organization_memberships
+FROM pondok_app;
+REVOKE ALL ON core.schema_migrations FROM pondok_app;
 
 -- The membership predicate must execute as the restricted role so its read of
 -- organization_memberships is filtered by that table's direct self/tenant RLS.
