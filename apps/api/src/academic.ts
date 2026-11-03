@@ -106,7 +106,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
   }
   const body = await readJson(req);
   if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
-  const validationError = validateStudentInput(body);
+  const validationError = validateStudentInput(body) ?? validateStudentProfileData(body.profileData);
   if (validationError) { reply(res, 422, { error: validationError }); return true; }
   try {
     const result = await pool.query(
