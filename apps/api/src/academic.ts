@@ -55,7 +55,7 @@ export function validateStudentProfileData(value: unknown): string | null {
     if (typeof raw === "string" && raw.trim().length === 0) return "empty_student_profile_field";
   }
   if (data.guardianEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.guardianEmail))) return "invalid_guardian_email";
-  if (data.entryDate && (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.entryDate)) || Number.isNaN(Date.parse(String(data.entryDate))))) return "invalid_entry_date";
+  if (data.entryDate && (typeof data.entryDate !== "string" || !isValidIsoDate(data.entryDate))) return "invalid_entry_date";
   if (data.admissionYear && !/^20\d{2}$/.test(String(data.admissionYear))) return "invalid_admission_year";
   if (data.educationTrack && !["formal", "muadalah", "nonformal", "salafiyah", "other"].includes(String(data.educationTrack))) return "invalid_education_track";
   if (data.boardingStatus && !["mukim", "non_mukim", "commuter"].includes(String(data.boardingStatus))) return "invalid_boarding_status";
@@ -67,7 +67,7 @@ export function validateStudentInput(value: Json): string | null {
   if (typeof value.studentNumber !== "string" || value.studentNumber.trim().length < 1 || value.studentNumber.trim().length > 64) return "invalid_student_number";
   if (typeof value.legalName !== "string" || value.legalName.trim().length < 2 || value.legalName.trim().length > 160) return "invalid_legal_name";
   if (value.preferredName !== undefined && value.preferredName !== null && (typeof value.preferredName !== "string" || value.preferredName.length > 160)) return "invalid_preferred_name";
-  if (value.birthDate !== undefined && value.birthDate !== null && (typeof value.birthDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.birthDate))) return "invalid_birth_date";
+  if (value.birthDate !== undefined && value.birthDate !== null && (typeof value.birthDate !== "string" || !isValidIsoDate(value.birthDate))) return "invalid_birth_date";
   if (value.genderCode !== undefined && value.genderCode !== null && !["male", "female", "unspecified"].includes(String(value.genderCode))) return "invalid_gender_code";
   return null;
 }
