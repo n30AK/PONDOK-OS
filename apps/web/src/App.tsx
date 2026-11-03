@@ -176,7 +176,8 @@ export default function App() {
         method: "POST",
         body: JSON.stringify({
           campusId: campusId.trim(), studentNumber: studentNumber.trim(), legalName: legalName.trim(),
-          preferredName: preferredName.trim() || null, birthDate: birthDate || null, genderCode, profileData
+          preferredName: preferredName.trim() || null, birthDate: birthDate || null, genderCode,
+          profileData: Object.fromEntries(Object.entries(profileData).filter(([, value]) => value.trim().length > 0))
         })
       });
       setStudentNumber(""); setLegalName(""); setPreferredName(""); setCampusId(localStorage.getItem(`pondok.campusId.${tenant.organizationId}`) ?? ""); setBirthDate(""); setProfileData({});
