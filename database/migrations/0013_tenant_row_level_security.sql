@@ -1,7 +1,7 @@
 BEGIN;
 
 -- The application role is non-owner/NOBYPASSRLS. This predicate is owned by
--- that role after migration 0014 so membership lookups remain RLS-constrained.
+-- the dedicated NOLOGIN/NOBYPASSRLS helper role after migration 0014 so membership lookups remain RLS-constrained.
 CREATE OR REPLACE FUNCTION core.has_active_tenant_membership(p_organization_id uuid)
 RETURNS boolean
 LANGUAGE sql
