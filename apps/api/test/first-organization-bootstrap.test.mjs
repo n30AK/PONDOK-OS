@@ -30,7 +30,7 @@ function bootstrapPool({ failAt } = {}) {
   let released = false;
   const client = {
     async query(sql, values = []) {
-      const normalized = sql.replace(/\\s+/g, " ").trim();
+      const normalized = sql.replace(/\s+/g, " ").trim();
       statements.push({ sql: normalized, values });
       if (failAt && normalized.startsWith(failAt)) {
         const error = new Error("simulated database failure");
