@@ -33,7 +33,7 @@ Each protected operation verifies identity, active organization membership and t
 
 ## Database row-level security
 
-Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 60 organization-owned tables across 15 schema groups. Dedicated policies also protect `core.organizations`, `core.organization_memberships`, and `core.membership_roles`. The membership predicate function is transferred to the restricted `pondok_app` role so its reads are subject to membership RLS.
+Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 60 organization-owned tables across 15 schema groups. Dedicated policies also protect `core.organizations`, `core.organization_memberships`, and `core.membership_roles`. The membership predicate function is owned by a separate `pondok_rls_owner` NOLOGIN/NOBYPASSRLS helper role so its reads are subject to membership RLS; the API role only receives EXECUTE.
 
 Migration `0014_application_runtime_role.sql` creates/grants `pondok_app` as NOBYPASSRLS, NOINHERIT, non-superuser, non-admin. It grants runtime access to domain tables while keeping global RBAC dictionaries read-only and denying access to `core.schema_migrations`. Initial owner assignment is performed by a narrow SECURITY DEFINER helper; the application role cannot directly insert or change role assignments.
 
