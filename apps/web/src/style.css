@@ -13,3 +13,5 @@
 .form-section{background:#fff;border:1px solid var(--line);border-radius:11px;padding:18px;margin:0 0 14px}.form-section h3{font:800 13px Manrope;color:#294b3d;margin:0 0 5px}.form-section>p{font-size:10px;line-height:1.6;color:#87938c;margin:0 0 14px}.form-section .form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.form-section .wide-field{grid-column:span 2}.privacy-note{background:#fff8e9;border:1px solid #f0dfb6;color:#775e28;padding:12px 14px;border-radius:9px;font-size:10px;line-height:1.6;margin:14px 0}.student-form .form-section label{margin-top:4px;margin-bottom:12px}.student-form .form-section input,.student-form .form-section select{width:100%}
 @media(max-width:760px){.form-section .form-grid{grid-template-columns:1fr 1fr}.form-section .wide-field{grid-column:span 2}}
 @media(max-width:420px){.form-section .form-grid{grid-template-columns:1fr}.form-section .wide-field{grid-column:auto}}
+
+.form-context{background:#f2f7f2;border-left:3px solid #8cae91;border-radius:7px;padding:11px 14px;margin:0 0 14px}.form-context strong{font:700 11px Manrope;color:#2b5140}.form-context p{font-size:10px;line-height:1.5;color:#6f8076;margin:4px 0 0}
