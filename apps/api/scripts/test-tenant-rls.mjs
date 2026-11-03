@@ -7,12 +7,10 @@ const pool = new Pool({ connectionString, max: 1 });
 const client = await pool.connect();
 
 try {
-  await client.query("CREATE ROLE pondok_rls_test NOLOGIN").catch((error) => {
-    if (error?.code !== "42710") throw error;
-  });
-  await client.query("GRANT USAGE ON SCHEMA academic, admissions, assets, audit, boarding, cms, config, core, crm, finance, hr, inventory, library, procurement, sync TO pondok_rls_test");
-  await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA academic, admissions, assets, audit, boarding, cms, config, crm, finance, hr, inventory, library, procurement, sync TO pondok_rls_test");
-  await client.query("GRANT SELECT, INSERT, UPDATE, DELETE ON core.campuses, core.roles TO pondok_rls_test");
+  const runtimeRole = await client.query("SELECT rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = 'pondok_runtime'");
+  assert.equal(runtimeRole.rowCount, 1, "restricted runtime role must exist");
+  assert.equal(runtimeRole.rows[0].rolcanlogin, false, "runtime role must not allow login");
+  assert.equal(runtimeRole.rows[0].rolbypassrls, false, "runtime role must not bypass RLS");
   const result = await client.query(`
     SELECT n.nspname AS schema_name, c.relname AS table_name,
            c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced,
@@ -33,7 +31,7 @@ try {
   }
 
   await client.query("BEGIN");
-  await client.query("SET LOCAL ROLE pondok_rls_test");
+  await client.query("SET LOCAL ROLE pondok_runtime");
   await client.query("SELECT set_config('app.organization_id', '', true)");
   const noContext = await client.query("SELECT count(*)::int AS count FROM academic.student_profiles");
   assert.equal(noContext.rows[0].count, 0, "missing tenant context must see no tenant rows");
@@ -54,7 +52,7 @@ try {
     "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1,$2,'active'),($3,$4,'active')",
     [tenantA, userA, tenantB, userB],
   );
-  await client.query("SET LOCAL ROLE pondok_rls_test");
+  await client.query("SET LOCAL ROLE pondok_runtime");
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantA]);
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-A','Tenant A account','asset')",
@@ -105,11 +103,15 @@ try {
     "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1,'rls-bootstrap-ci','RLS Bootstrap CI','pesantren','active')",
     [bootstrapTenant],
   );
-  await client.query(
-    "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1,$2,'active')",
+  const bootstrapMembership = await client.query(
+    "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1,$2,'active') RETURNING id",
     [bootstrapTenant, bootstrapUser],
   );
-  await client.query("SET LOCAL ROLE pondok_rls_test");
+  const ownerRole = await client.query(
+    "SELECT id FROM core.roles WHERE organization_id IS NULL AND role_key = 'institution_owner' AND is_system = true LIMIT 1",
+  );
+  assert.ok(ownerRole.rows[0]?.id, "global institution owner role must exist");
+  await client.query("SET LOCAL ROLE pondok_runtime");
   await client.query(
     "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
     [bootstrapUser, bootstrapTenant],
@@ -117,6 +119,10 @@ try {
   await client.query(
     "INSERT INTO core.campuses (id, organization_id, code, name, campus_type, status) VALUES ($1,$2,'UTAMA','Kampus Utama','main','active')",
     [bootstrapCampus, bootstrapTenant],
+  );
+  await client.query(
+    "INSERT INTO core.membership_roles (membership_id, role_id) VALUES ($1::uuid, $2::uuid)",
+    [bootstrapMembership.rows[0].id, ownerRole.rows[0].id],
   );
   await client.query(
     "INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,'organization.bootstrap','organization',$3::text,'{}'::jsonb)",
@@ -130,8 +136,13 @@ try {
     "SELECT id FROM audit.audit_events WHERE organization_id = $1",
     [bootstrapTenant],
   );
+  const bootstrapRoleVisible = await client.query(
+    "SELECT membership_id FROM core.membership_roles WHERE membership_id = $1::uuid",
+    [bootstrapMembership.rows[0].id],
+  );
   assert.equal(bootstrapCampusVisible.rowCount, 1, "first bootstrap must create its campus under FORCE RLS");
   assert.equal(bootstrapAuditVisible.rowCount, 1, "first bootstrap must write its audit event under FORCE RLS");
+  assert.equal(bootstrapRoleVisible.rowCount, 1, "first bootstrap must assign the owner role under RLS");
   await client.query("ROLLBACK");
 
   process.stdout.write(`Tenant RLS passed: ${result.rowCount} protected tables, fail-closed context, bidirectional tenant isolation, and RLS-compatible first bootstrap.\\n`);
