@@ -71,7 +71,7 @@ BEGIN
   JOIN pg_roles r ON r.oid = p.proowner
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'core' AND p.proname = 'has_active_tenant_membership'
-    AND pg_get_function_identity_arguments(p.oid) = 'p_organization_id uuid';
+    AND p.pronargs = 1 AND p.proargtypes[0] = 'uuid'::regtype;
 
   IF predicate_owner IS DISTINCT FROM 'pondok_app' THEN
     RAISE EXCEPTION 'Tenant membership predicate must be owned by pondok_app, found %', predicate_owner;
