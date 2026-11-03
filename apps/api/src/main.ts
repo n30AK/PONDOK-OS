@@ -246,6 +246,10 @@ export async function handleRequest(
     } catch {
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
+    if (!dependencies.pool.connect) {
+      sendJson(response, 503, { error: "bootstrap_transaction_unavailable" });
+      return;
+    }
     try {
       if (await handleFirstOrganizationBootstrap(
         request, response, dependencies.pool, identity.userId, process.env.PONDOK_BOOTSTRAP_TOKEN_SHA256,
