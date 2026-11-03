@@ -9,6 +9,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3001"
+      PONDOK_DATABASE_URL: ${PONDOK_DATABASE_URL:?Set restricted PONDOK_DATABASE_URL in .env}
     expose:
       - "3001"
     healthcheck:
