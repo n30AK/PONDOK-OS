@@ -13,7 +13,7 @@ BEGIN
 END
 $role$;
 
-GRANT pondok_runtime TO neondb_owner;
+DO $membership$ BEGIN EXECUTE format('GRANT pondok_runtime TO %I', current_user); END $membership$;
 GRANT USAGE ON SCHEMA academic, admissions, assets, audit, boarding, cms, config, core, crm, finance, hr, inventory, library, procurement, sync TO pondok_runtime;
 
 -- Grant only the tenant-owned application tables, not the membership authority table.
