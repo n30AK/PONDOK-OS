@@ -54,6 +54,15 @@ jobs:
         run: pnpm typecheck
       - name: Build all deployable workspaces
         run: pnpm build
+      - name: Bundle Neon Functions API
+        run: pnpm --filter @pondok-os/api bundle:function
+      - name: Upload Neon Functions API bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pondok-os-api-neon-function
+          path: apps/api/dist/pondok-api-function.zip
+          if-no-files-found: error
+          retention-days: 7
       - name: Build API container image
         run: docker build --target api -t pondok-os-api:ci .
       - name: Build web container image
