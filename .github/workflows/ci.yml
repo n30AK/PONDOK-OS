@@ -64,7 +64,7 @@ jobs:
         run: |
           grep -q '/PONDOK-OS/assets/' apps/web/dist/index.html
           grep -q '/PONDOK-OS/manifest.webmanifest' apps/web/dist/index.html
-          grep -q '"start_url":"./"' apps/web/dist/manifest.webmanifest
+          grep -Eq '"start_url"[[:space:]]*:[[:space:]]*"\\./"' apps/web/dist/manifest.webmanifest
       - name: Bundle Neon Functions API
         run: pnpm --filter @pondok-os/api bundle:function
       - name: Upload Neon Functions API bundle
