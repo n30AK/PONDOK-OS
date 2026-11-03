@@ -68,7 +68,7 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 - The backend verifies JWTs and resolves membership/permissions from the selected organization.
 - Authenticated tenant requests set `app.user_id` and `app.organization_id` transaction-locally before tenant queries, including the membership-resolution query.
 - Migration 0013 enables and forces RLS on 60 organization-owned tables across 15 schema groups. It also protects `core.organizations`, `core.organization_memberships`, and `core.membership_roles` with dedicated policies.
-- Migration 0014 creates/grants the restricted `pondok_app` role and transfers the membership predicate function to that NOBYPASSRLS role. The API runtime must use `PONDOK_DATABASE_URL`; Neon’s managed owner role has BYPASSRLS and must never be used by the API.
+- Migration 0014 creates/grants the restricted `pondok_app` role and transfers the membership predicate function to a separate NOLOGIN/NOBYPASSRLS helper role. The API runtime must use `PONDOK_DATABASE_URL`; Neon’s managed owner role has BYPASSRLS and must never be used by the API.
 - Migrations 0013/0014 are **not yet active in Neon development**. Deploy the matching API build, provision the restricted role, then apply the migrations on development and verify live sign-in/bootstrap and two-tenant isolation.
 - The app role cannot alter global RBAC dictionaries, membership role assignments, or the migration ledger. Initial owner assignment uses a narrowly scoped SECURITY DEFINER helper.
 - These controls are not a completed security certification. The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
