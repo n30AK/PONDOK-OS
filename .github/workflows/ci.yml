@@ -54,6 +54,26 @@ jobs:
         run: pnpm typecheck
       - name: Build all deployable workspaces
         run: pnpm build
+      - name: Verify GitHub Pages base-path build
+        run: pnpm --filter @pondok-os/web build
+        env:
+          VITE_BASE_PATH: /PONDOK-OS/
+          VITE_API_URL: https://pondok-api.invalid
+          VITE_NEON_AUTH_URL: https://pondok-auth.invalid
+      - name: Verify GitHub Pages asset paths
+        run: |
+          grep -q '/PONDOK-OS/assets/' apps/web/dist/index.html
+          grep -q '/PONDOK-OS/manifest.webmanifest' apps/web/dist/index.html
+          grep -Fq '"start_url": "./"' apps/web/dist/manifest.webmanifest
+      - name: Bundle Neon Functions API
+        run: pnpm --filter @pondok-os/api bundle:function
+      - name: Upload Neon Functions API bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pondok-os-api-neon-function
+          path: apps/api/dist/pondok-api-function.zip
+          if-no-files-found: error
+          retention-days: 7
       - name: Build API container image
         run: docker build --target api -t pondok-os-api:ci .
       - name: Build web container image

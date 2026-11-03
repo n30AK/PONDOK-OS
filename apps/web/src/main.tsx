@@ -9,7 +9,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch((error) => {
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error) => {
       console.warn("PONDOK OS offline shell registration failed", error);
     });
   });
