@@ -35,8 +35,8 @@ export function validateFirstOrganizationInput(value: Json): string | null {
 /**
  * Creates the first tenant in ordered statements inside one transaction.
  * The membership authority table intentionally has no RLS policy, so the
- * owner membership must exist before tenant-scoped campus/audit writes run.
- * After membership creation, transaction-local context satisfies FORCE RLS.
+ * owner membership must exist before tenant-scoped writes run. The bootstrap
+ * then assumes pondok_runtime before creating campus, role assignment and audit.
  */
 export async function handleFirstOrganizationBootstrap(
   req: IncomingMessage,
@@ -111,11 +111,13 @@ export async function handleFirstOrganizationBootstrap(
     const membershipId = membership.rows[0]?.id;
     if (!membershipId) throw new Error("Owner membership creation returned no ID");
 
-    // Subsequent organization-owned inserts are protected by FORCE RLS.
     await client.query(
       "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
       [userId, organizationId],
     );
+    // The pooled Neon DATABASE_URL uses neondb_owner (BYPASSRLS). Assume the
+    // restricted NOLOGIN role for every tenant-owned bootstrap write below.
+    await client.query("SET LOCAL ROLE pondok_runtime");
 
     const campus = await client.query<{ id: string }>(
       "INSERT INTO core.campuses (organization_id, code, name, campus_type, status) VALUES ($1::uuid, $2, $3, 'main', 'active') RETURNING id",

@@ -7,8 +7,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 /**
  * Runs every authenticated tenant request on one checked-out connection.
- * SET LOCAL values are transaction-scoped, so pooled connections cannot leak
- * a previous tenant's context to the next request.
+ * The database owner can bypass RLS, so the request must first assume the
+ * NOLOGIN/NOBYPASSRLS application role. SET LOCAL and tenant context are
+ * transaction-scoped, so pooled connections cannot leak either state.
  */
 export async function withTenantScope<T>(
   pool: TenantDatabase,
@@ -29,6 +30,7 @@ export async function withTenantScope<T>(
   try {
     await client.query("BEGIN");
     inTransaction = true;
+    await client.query("SET LOCAL ROLE pondok_runtime");
     await client.query(
       "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
       [userId, organizationId],
