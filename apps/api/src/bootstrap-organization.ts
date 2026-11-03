@@ -46,17 +46,23 @@ async function main(): Promise<void> {
     const organizationId = organization.rows[0]?.id;
     if (!organizationId) throw new Error("Organization creation returned no ID.");
 
-    const campus = await client.query<{ id: string }>(
-      `INSERT INTO core.campuses (organization_id, code, name, campus_type, status)
-       VALUES ($1::uuid, $2, $3, 'main', 'active')
-       RETURNING id`,
-      [organizationId, campusCode, campusName.trim()],
-    );
+    // Create the membership authority row before tenant-scoped writes.
+    // core.organization_memberships is intentionally excluded from tenant RLS.
     const membership = await client.query<{ id: string }>(
       `INSERT INTO core.organization_memberships (organization_id, user_id, membership_status)
        VALUES ($1::uuid, $2::uuid, 'active')
        RETURNING id`,
       [organizationId, userId],
+    );
+    await client.query(
+      "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
+      [userId, organizationId],
+    );
+    const campus = await client.query<{ id: string }>(
+      `INSERT INTO core.campuses (organization_id, code, name, campus_type, status)
+       VALUES ($1::uuid, $2, $3, 'main', 'active')
+       RETURNING id`,
+      [organizationId, campusCode, campusName.trim()],
     );
     const ownerRole = await client.query<{ id: string }>(
       `SELECT id FROM core.roles
