@@ -93,7 +93,48 @@ try {
   assert.equal(tenantBOwn.rowCount, 1, "tenant B must read its own account");
   assert.equal(tenantBSeesA.rowCount, 0, "tenant B must not read tenant A data");
   await client.query("ROLLBACK");
-  process.stdout.write(`Tenant RLS passed: ${result.rowCount} protected tables, fail-closed context, and bidirectional tenant isolation.\\n`);
+
+  // Exercise the first-install sequence after RLS is already enabled:
+  // create the organization and membership as the bootstrap DB role, then
+  // switch to the restricted application role and create tenant-owned rows.
+  const bootstrapTenant = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const bootstrapUser = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const bootstrapCampus = "eeeeeeee-0001-4000-8000-000000000001";
+  await client.query("BEGIN");
+  await client.query(
+    "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1,'rls-bootstrap-ci','RLS Bootstrap CI','pesantren','active')",
+    [bootstrapTenant],
+  );
+  await client.query(
+    "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1,$2,'active')",
+    [bootstrapTenant, bootstrapUser],
+  );
+  await client.query("SET LOCAL ROLE pondok_rls_test");
+  await client.query(
+    "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
+    [bootstrapUser, bootstrapTenant],
+  );
+  await client.query(
+    "INSERT INTO core.campuses (id, organization_id, code, name, campus_type, status) VALUES ($1,$2,'UTAMA','Kampus Utama','main','active')",
+    [bootstrapCampus, bootstrapTenant],
+  );
+  await client.query(
+    "INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1,$2,'organization.bootstrap','organization',$1::text,'{}'::jsonb)",
+    [bootstrapTenant, bootstrapUser],
+  );
+  const bootstrapCampusVisible = await client.query(
+    "SELECT id FROM core.campuses WHERE id = $1",
+    [bootstrapCampus],
+  );
+  const bootstrapAuditVisible = await client.query(
+    "SELECT id FROM audit.audit_events WHERE organization_id = $1",
+    [bootstrapTenant],
+  );
+  assert.equal(bootstrapCampusVisible.rowCount, 1, "first bootstrap must create its campus under FORCE RLS");
+  assert.equal(bootstrapAuditVisible.rowCount, 1, "first bootstrap must write its audit event under FORCE RLS");
+  await client.query("ROLLBACK");
+
+  process.stdout.write(`Tenant RLS passed: ${result.rowCount} protected tables, fail-closed context, bidirectional tenant isolation, and RLS-compatible first bootstrap.\\n`);
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
   throw error;
