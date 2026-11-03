@@ -50,6 +50,10 @@ jobs:
         run: node apps/api/scripts/test-tenant-rls.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify RLS helper ownership transfer as a non-superuser migrator
+        run: node apps/api/scripts/test-non-superuser-function-owner-transfer.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
       - name: Build all deployable workspaces
