@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: inputs.confirmation == 'DEPLOY_DEV_API'
+    if: github.event_name == 'push' || inputs.confirmation == 'DEPLOY_DEV_API'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout reviewed main
