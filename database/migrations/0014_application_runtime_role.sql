@@ -49,7 +49,34 @@ REVOKE ALL ON core.schema_migrations FROM pondok_app;
 GRANT USAGE ON SCHEMA core TO pondok_rls_owner;
 GRANT SELECT ON core.organization_memberships TO pondok_rls_owner;
 GRANT CREATE ON SCHEMA core TO pondok_rls_owner;
-ALTER FUNCTION core.has_active_tenant_membership(uuid) OWNER TO pondok_rls_owner;
+DO $ownership$
+DECLARE
+  migration_role text := current_user;
+  migration_is_superuser boolean;
+  added_membership boolean := false;
+BEGIN
+  SELECT rolsuper INTO migration_is_superuser
+  FROM pg_roles WHERE rolname = migration_role;
+
+  IF NOT migration_is_superuser AND NOT EXISTS (
+    SELECT 1
+    FROM pg_auth_members m
+    JOIN pg_roles granted_role ON granted_role.oid = m.roleid
+    JOIN pg_roles member_role ON member_role.oid = m.member
+    WHERE granted_role.rolname = 'pondok_rls_owner'
+      AND member_role.rolname = migration_role
+  ) THEN
+    EXECUTE format('GRANT pondok_rls_owner TO %I', migration_role);
+    added_membership := true;
+  END IF;
+
+  EXECUTE 'ALTER FUNCTION core.has_active_tenant_membership(uuid) OWNER TO pondok_rls_owner';
+
+  IF added_membership THEN
+    EXECUTE format('REVOKE pondok_rls_owner FROM %I', migration_role);
+  END IF;
+END
+$ownership$;
 REVOKE CREATE ON SCHEMA core FROM pondok_rls_owner;
 
 REVOKE ALL ON FUNCTION core.has_active_tenant_membership(uuid) FROM PUBLIC;
