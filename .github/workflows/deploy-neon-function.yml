@@ -42,3 +42,6 @@ jobs:
         run: pnpm --filter @pondok-os/api deploy:function
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          # Optional: set only during first-institution initialization.
+          # Store the SHA-256 digest, never the raw one-time bootstrap token.
+          PONDOK_BOOTSTRAP_TOKEN_SHA256: ${{ secrets.PONDOK_BOOTSTRAP_TOKEN_SHA256 }}
