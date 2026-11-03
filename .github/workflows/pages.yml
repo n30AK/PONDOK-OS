@@ -1,6 +1,13 @@
 name: PONDOK OS GitHub Pages
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
     inputs:
       api_base_url:
@@ -47,8 +54,8 @@ jobs:
         run: pnpm --filter @pondok-os/web build
         env:
           VITE_BASE_PATH: /PONDOK-OS/
-          VITE_API_URL: ${{ inputs.api_base_url }}
-          VITE_NEON_AUTH_URL: ${{ inputs.neon_auth_url }}
+          VITE_API_URL: ${{ inputs.api_base_url || 'https://br-proud-paper-b312lfxi-pondokapi.compute.c-4.ap-southeast-1.aws.neon.tech' }}
+          VITE_NEON_AUTH_URL: ${{ inputs.neon_auth_url || 'https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth' }}
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
