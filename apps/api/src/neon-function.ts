@@ -15,9 +15,9 @@ const jwks = process.env.NEON_AUTH_JWKS_URL
   : undefined;
 
 const dependencies: ApiDependencies = {
-  jwks,
-  issuer: process.env.NEON_AUTH_BASE_URL,
-  pool,
+  ...(jwks ? { jwks } : {}),
+  ...(process.env.NEON_AUTH_BASE_URL ? { issuer: process.env.NEON_AUTH_BASE_URL } : {}),
+  ...(pool ? { pool } : {}),
 };
 
 const MAX_REQUEST_BYTES = 1_048_576;
@@ -43,13 +43,14 @@ export default {
     }
 
     const url = new URL(request.url);
-    const incoming = new PassThrough() as unknown as IncomingMessage;
+    const requestStream = new PassThrough();
+    const incoming = requestStream as unknown as IncomingMessage;
     Object.assign(incoming, {
       method: request.method,
       url: `${url.pathname}${url.search}`,
       headers: Object.fromEntries(request.headers.entries()) as IncomingMessage["headers"],
     });
-    incoming.end(body);
+    requestStream.end(body);
 
     const responseHeaders = new Headers();
     let statusCode = 200;
