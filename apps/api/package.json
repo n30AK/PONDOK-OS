@@ -11,13 +11,15 @@
     "db:migrate": "pnpm build && node dist/run-migrations.js",
     "db:bootstrap": "pnpm build && node dist/bootstrap-organization.js",
     "test:tenant-rls": "node scripts/test-tenant-rls.mjs",
-    "bundle:function": "pnpm build && esbuild src/neon-function.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/neon-function/index.mjs && cd dist/neon-function && zip -q -j ../pondok-api-function.zip index.mjs"
+    "bundle:function": "pnpm build && esbuild src/neon-function.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/neon-function/index.mjs && cd dist/neon-function && zip -q -j ../pondok-api-function.zip index.mjs",
+    "deploy:function": "node scripts/deploy-neon-function.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
     "@types/pg": "^8.15.5",
     "typescript": "^5.9.3",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "@neon/sdk": "^7.4.0"
   },
   "dependencies": {
     "jose": "^6.1.0",
