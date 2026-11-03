@@ -70,7 +70,10 @@ BEGIN
   FROM pg_roles
   WHERE rolname = 'pondok_app';
 
-  IF NOT FOUND OR app_role.rolsuper OR app_role.rolbypassrls
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'pondok_app role was not created';
+  END IF;
+  IF app_role.rolsuper OR app_role.rolbypassrls
      OR app_role.rolcreatedb OR app_role.rolcreaterole OR app_role.rolinherit THEN
     RAISE EXCEPTION 'pondok_app must be a non-superuser, NOBYPASSRLS, non-admin, NOINHERIT role';
   END IF;
@@ -82,6 +85,9 @@ BEGIN
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'core' AND p.proname = 'has_active_tenant_membership'
     AND p.pronargs = 1 AND p.proargtypes[0] = 'uuid'::regtype;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Tenant membership predicate function was not created';
+  END IF;
   predicate_owner := predicate_role.rolname;
 
   IF predicate_owner IS DISTINCT FROM 'pondok_rls_owner'
