@@ -11,6 +11,9 @@ The repository currently contains:
 - TypeScript monorepo foundation and PostgreSQL migration runner with checksums and advisory locking.
 - Neon Managed Auth JWT verification and server-side organization membership/permission resolution.
 - Guarded first-institution setup flow using a one-time server-side SHA-256 token.
+- Transaction-scoped tenant context for authenticated API requests.
+- Tenant isolation migration using FORCE ROW LEVEL SECURITY for 59 organization-owned tables across 15 schema groups.
+- CI integration tests for fail-closed tenant context, cross-tenant read/write isolation, and the first-institution bootstrap sequence under RLS.
 - Tenant-scoped API foundations for student records, finance journals, inventory items/warehouses/stock movements, HR employees and payroll transitions.
 - Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
 - PostgreSQL domain foundations for library, PPDB, CMS, boarding, procurement, fixed assets, CRM and hybrid sync.
@@ -53,17 +56,18 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 
 - Neon development branch: `br-proud-paper-b312lfxi`.
 - Neon production branch: `br-late-cherry-b3uqtuvh` — do not run development migrations here.
-- Development migration ledger contains versions 0001–0012.
-- CI migrations use a disposable PostgreSQL 18 service; CI success does not mean the production branch was changed.
+- The Neon development migration ledger currently contains versions 0001–0012. Migration 0013 is in `main` but has **not** been applied to Neon development.
+- CI applies all migrations to a disposable PostgreSQL 18 service; CI success does not mean the Neon development or production branch was changed.
 - Bootstrap and migration commands are explicit; they are not run automatically at application startup.
 
 ## Security boundaries
 
 - The backend verifies JWTs and resolves membership/permissions from the selected organization.
-- The UI never supplies trusted role or permission claims.
-- Tenant-owned records carry organization scope and composite foreign keys where applicable.
-- Global PostgreSQL RLS is not enabled. Treat tenant isolation as application-enforced, not as a completed database security certification.
-- The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
+- Authenticated tenant requests set `app.user_id` and `app.organization_id` transaction-locally before tenant queries.
+- Migration 0013 enables and forces RLS on 59 organization-owned tables across 15 schema groups. Its integration test verifies missing-context denial, bidirectional tenant isolation, and cross-tenant write rejection.
+- Migration 0013 is **not yet active in Neon development**. Deploy the matching API build first, then apply the migration on development and verify live sign-in/bootstrap and two-tenant isolation.
+- `core.organization_memberships` is intentionally excluded from that RLS migration as the membership authority; API lookups filter by the verified user ID and selected organization. This remains a separate hardening boundary.
+- These controls are not a completed security certification. The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
 - Never commit database URLs, passwords, signing keys, bootstrap tokens, or personal data.
 
 ## Development
