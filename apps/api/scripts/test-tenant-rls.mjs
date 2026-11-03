@@ -106,7 +106,7 @@ try {
   const membershipAId = membershipA.rows[0].id;
   const membershipBId = membershipB.rows[0].id;
 
-  await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid)", [membershipAId]);
+  const ownerRoleA = await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid) AS role_id", [membershipAId]);
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid)", [membershipBId]);
 
@@ -122,6 +122,17 @@ try {
   const ownRoleAssignment = await client.query("SELECT role_id FROM core.membership_roles WHERE membership_id = $1", [membershipAId]);
   const foreignRoleAssignment = await client.query("SELECT role_id FROM core.membership_roles WHERE membership_id = $1", [membershipBId]);
   const ownAccount = await client.query("SELECT id FROM finance.accounts WHERE id = $1", [accountA]);
+  await client.query("SAVEPOINT direct_role_assignment");
+  await assert.rejects(
+    () => client.query(
+      "INSERT INTO core.membership_roles (membership_id, role_id) VALUES ($1,$2)",
+      [membershipAId, ownerRoleA.rows[0].role_id],
+    ),
+    (error) => error && error.code === "42501",
+    "runtime role must not directly assign or escalate membership roles",
+  );
+  await client.query("ROLLBACK TO SAVEPOINT direct_role_assignment");
+  await client.query("RELEASE SAVEPOINT direct_role_assignment");
   assert.equal(ownMembership.rowCount, 1, "user A must read its own membership");
   assert.equal(foreignMembership.rowCount, 0, "user A must not read user B membership");
   assert.equal(ownOrganization.rowCount, 1, "user A must read its own organization");
