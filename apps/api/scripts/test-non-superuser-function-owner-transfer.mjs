@@ -11,17 +11,7 @@ try {
   await client.query(
     "CREATE ROLE pondok_migration_transfer_test NOLOGIN CREATEROLE NOBYPASSRLS NOINHERIT",
   );
-  await client.query(
-    "CREATE ROLE pondok_transfer_owner_test NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT ADMIN pondok_migration_transfer_test",
-  );
-  await client.query("GRANT CREATE ON SCHEMA core TO pondok_transfer_owner_test");
-  await client.query("GRANT CREATE ON SCHEMA core TO pondok_migration_transfer_test");
-  await client.query(
-    "CREATE FUNCTION core.migration_owner_transfer_test() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$",
-  );
-  await client.query(
-    "ALTER FUNCTION core.migration_owner_transfer_test() OWNER TO pondok_migration_transfer_test",
-  );
+  await client.query("ALTER SCHEMA core OWNER TO pondok_migration_transfer_test");
   await client.query("SET LOCAL ROLE pondok_migration_transfer_test");
 
   await client.query(`
@@ -29,18 +19,12 @@ try {
     DECLARE
       migration_role text := current_user;
     BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_auth_members m
-        JOIN pg_roles granted_role ON granted_role.oid = m.roleid
-        JOIN pg_roles member_role ON member_role.oid = m.member
-        WHERE granted_role.rolname = 'pondok_transfer_owner_test'
-          AND member_role.rolname = migration_role
-          AND m.admin_option
-      ) THEN
-        RAISE EXCEPTION 'Migration role must have ADMIN membership in the helper owner role';
-      END IF;
-
+      EXECUTE format(
+        'CREATE ROLE pondok_transfer_owner_test NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT ADMIN %I',
+        migration_role
+      );
+      EXECUTE 'GRANT CREATE ON SCHEMA core TO pondok_transfer_owner_test';
+      EXECUTE 'CREATE FUNCTION core.migration_owner_transfer_test() RETURNS boolean LANGUAGE sql AS $function$ SELECT true $function$';
       EXECUTE 'ALTER FUNCTION core.migration_owner_transfer_test() OWNER TO pondok_transfer_owner_test';
       EXECUTE format('REVOKE pondok_transfer_owner_test FROM %I', migration_role);
     END
@@ -66,9 +50,9 @@ try {
         AND member_role.rolname = 'pondok_migration_transfer_test'
     ) AS retained
   `);
-  assert.equal(retainedMembership.rows[0].retained, false, "temporary helper-role membership must be revoked");
+  assert.equal(retainedMembership.rows[0].retained, false, "temporary ADMIN membership must be revoked");
   await client.query("ROLLBACK");
-  process.stdout.write("Non-superuser migration role safely transferred function ownership through temporary ADMIN membership and revoked it.\n");
+  process.stdout.write("Non-superuser CREATEROLE migrator created a helper role with temporary ADMIN membership, transferred function ownership, and revoked the membership.\n");
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
   throw error;
