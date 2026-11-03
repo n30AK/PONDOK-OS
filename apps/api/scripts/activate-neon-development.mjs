@@ -12,12 +12,12 @@ const branchId = "br-proud-paper-b312lfxi";
 const functionSlug = "pondokapi";
 const apiBase = "https://console.neon.tech/api/v2";
 
-async function getConnectionUri(roleName) {
+async function getConnectionUri(roleName, pooled = true) {
   const url = new URL(`${apiBase}/projects/${projectId}/connection_uri`);
   url.searchParams.set("branch_id", branchId);
   url.searchParams.set("database_name", "neondb");
   url.searchParams.set("role_name", roleName);
-  url.searchParams.set("pooled", "true");
+  url.searchParams.set("pooled", String(pooled));
 
   const response = await fetch(url, {
     headers: {
@@ -34,7 +34,7 @@ async function getConnectionUri(roleName) {
   return payload.uri;
 }
 
-const adminUri = await getConnectionUri("neondb_owner");
+const adminUri = await getConnectionUri("neondb_owner", false);
 const adminPool = new Pool({ connectionString: adminUri, max: 1, connectionTimeoutMillis: 10_000 });
 let appUri;
 
