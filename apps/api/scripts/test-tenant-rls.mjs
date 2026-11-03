@@ -18,7 +18,7 @@ try {
   assert.equal(appRole.rows[0].rolinherit, false, "pondok_app must not inherit other role privileges");
 
   const predicateRole = await client.query(
-    "SELECT rolcanlogin, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = 'pondok_rls_owner'",
+    "SELECT rolcanlogin, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolinherit FROM pg_roles WHERE rolname = 'pondok_rls_owner'",
   );
   assert.equal(predicateRole.rowCount, 1, "migration must create the RLS predicate helper role");
   assert.equal(predicateRole.rows[0].rolcanlogin, false, "predicate helper must not accept logins");
@@ -26,6 +26,7 @@ try {
   assert.equal(predicateRole.rows[0].rolbypassrls, false, "predicate helper must not bypass RLS");
   assert.equal(predicateRole.rows[0].rolcreatedb, false, "predicate helper must not create databases");
   assert.equal(predicateRole.rows[0].rolcreaterole, false, "predicate helper must not create roles");
+  assert.equal(predicateRole.rows[0].rolinherit, false, "predicate helper must not inherit role privileges");
 
   const result = await client.query(`
     SELECT n.nspname AS schema_name, c.relname AS table_name,
