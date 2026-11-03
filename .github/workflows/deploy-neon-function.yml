@@ -1,6 +1,11 @@
 name: Deploy PONDOK OS API to Neon Development
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/deploy-neon-function.yml"
   workflow_dispatch:
     inputs:
       confirmation:
@@ -17,7 +22,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: inputs.confirmation == 'DEPLOY_DEV_API'
+    if: github.event_name == 'push' || inputs.confirmation == 'DEPLOY_DEV_API'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout reviewed main
