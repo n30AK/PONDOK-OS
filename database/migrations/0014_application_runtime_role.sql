@@ -78,7 +78,7 @@ BEGIN
     RAISE EXCEPTION 'pondok_app must be a non-superuser, NOBYPASSRLS, non-admin, NOINHERIT role';
   END IF;
 
-  SELECT r.rolname, r.rolsuper, r.rolbypassrls, r.rolcanlogin, r.rolcreatedb, r.rolcreaterole
+  SELECT r.rolname, r.rolsuper, r.rolbypassrls, r.rolcanlogin, r.rolcreatedb, r.rolcreaterole, r.rolinherit
   INTO predicate_role
   FROM pg_proc p
   JOIN pg_roles r ON r.oid = p.proowner
@@ -93,7 +93,7 @@ BEGIN
   IF predicate_owner IS DISTINCT FROM 'pondok_rls_owner'
      OR predicate_role.rolsuper OR predicate_role.rolbypassrls
      OR predicate_role.rolcanlogin OR predicate_role.rolcreatedb
-     OR predicate_role.rolcreaterole THEN
+     OR predicate_role.rolcreaterole OR predicate_role.rolinherit THEN
     RAISE EXCEPTION 'Tenant membership predicate must be owned by a NOLOGIN/NOBYPASSRLS helper role, found %', predicate_owner;
   END IF;
 END
