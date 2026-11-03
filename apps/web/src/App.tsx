@@ -176,10 +176,10 @@ export default function App() {
         method: "POST",
         body: JSON.stringify({
           campusId: campusId.trim(), studentNumber: studentNumber.trim(), legalName: legalName.trim(),
-          birthDate: birthDate || null, genderCode
+          preferredName: preferredName.trim() || null, birthDate: birthDate || null, genderCode, profileData
         })
       });
-      setStudentNumber(""); setLegalName(""); setPreferredName(""); setCampusId(""); setBirthDate(""); setProfileData({});
+      setStudentNumber(""); setLegalName(""); setPreferredName(""); setCampusId(localStorage.getItem(`pondok.campusId.${tenant.organizationId}`) ?? ""); setBirthDate(""); setProfileData({});
       setShowCreate(false);
       await loadStudents(tenant.organizationId);
       setNotice("Data santri berhasil ditambahkan.");
