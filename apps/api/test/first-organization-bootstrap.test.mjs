@@ -79,11 +79,13 @@ test("creates the first institution with membership before FORCE RLS tenant writ
   const sql = pool.statements.map((entry) => entry.sql);
   const membershipAt = sql.findIndex((statement) => statement.startsWith("INSERT INTO core.organization_memberships"));
   const contextAt = sql.findIndex((statement) => statement.startsWith("SELECT set_config"));
+  const runtimeRoleAt = sql.indexOf("SET LOCAL ROLE pondok_runtime");
   const campusAt = sql.findIndex((statement) => statement.startsWith("INSERT INTO core.campuses"));
+  const membershipRoleAt = sql.findIndex((statement) => statement.startsWith("INSERT INTO core.membership_roles"));
   const auditAt = sql.findIndex((statement) => statement.startsWith("INSERT INTO audit.audit_events"));
   assert.ok(membershipAt >= 0 && membershipAt < contextAt, "membership must exist before tenant context is installed");
-  assert.ok(contextAt < campusAt, "tenant context must be installed before campus insertion");
-  assert.ok(campusAt < auditAt, "campus and audit writes must occur after active membership/context");
+  assert.ok(contextAt < runtimeRoleAt && runtimeRoleAt < campusAt, "bootstrap must assume the restricted role before tenant writes");
+  assert.ok(campusAt < membershipRoleAt && membershipRoleAt < auditAt, "campus, owner role and audit writes must occur in order");
   assert.equal(sql.at(-1), "COMMIT");
   assert.equal(pool.released, true);
 });
