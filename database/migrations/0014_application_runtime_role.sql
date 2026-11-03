@@ -9,7 +9,10 @@ BEGIN
     CREATE ROLE pondok_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pondok_rls_owner') THEN
-    CREATE ROLE pondok_rls_owner NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT;
+    EXECUTE format(
+      'CREATE ROLE pondok_rls_owner NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT ADMIN %I',
+      current_user
+    );
   END IF;
 END
 $role$;
@@ -52,29 +55,24 @@ GRANT CREATE ON SCHEMA core TO pondok_rls_owner;
 DO $ownership$
 DECLARE
   migration_role text := current_user;
-  migration_is_superuser boolean;
-  added_membership boolean := false;
+  has_admin_membership boolean;
 BEGIN
-  SELECT rolsuper INTO migration_is_superuser
-  FROM pg_roles WHERE rolname = migration_role;
-
-  IF NOT migration_is_superuser AND NOT EXISTS (
+  SELECT EXISTS (
     SELECT 1
     FROM pg_auth_members m
     JOIN pg_roles granted_role ON granted_role.oid = m.roleid
     JOIN pg_roles member_role ON member_role.oid = m.member
     WHERE granted_role.rolname = 'pondok_rls_owner'
       AND member_role.rolname = migration_role
-  ) THEN
-    EXECUTE format('GRANT pondok_rls_owner TO %I', migration_role);
-    added_membership := true;
+      AND m.admin_option
+  ) INTO has_admin_membership;
+
+  IF NOT has_admin_membership THEN
+    RAISE EXCEPTION 'Migration role % must be created as ADMIN member of pondok_rls_owner to transfer the RLS predicate safely', migration_role;
   END IF;
 
   EXECUTE 'ALTER FUNCTION core.has_active_tenant_membership(uuid) OWNER TO pondok_rls_owner';
-
-  IF added_membership THEN
-    EXECUTE format('REVOKE pondok_rls_owner FROM %I', migration_role);
-  END IF;
+  EXECUTE format('REVOKE pondok_rls_owner FROM %I', migration_role);
 END
 $ownership$;
 REVOKE CREATE ON SCHEMA core FROM pondok_rls_owner;
