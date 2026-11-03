@@ -119,8 +119,8 @@ try {
     [bootstrapCampus, bootstrapTenant],
   );
   await client.query(
-    "INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1,$2,'organization.bootstrap','organization',$1::text,'{}'::jsonb)",
-    [bootstrapTenant, bootstrapUser],
+    "INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,'organization.bootstrap','organization',$3::text,'{}'::jsonb)",
+    [bootstrapTenant, bootstrapUser, bootstrapTenant],
   );
   const bootstrapCampusVisible = await client.query(
     "SELECT id FROM core.campuses WHERE id = $1",
