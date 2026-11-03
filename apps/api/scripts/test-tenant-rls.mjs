@@ -106,6 +106,7 @@ try {
   const membershipAId = membershipA.rows[0].id;
   const membershipBId = membershipB.rows[0].id;
 
+  await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantA]);
   const ownerRoleA = await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid) AS role_id", [membershipAId]);
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userB, tenantB]);
   await client.query("SELECT core.bootstrap_initial_owner_role($1::uuid)", [membershipBId]);
