@@ -5,8 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Pool } from "pg";
 import { handleRequest, type ApiDependencies } from "./main.js";
 
-const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
+const pool = process.env.PONDOK_DATABASE_URL
+  ? new Pool({ connectionString: process.env.PONDOK_DATABASE_URL, max: 5 })
   : undefined;
 if (pool) attachDatabasePool(pool);
 

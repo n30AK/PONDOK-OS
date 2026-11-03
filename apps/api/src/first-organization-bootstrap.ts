@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { TenantDatabase } from "./tenant-db.js";
 
@@ -33,10 +33,9 @@ export function validateFirstOrganizationInput(value: Json): string | null {
 }
 
 /**
- * Creates the first tenant in ordered statements inside one transaction.
- * The membership authority table intentionally has no RLS policy, so the
- * owner membership must exist before tenant-scoped campus/audit writes run.
- * After membership creation, transaction-local context satisfies FORCE RLS.
+ * Creates the first tenant in one transaction using the restricted NOBYPASSRLS
+ * application role. Context is set before organization/membership inserts;
+ * direct membership-role writes are delegated to the guarded SQL helper.
  */
 export async function handleFirstOrganizationBootstrap(
   req: IncomingMessage,
@@ -75,7 +74,7 @@ export async function handleFirstOrganizationBootstrap(
     await client.query("SELECT pg_advisory_xact_lock(hashtext('pondok-os-first-organization')::bigint)");
 
     const existing = await client.query<{ exists: boolean }>(
-      "SELECT EXISTS (SELECT 1 FROM core.organizations) AS exists",
+      "SELECT core.first_organization_exists() AS exists",
     );
     if (existing.rows[0]?.exists) {
       await client.query("ROLLBACK");
@@ -84,38 +83,23 @@ export async function handleFirstOrganizationBootstrap(
       return true;
     }
 
-    const ownerRole = await client.query<{ id: string }>(
-      "SELECT id FROM core.roles WHERE organization_id IS NULL AND role_key = 'institution_owner' AND is_system = true LIMIT 1",
+    const organizationId = randomUUID();
+    await client.query(
+      "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
+      [userId, organizationId],
     );
-    const roleId = ownerRole.rows[0]?.id;
-    if (!roleId) {
-      await client.query("ROLLBACK");
-      inTransaction = false;
-      reply(res, 409, { error: "first_organization_owner_role_missing" });
-      return true;
-    }
 
-    const organization = await client.query<{ id: string }>(
-      "INSERT INTO core.organizations (slug, name, organization_type, status) VALUES ($1, $2, 'pesantren', 'active') RETURNING id",
-      [body.slug, (body.organizationName as string).trim()],
+    await client.query(
+      "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1::uuid, $2, $3, 'pesantren', 'active')",
+      [organizationId, body.slug, (body.organizationName as string).trim()],
     );
-    const organizationId = organization.rows[0]?.id;
-    if (!organizationId) throw new Error("Organization creation returned no ID");
 
-    // This table is the membership authority and is intentionally excluded
-    // from tenant RLS to avoid recursive policy evaluation.
     const membership = await client.query<{ id: string }>(
       "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1::uuid, $2::uuid, 'active') RETURNING id",
       [organizationId, userId],
     );
     const membershipId = membership.rows[0]?.id;
     if (!membershipId) throw new Error("Owner membership creation returned no ID");
-
-    // Subsequent organization-owned inserts are protected by FORCE RLS.
-    await client.query(
-      "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
-      [userId, organizationId],
-    );
 
     const campus = await client.query<{ id: string }>(
       "INSERT INTO core.campuses (organization_id, code, name, campus_type, status) VALUES ($1::uuid, $2, $3, 'main', 'active') RETURNING id",
@@ -125,8 +109,8 @@ export async function handleFirstOrganizationBootstrap(
     if (!campusId) throw new Error("Main campus creation returned no ID");
 
     await client.query(
-      "INSERT INTO core.membership_roles (membership_id, role_id) VALUES ($1::uuid, $2::uuid)",
-      [membershipId, roleId],
+      "SELECT core.bootstrap_initial_owner_role($1::uuid)",
+      [membershipId],
     );
     await client.query(
       `INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
@@ -144,8 +128,8 @@ export async function handleFirstOrganizationBootstrap(
   } catch (reason) {
     if (inTransaction) await client.query("ROLLBACK").catch(() => undefined);
     const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
-    reply(res, code === "23505" ? 409 : code === "23503" ? 422 : 500,
-      { error: code === "23505" ? "organization_slug_or_campus_code_exists" : code === "23503" ? "bootstrap_role_or_reference_missing" : "organization_bootstrap_failed" });
+    reply(res, code === "23505" ? 409 : code === "23503" ? 422 : code === "42501" ? 403 : 500,
+      { error: code === "23505" ? "organization_slug_or_campus_code_exists" : code === "23503" ? "bootstrap_role_or_reference_missing" : code === "42501" ? "bootstrap_authorization_failed" : "organization_bootstrap_failed" });
   } finally {
     client.release();
   }

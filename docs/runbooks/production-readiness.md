@@ -11,8 +11,9 @@ This checklist is intentionally strict. Do not promote a development build to pr
 - [ ] Bootstrap the first institution owner on the intended branch using the guarded CLI.
 - [ ] Assign least-privilege roles; verify direct API requests are denied without permission.
 - [ ] Deploy the API build with transaction-scoped tenant context before activating tenant RLS.
-- [ ] Apply migration 0013 on a staging branch and verify ENABLE + FORCE RLS and the tenant policy on all 59 protected tables.
-- [ ] Review and separately harden `core.organization_memberships`, which is intentionally excluded from migration 0013 as the membership authority.
+- [ ] Configure the API with a dedicated NOBYPASSRLS/NOINHERIT application role; never use the managed owner/BYPASSRLS connection for runtime.
+- [ ] Apply migrations 0013/0014 on a staging branch and verify the restricted role attributes, ENABLE + FORCE RLS on all 60 organization-owned tables, and dedicated RLS policies on organization/membership authority tables.
+- [ ] Verify the runtime role cannot read another tenant's membership, organization registry row, membership-role assignment, or domain records.
 - [ ] Verify tenant isolation with at least two independent user identities and organizations.
 - [ ] Add campus-level authorization where required.
 - [ ] Add rate limits, security logging and abuse monitoring.
@@ -29,7 +30,8 @@ This checklist is intentionally strict. Do not promote a development build to pr
 ## Application and deployment
 
 - [ ] Set `NODE_ENV=production`.
-- [ ] Use matching `DATABASE_URL`, `NEON_AUTH_BASE_URL` and `NEON_AUTH_JWKS_URL` from one branch.
+- [ ] Use matching Neon Auth issuer/JWKS URLs from the same branch and a restricted `PONDOK_DATABASE_URL`.
+- [ ] Keep admin `DATABASE_URL` out of API runtime environments.
 - [ ] Put the web/API containers behind TLS and a hardened reverse proxy.
 - [ ] Set resource limits, restart policy, log rotation and monitoring.
 - [ ] Confirm `/health/live` and `/health/ready` behave as expected.

@@ -12,11 +12,11 @@ This is the zero-additional-hosting-cost development path for PONDOK OS. Neon Fu
 - GitHub Pages origin / CORS origin: `https://n30ak.github.io`
 - Neon Auth base URL: `https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth`
 
-The deployment workflow hardcodes the development project and branch. Do not change it to the production branch as part of a routine deploy.
+The deployment and activation workflows hardcode the development project and branch. Do not change them to the production branch as part of a routine deploy.
 
 ## 1. Add the scoped deployment credential
 
-The deployment workflow needs a Neon API key. Create a **project-scoped** key for project `frosty-cherry-92983148` in Neon Console → Account / Developer Settings → API Keys.
+The development activation workflow needs a Neon API key. Create a **project-scoped** key for project `frosty-cherry-92983148` in Neon Console → Account / Developer Settings → API Keys.
 
 A project-scoped key is still powerful inside its project; it can manage project resources and branches. Keep it out of source files and never paste it into chat or logs.
 
@@ -28,15 +28,19 @@ Add it to GitHub:
 4. Value: the project-scoped key.
 5. Do not create a plain repository variable for this credential.
 
-## 2. Deploy the development API
+## 2. Activate the development API and database
 
 1. Open repository Actions.
-2. Select **Deploy PONDOK OS API to Neon Development**.
+2. Select **Activate PONDOK OS Neon Development**.
 3. Choose **Run workflow**.
-4. Enter exactly `DEPLOY_DEV_API` in the confirmation field.
+4. Enter exactly `ACTIVATE_NEON_DEV` in the confirmation field.
 5. Wait for the workflow to finish.
 
-The deployment script bundles the API and deploys slug `pondokapi` to branch `br-proud-paper-b312lfxi` only. It prints the invocation URL when Neon reports the deployment as completed.
+The workflow deploys the Node.js 24 API function first, provisions the restricted `pondok_app` login role, applies pending migrations using the repository migration runner, obtains the restricted role's pooled connection URI, and updates the function environment. It targets only `br-proud-paper-b312lfxi`.
+
+The API runtime uses `PONDOK_DATABASE_URL` for `pondok_app`. It intentionally ignores the automatically injected owner `DATABASE_URL`, because the managed owner role has `BYPASSRLS=true`. The migration runner alone uses the admin connection.
+
+The workflow prints the public function invocation URL, but never prints database connection strings or the generated application-role password.
 
 Verify the function URL:
 
@@ -45,9 +49,7 @@ curl -i https://<function-invocation-host>/health/live
 curl -i https://<function-invocation-host>/health/ready
 ```
 
-Expected: `/health/live` returns HTTP 200. `/health/ready` returns HTTP 200 when the branch-injected database connection is available.
-
-Neon injects `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL` for this branch. The function deployment sets `CORS_ALLOWED_ORIGINS=https://n30ak.github.io`.
+Expected: both endpoints return HTTP 200 after the activation workflow completes.
 
 ## 3. Enable GitHub Pages once
 
@@ -61,22 +63,22 @@ The repository includes a manual workflow named **PONDOK OS GitHub Pages**. It b
 
 1. Open repository Actions.
 2. Select **PONDOK OS GitHub Pages** → **Run workflow**.
-3. Paste the Neon Function invocation URL printed by the API deployment workflow into `api_base_url` (without a trailing slash).
+3. Paste the Neon Function invocation URL printed by the activation workflow into `api_base_url` (without a trailing slash).
 4. Keep the default Neon Auth URL unless the development branch/Auth integration is deliberately changed.
 5. Run the workflow and open the resulting Pages URL.
 
 The expected URL is `https://n30ak.github.io/PONDOK-OS/`. Add `https://n30ak.github.io` as a trusted domain in Neon Auth for the **development branch only** before testing sign-in.
 
-## 5. Remaining gates after hosting
+## 5. First organization setup
 
-Hosting the API and static workspace does not activate database RLS or initialize an institution.
+The activation workflow does not set `PONDOK_BOOTSTRAP_TOKEN_SHA256`. First-organization setup remains disabled until the one-time bootstrap digest is configured securely in the Neon Function environment. Follow [the first-install runbook](../runbooks/first-install.md), then remove the digest immediately after setup.
 
-- Deploy the matching API build first. This is required because the API sets transaction-local tenant context.
-- Apply migration 0013 to the development branch using the repository migration runner, then verify all 59 protected tables have ENABLE + FORCE RLS.
+## 6. Remaining acceptance gates
+
+- Verify the runtime role reports `rolbypassrls=false` and `rolsuper=false`.
 - Verify live Neon Auth sign-in, owner bootstrap and two-tenant isolation.
-- The API function currently has no `PONDOK_BOOTSTRAP_TOKEN_SHA256` environment variable, so first-organization setup remains intentionally disabled until the one-time bootstrap digest is configured securely.
-- Remove the bootstrap digest immediately after first-organization setup and verify a second bootstrap attempt is rejected.
-- Do not apply the migration or deploy this workflow to `br-late-cherry-b3uqtuvh` (production) without a separate production-readiness approval.
+- Complete backup/restore, operational monitoring and institution workflow acceptance.
+- Do not apply the migrations or deploy this workflow to `br-late-cherry-b3uqtuvh` (production) without a separate production-readiness approval.
 
 ## Free-plan note
 

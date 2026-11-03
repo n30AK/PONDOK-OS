@@ -50,6 +50,10 @@ jobs:
         run: node apps/api/scripts/test-tenant-rls.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify RLS helper ownership transfer as a non-superuser migrator
+        run: node apps/api/scripts/test-non-superuser-function-owner-transfer.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
       - name: Build all deployable workspaces
@@ -67,6 +71,10 @@ jobs:
           grep -Fq '"start_url": "./"' apps/web/dist/manifest.webmanifest
       - name: Bundle Neon Functions API
         run: pnpm --filter @pondok-os/api bundle:function
+      - name: Validate Neon development activation scripts
+        run: |
+          node --check apps/api/scripts/deploy-neon-function.mjs
+          node --check apps/api/scripts/activate-neon-development.mjs
       - name: Upload Neon Functions API bundle
         uses: actions/upload-artifact@v4
         with:

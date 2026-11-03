@@ -28,9 +28,6 @@ await neon.functions.deploy({
   slug,
   zip: new File([zipBytes], "pondok-api-function.zip", { type: "application/zip" }),
   runtime: "nodejs24",
-  environment: JSON.stringify({
-    CORS_ALLOWED_ORIGINS: "https://n30ak.github.io",
-  }),
 });
 
 const deadline = Date.now() + 5 * 60_000;

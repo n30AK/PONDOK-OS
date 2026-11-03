@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,26 +38,26 @@ async function main(): Promise<void> {
     );
     if (authUser.rowCount !== 1) throw new Error("The supplied user ID does not exist in neon_auth on this database branch.");
 
-    const organization = await client.query<{ id: string }>(
-      `INSERT INTO core.organizations (slug, name, organization_type, status)
-       VALUES ($1, $2, 'pesantren', 'active')
-       RETURNING id`,
-      [slug, organizationName.trim()],
+    const existing = await client.query<{ exists: boolean }>(
+      "SELECT core.first_organization_exists() AS exists",
     );
-    const organizationId = organization.rows[0]?.id;
-    if (!organizationId) throw new Error("Organization creation returned no ID.");
+    if (existing.rows[0]?.exists) throw new Error("The first organization has already been initialized.");
 
-    // Create the membership authority row before tenant-scoped writes.
-    // core.organization_memberships is intentionally excluded from tenant RLS.
+    const organizationId = randomUUID();
+    await client.query(
+      "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
+      [userId, organizationId],
+    );
+    await client.query(
+      `INSERT INTO core.organizations (id, slug, name, organization_type, status)
+       VALUES ($1::uuid, $2, $3, 'pesantren', 'active')`,
+      [organizationId, slug, organizationName.trim()],
+    );
     const membership = await client.query<{ id: string }>(
       `INSERT INTO core.organization_memberships (organization_id, user_id, membership_status)
        VALUES ($1::uuid, $2::uuid, 'active')
        RETURNING id`,
       [organizationId, userId],
-    );
-    await client.query(
-      "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
-      [userId, organizationId],
     );
     const campus = await client.query<{ id: string }>(
       `INSERT INTO core.campuses (organization_id, code, name, campus_type, status)
@@ -64,15 +65,11 @@ async function main(): Promise<void> {
        RETURNING id`,
       [organizationId, campusCode, campusName.trim()],
     );
-    const ownerRole = await client.query<{ id: string }>(
-      `SELECT id FROM core.roles
-       WHERE organization_id IS NULL AND role_key = 'institution_owner' AND is_system = true`,
-    );
-    const roleId = ownerRole.rows[0]?.id;
-    if (!roleId) throw new Error("System owner role is missing. Apply migration 0009 first.");
+    const membershipId = membership.rows[0]?.id;
+    if (!membershipId || !campus.rows[0]?.id) throw new Error("Membership or main campus creation returned no ID.");
     await client.query(
-      "INSERT INTO core.membership_roles (membership_id, role_id) VALUES ($1::uuid, $2::uuid)",
-      [membership.rows[0]?.id, roleId],
+      "SELECT core.bootstrap_initial_owner_role($1::uuid)",
+      [membershipId],
     );
     await client.query(
       `INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata)

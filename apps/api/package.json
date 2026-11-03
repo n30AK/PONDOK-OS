@@ -12,7 +12,8 @@
     "db:bootstrap": "pnpm build && node dist/bootstrap-organization.js",
     "test:tenant-rls": "node scripts/test-tenant-rls.mjs",
     "bundle:function": "pnpm build && esbuild src/neon-function.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/neon-function/index.mjs && cd dist/neon-function && zip -q -j ../pondok-api-function.zip index.mjs",
-    "deploy:function": "node scripts/deploy-neon-function.mjs"
+    "deploy:function": "node scripts/deploy-neon-function.mjs",
+    "activate:neon-dev": "node scripts/activate-neon-development.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",

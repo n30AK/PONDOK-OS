@@ -14,16 +14,18 @@ This deployment packages the API and PWA web workspace in Docker. PostgreSQL and
 ## Configure
 
 1. Copy `.env.compose.example` to `.env`.
-2. Set `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL` from the same Neon branch. Never mix URLs from different branches.
-3. Set `CORS_ALLOWED_ORIGINS` to the exact public HTTPS origin used by the browser.
-4. Ensure the database migration ledger and any manually created schema objects have been reconciled before migration.
-5. Keep the populated `.env` private and outside version control.
+2. Set `DATABASE_URL` to the managed admin/owner connection string for migration and controlled operator CLI only.
+3. Set `PONDOK_DATABASE_URL` to the dedicated `pondok_app` login role with `NOBYPASSRLS`, `NOINHERIT`, and no superuser/database/role-creation privileges. This is the only database URL the API container may use.
+4. Set `NEON_AUTH_BASE_URL` and `NEON_AUTH_JWKS_URL` from the same Neon branch. Never mix URLs from different branches.
+5. Set `CORS_ALLOWED_ORIGINS` to the exact public HTTPS origin used by the browser.
+6. Ensure the database migration ledger and any manually created schema objects have been reconciled before migration.
+7. Keep the populated `.env` private and outside version control.
 
 For the first institution only, follow [the first-install runbook](../runbooks/first-install.md). Generate a one-time token locally using `node scripts/create-bootstrap-token.mjs`, configure only the digest as `PONDOK_BOOTSTRAP_TOKEN_SHA256`, and enter the raw token once in the first-setup screen. Remove the digest from the API environment immediately after initialization.
 
 ## Build and run
 
-Deploy the API/web image containing the current tenant transaction context before activating migration 0013:
+Deploy the API/web image containing the current tenant transaction context and restricted `PONDOK_DATABASE_URL` before activating migrations 0013/0014:
 
 ```bash
 docker compose build
@@ -42,7 +44,7 @@ Migrations are deliberately not run automatically when containers start. After t
 docker compose --profile migration run --rm migrate
 ```
 
-On the current PONDOK OS development branch, migrations 0001–0012 are recorded and 0013 is pending. Verify the target branch, migration ledger, and RLS flags after the migration runner completes. Never run this development procedure against the production branch.
+On the current PONDOK OS development branch, migrations 0001–0012 are recorded and 0013/0014 are pending. Verify that `pondok_app.rolbypassrls=false`, that all 60 organization-owned tables have ENABLE + FORCE RLS, and that the core organization/membership authority policies are present. The managed owner `DATABASE_URL` has BYPASSRLS and must never be used by the API runtime. Never run this development procedure against the production branch.
 
 The runner uses checksums and stops if a previously recorded migration has changed.
 
