@@ -33,7 +33,7 @@ Each protected operation verifies identity, active organization membership and t
 
 Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 59 organization-owned tables across 15 schema groups. Policies require both the selected organization and an active membership for the verified API user. CI tests the policies using a restricted non-owner PostgreSQL role, including cross-tenant read/write denial and first-bootstrap writes under FORCE RLS.
 
-**Important:** this migration is present in the repository but has not yet been applied to the Neon development branch. Deploy the API build containing transaction-scoped tenant context and the RLS-compatible bootstrap before applying migration 0013. Do not apply it to production without an approved production-readiness gate.
+**Development status (2026-11-03):** migrations 0013 and 0014 have been applied and verified on Neon Development. The API is deployed as Neon Function deployment #4 (Node.js 24); `/health/live` and `/health/ready` both pass. Authenticated tenant transactions execute `SET LOCAL ROLE pondok_runtime` before setting tenant context, preventing the `neondb_owner` BYPASSRLS connection from bypassing tenant policies. Production remains untouched. Live sign-in/bootstrap and two-tenant API acceptance are still pending.
 
 The table `core.organization_memberships` is intentionally excluded as the membership authority to avoid recursive policy evaluation. The API resolves membership using the verified JWT subject and selected organization. Direct database access to this table remains a separate hardening boundary.
 
@@ -47,7 +47,7 @@ node scripts/create-bootstrap-token.mjs
 
 Only its SHA-256 digest belongs in the API environment. The raw token is entered once in the web setup form. Remove the digest from the API environment immediately after success. The endpoint refuses to create a second organization.
 
-The API bootstrap now uses ordered statements in one transaction: it creates the organization, inserts the owner membership, sets transaction-local tenant context, then creates the main campus, owner role assignment and audit event. The CLI bootstrap follows the same membership-before-tenant-write order. This is required for the campus and audit RLS policies to pass after migration 0013 is active.
+The API bootstrap now uses ordered statements in one transaction: it creates the organization and owner membership under the elevated bootstrap transaction, sets transaction-local tenant context, then switches to `pondok_runtime` before creating the main campus, owner role assignment and audit event. This is required for campus and audit RLS policies after migration 0013. Migration 0014 grants the restricted role only the necessary schema/table/sequence privileges.
 
 The separate CLI bootstrap command remains available for controlled operator workflows:
 
