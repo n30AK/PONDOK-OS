@@ -26,6 +26,34 @@ async function readJson(req: IncomingMessage): Promise<Json | null> {
   } catch { return null; }
 }
 
+
+const STUDENT_PROFILE_FIELDS: Record<string, number> = {
+  fatherName: 160, motherName: 160, guardianName: 160, guardianRelation: 40,
+  guardianPhone: 32, guardianEmail: 254, homeAddress: 1000, province: 100,
+  regency: 100, district: 100, village: 100, postalCode: 10,
+  originSchool: 180, previousEducation: 120, entryDate: 10,
+  educationTrack: 40, boardingStatus: 24, dormitoryName: 120, roomCode: 40,
+  studentCategory: 40, admissionYear: 4
+};
+
+export function validateStudentProfileData(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return "invalid_student_profile_data";
+  const data = value as Record<string, unknown>;
+  for (const [key, raw] of Object.entries(data)) {
+    const max = STUDENT_PROFILE_FIELDS[key];
+    if (max === undefined) return "unsupported_student_profile_field";
+    if (raw !== null && (typeof raw !== "string" || raw.length > max)) return "invalid_student_profile_field";
+    if (typeof raw === "string" && raw.trim().length === 0) return "empty_student_profile_field";
+  }
+  if (data.guardianEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(data.guardianEmail))) return "invalid_guardian_email";
+  if (data.entryDate && (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(data.entryDate)) || Number.isNaN(Date.parse(String(data.entryDate))))) return "invalid_entry_date";
+  if (data.admissionYear && !/^20\\d{2}$/.test(String(data.admissionYear))) return "invalid_admission_year";
+  if (data.educationTrack && !["formal", "muadalah", "nonformal", "salafiyah", "other"].includes(String(data.educationTrack))) return "invalid_education_track";
+  if (data.boardingStatus && !["mukim", "non_mukim", "commuter"].includes(String(data.boardingStatus))) return "invalid_boarding_status";
+  return null;
+}
+
 export function validateStudentInput(value: Json): string | null {
   if (typeof value.campusId !== "string" || !UUID.test(value.campusId)) return "invalid_campus_id";
   if (typeof value.studentNumber !== "string" || value.studentNumber.trim().length < 1 || value.studentNumber.trim().length > 64) return "invalid_student_number";
@@ -90,7 +118,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
                  birth_date AS "birthDate", gender_code AS "genderCode", status,
                  created_at AS "createdAt"`,
       [organizationId, body.campusId, (body.studentNumber as string).trim(), (body.legalName as string).trim(),
-       body.preferredName ?? null, body.birthDate ?? null, body.genderCode ?? null],
+       body.preferredName ?? null, body.birthDate ?? null, body.genderCode ?? null, JSON.stringify(body.profileData ?? {})],
     );
     reply(res, 201, { data: result.rows[0] });
   } catch (error) {
