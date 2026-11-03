@@ -95,6 +95,12 @@ BEGIN
 END
 $function$;
 
+-- Keep privileged helper execution closed during the migration boundary.
+-- Migration 0014 grants only the required functions to pondok_app.
+REVOKE ALL ON FUNCTION core.has_active_tenant_membership(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION core.first_organization_exists() FROM PUBLIC;
+REVOKE ALL ON FUNCTION core.bootstrap_initial_owner_role(uuid) FROM PUBLIC;
+
 -- Enforce tenant isolation in PostgreSQL, not only in API query predicates.
 -- Context is transaction-local and is set by apps/api/src/tenant-db.ts.
 DO $migration$
