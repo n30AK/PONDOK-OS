@@ -55,6 +55,24 @@ test("validates catalog arrays and numeric asset values", () => {
   }), "invalid_acquisitionCost");
 });
 
+test("matches database enums and capacity/value constraints", () => {
+  assert.equal(validateModuleRecordInput("subjects", {
+    code: "KTB", name: "Kajian", subjectType: "kitab"
+  }), "invalid_subjectType");
+  assert.equal(validateModuleRecordInput("attendance-records", {
+    attendanceSessionId: uuid, studentId: uuid, attendanceStatus: "permitted"
+  }), "invalid_attendanceStatus");
+  assert.equal(validateModuleRecordInput("classes", {
+    campusId: uuid, academicYearId: uuid, programId: uuid, code: "VII-A", name: "Kelas VII A", capacity: 0
+  }), "invalid_capacity");
+  assert.equal(validateModuleRecordInput("boarding-rooms", {
+    dormitoryId: uuid, roomCode: "101", capacity: 101
+  }), "invalid_capacity");
+  assert.equal(validateModuleRecordInput("donor-pledges", {
+    contactId: uuid, pledgeReference: "DON-001", pledgedAmount: 0
+  }), "invalid_pledgedAmount");
+});
+
 test("public content remains draft until a separate publication workflow exists", () => {
   assert.equal(validateModuleRecordInput("cms-pages", {
     slug: "profil", title: "Profil Pesantren", bodyMarkdown: "Konten profil.", pageStatus: "draft"
