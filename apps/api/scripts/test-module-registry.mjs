@@ -93,18 +93,18 @@ try {
   );
 
   await client.query("SELECT set_config('app.user_id',$1,true)", [publisher]);
-  await expectDenied(
-    () => client.query("UPDATE platform.module_requests SET status='approved' WHERE id=$1", [requestId]),
-    (error) => error?.code === "42501",
-    "publishers cannot approve or alter workflow state",
+  const deniedStatusUpdate = await client.query(
+    "UPDATE platform.module_requests SET status='approved' WHERE id=$1",
+    [requestId],
   );
+  assert.equal(deniedStatusUpdate.rowCount, 0, "publishers cannot approve or alter workflow state");
+
+  await client.query("SELECT set_config('app.user_id',$1,true)", [admin]);
   await expectDenied(
     () => client.query("UPDATE platform.module_requests SET manifest='{}'::jsonb WHERE id=$1", [requestId]),
     (error) => error?.code === "42501",
-    "submission manifest is immutable",
+    "submission manifest is immutable even for platform administrators",
   );
-
-  await client.query("SELECT set_config('app.user_id',$1,true)", [admin]);
   await client.query(
     "UPDATE platform.module_requests SET status='approved', reviewed_by=$2, reviewed_at=now(), updated_at=now() WHERE id=$1",
     [requestId, admin],
