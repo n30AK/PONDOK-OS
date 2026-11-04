@@ -96,6 +96,12 @@ export function validateModuleRecordInput(resourceKey: string, body: Json): stri
   return validate(resource.fields, body);
 }
 
+export function validateModuleRecordPatchInput(resourceKey: string, body: Json): string | null {
+  const resource = RESOURCES[resourceKey];
+  if (!resource) return "module_resource_not_found";
+  return validate(resource.fields, body, true);
+}
+
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const match = url.pathname.match(/^\/v1\/modules\/([a-z-]+)$/);
