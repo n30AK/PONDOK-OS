@@ -100,6 +100,10 @@ Organisasi/yayasan/kampus/unit/lokasi/cost center; orang tunggal dan profil pera
 
 ## 7. Sumber rujukan awal
 
+- BPK, UU 18/2019 tentang Pesantren (status berlaku): https://peraturan.bpk.go.id/Details/122743/uu-no-18-tahun2019
+- BPK, PMA 30/2020 tentang Pendirian dan Penyelenggaraan Pesantren (status berlaku): https://peraturan.bpk.go.id/Details/176216/peraturan-menag-no-30-tahun-2020
+- BPK, PMA 31/2020 tentang Pendidikan Pesantren (status berlaku; termasuk sistem informasi/manajemen data pesantren): https://peraturan.bpk.go.id/Details/176475/peraturanmenag-no-31-tahun-2020
+- Kemenag, KMA 83/2022 tentang Pengelolaan Data Pendidikan melalui EMIS: https://jdih.kemenag.go.id/yzxkthpo/regulation/2022kmagama083.pdf
 - Kemenag, ragam bidang BUMP: https://kemenag.go.id/pers-rilis/program-kemandirian-pesantren-kemenag-kembangkan-432-badan-usaha-milik-pesantren-G5kn0
 - Kemenag, Economy Hub dan contoh laundry, pertanian, batik, AMDK: https://kemenag.go.id/kolom/economy-hub-dan-geliat-ekonomi-di-pesantren-feBk4
 - Kemenag, contoh minimarket, kantin, laundry, depot air dan distro: https://kemenag.go.id/en/feature/melihat-derap-pesantren-merawat-ilmu-dan-menumbuhkan-kemandirian-di-ibu-kota-s46KT
