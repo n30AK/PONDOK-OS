@@ -97,8 +97,7 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
     } finally { setBusy(false); }
   };
 
-  const verifyAccountEmail = async (event: FormEvent) => {
-    event.preventDefault();
+  const verifyAccountEmail = async () => {
     if (!authClient || !contactEmail) return;
     setBusy(true); setError(""); setNotice("");
     try {
@@ -195,10 +194,10 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
         <div className="platform-actions">
           <button type="button" className="outline-button" onClick={() => void sendVerificationCode()} disabled={busy || !contactEmail}>Kirim kode verifikasi</button>
         </div>
-        <form className="platform-redeem" onSubmit={verifyAccountEmail}>
+        <div className="platform-redeem">
           <input inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\\D/g, "").slice(0, 8))} minLength={6} maxLength={8} required placeholder="Kode verifikasi email"/>
-          <button className="primary" disabled={busy || verificationCode.length < 6}>Verifikasi email</button>
-        </form>
+          <button type="button" className="primary" onClick={() => void verifyAccountEmail()} disabled={busy || verificationCode.length < 6}>Verifikasi email</button>
+        </div>
       </div>}
         <label>Nama lembaga<input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} onBlur={() => setOrganizationSlug(value => value || organizationName.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""))} required minLength={3} maxLength={180}/></label>
         <label>Slug lembaga<input value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"-"))} required maxLength={80}/></label>
