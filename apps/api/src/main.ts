@@ -92,6 +92,47 @@ export async function handleRequest(
     return;
   }
 
+  if (pathname === "/v1/tenant/organizations") {
+    if (method !== "GET") {
+      response.setHeader("allow", "GET, HEAD");
+      sendJson(response, 405, { error: "method_not_allowed" });
+      return;
+    }
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" });
+      return;
+    }
+    try {
+      const result = await dependencies.pool.query<{
+        organization_id: string; organization_name: string; organization_slug: string;
+      }>(
+        `SELECT o.id AS organization_id, o.name AS organization_name, o.slug AS organization_slug
+         FROM core.organization_memberships om
+         JOIN core.organizations o ON o.id = om.organization_id
+         WHERE om.user_id = $1::uuid
+           AND om.membership_status = 'active'
+           AND o.status = 'active'
+         ORDER BY o.name ASC`,
+        [identity.userId],
+      );
+      sendJson(response, 200, { data: result.rows.map((row) => ({
+        id: row.organization_id, name: row.organization_name, slug: row.organization_slug,
+      })) });
+    } catch {
+      sendJson(response, 500, { error: "organization_list_unavailable" });
+    }
+    return;
+  }
+
   if (pathname === "/v1/tenant/context") {
     if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
       sendJson(response, 503, { error: "identity_or_database_not_configured" });
