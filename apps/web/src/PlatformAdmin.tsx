@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { authClient, getAccessToken, getCurrentUser } from "./auth";
+import ModuleRegistryAdmin from "./ModuleRegistryAdmin";
 
 type TenantRecord = {
   organizationId: string; name: string; slug: string; organizationType: string; status: string;
@@ -213,6 +214,8 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
       <article><span>{isSuperAdmin ? "Tenant diaktifkan" : "Disetujui / aktif"}</span><strong>{isSuperAdmin ? activeCount : mine.filter((item) => ["approved","activated"].includes(item.status)).length}</strong></article>
       <article><span>Menunggu keputusan</span><strong>{mine.filter((item) => item.status === "pending").length}</strong></article>
     </div>
+
+    {isSuperAdmin && <ModuleRegistryAdmin />}
 
     {isSuperAdmin && <div className="platform-panel">
       <h3>Registry lembaga</h3>
