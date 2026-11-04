@@ -96,9 +96,25 @@ AS $function$
   )
 $function$;
 
+CREATE OR REPLACE FUNCTION platform.has_consumed_activation_token(p_request_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, platform
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM platform.activation_tokens t
+    WHERE t.request_id = p_request_id
+      AND t.requested_by = nullif(current_setting('app.user_id', true), '')::uuid
+      AND t.consumed_at IS NOT NULL
+  )
+$function$;
+
 REVOKE ALL ON SCHEMA platform FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA platform FROM PUBLIC;
 REVOKE ALL ON FUNCTION platform.is_active_super_admin() FROM PUBLIC;
+REVOKE ALL ON FUNCTION platform.has_consumed_activation_token(uuid) FROM PUBLIC;
 
 DO $role$
 BEGIN
@@ -122,6 +138,7 @@ $grant$;
 
 GRANT USAGE ON SCHEMA platform, core, audit TO pondok_platform_runtime;
 GRANT EXECUTE ON FUNCTION platform.is_active_super_admin() TO pondok_platform_runtime;
+GRANT EXECUTE ON FUNCTION platform.has_consumed_activation_token(uuid) TO pondok_platform_runtime;
 GRANT SELECT, INSERT, UPDATE ON platform.activation_requests TO pondok_platform_runtime;
 GRANT SELECT, INSERT ON platform.activation_tokens TO pondok_platform_runtime;
 GRANT UPDATE (consumed_at) ON platform.activation_tokens TO pondok_platform_runtime;
@@ -145,13 +162,31 @@ CREATE POLICY activation_requests_access ON platform.activation_requests
   )
   WITH CHECK (
     (requested_by = nullif(current_setting('app.user_id', true), '')::uuid AND status = 'pending')
+    OR (
+      requested_by = nullif(current_setting('app.user_id', true), '')::uuid
+      AND status = 'activated'
+      AND organization_id IS NOT NULL
+      AND platform.has_consumed_activation_token(id)
+    )
     OR platform.is_active_super_admin()
   );
 
 ALTER TABLE platform.activation_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform.activation_tokens FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS activation_tokens_admin_only ON platform.activation_tokens;
-CREATE POLICY activation_tokens_owner_or_admin ON platform.activation_tokens
+DROP POLICY IF EXISTS activation_tokens_owner_or_admin ON platform.activation_tokens;
+DROP POLICY IF EXISTS activation_tokens_select_owner_or_admin ON platform.activation_tokens;
+DROP POLICY IF EXISTS activation_tokens_insert_admin_only ON platform.activation_tokens;
+DROP POLICY IF EXISTS activation_tokens_update_owner_or_admin ON platform.activation_tokens;
+CREATE POLICY activation_tokens_select_owner_or_admin ON platform.activation_tokens
+  FOR SELECT USING (
+    requested_by = nullif(current_setting('app.user_id', true), '')::uuid
+    OR platform.is_active_super_admin()
+  );
+CREATE POLICY activation_tokens_insert_admin_only ON platform.activation_tokens
+  FOR INSERT WITH CHECK (platform.is_active_super_admin());
+CREATE POLICY activation_tokens_update_owner_or_admin ON platform.activation_tokens
+  FOR UPDATE
   USING (
     requested_by = nullif(current_setting('app.user_id', true), '')::uuid
     OR platform.is_active_super_admin()
