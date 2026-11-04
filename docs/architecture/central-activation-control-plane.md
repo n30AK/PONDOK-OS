@@ -25,6 +25,47 @@ PONDOK OS uses a centralized SaaS control plane with approval-based activation.
 8. Platform actions are recorded separately in `platform.audit_events`.
 9. No platform migration is applied to Neon as part of this PR. Apply only after reviewing the migration against the Development branch and obtaining separate approval.
 
+## Controlled first Super Administrator grant (Development only)
+
+After migration 0016 is reviewed and separately approved for Development, the company account must already exist in the same Development Neon Auth environment. Verify its user UUID and verified email first. The initial grant is an out-of-band privileged operation; there is intentionally no public self-service endpoint for granting Super Admin.
+
+Use a database session that has been positively confirmed to target the Development branch. Replace the placeholders only after independently verifying the account:
+
+```sql
+BEGIN;
+
+DO $grant$
+DECLARE
+  target_user_id uuid := '<DEVELOPMENT_NEON_AUTH_USER_UUID>'::uuid;
+  target_email text := lower('<VERIFIED_COMPANY_EMAIL>');
+  target_name text := '<COMPANY_ADMIN_DISPLAY_NAME>';
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM neon_auth."user"
+    WHERE id = target_user_id
+      AND lower(email) = target_email
+      AND "emailVerified" = true
+      AND coalesce(banned, false) = false
+  ) THEN
+    RAISE EXCEPTION 'Super Admin identity must exist, match the verified email, and be unbanned';
+  END IF;
+
+  INSERT INTO platform.super_admins (user_id, email, display_name, status)
+  VALUES (target_user_id, target_email, target_name, 'active')
+  ON CONFLICT (user_id) DO UPDATE
+    SET email = EXCLUDED.email,
+        display_name = EXCLUDED.display_name,
+        status = 'active',
+        revoked_at = NULL;
+END
+$grant$;
+
+COMMIT;
+```
+
+Do not run this against Production. Do not grant Super Admin using an email-only match, a tenant role, or a browser-supplied value. Record who approved the grant and retain the database audit/change record. Revocation is performed by setting the matching row to `status = 'revoked'` and recording `revoked_at`.
+
 ## Activation lifecycle
 
 `pending -> approved -> activated` or `pending -> rejected`.
