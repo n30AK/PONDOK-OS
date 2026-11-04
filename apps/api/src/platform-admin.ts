@@ -311,7 +311,7 @@ async function handleModuleRegistryRequest(
     }
     try {
       const authUser = await pool.query<{ email: string }>(
-        'SELECT email FROM neon_auth."user" u WHERE id = $1::uuid AND "emailVerified" = true AND coalesce((to_jsonb(u)->>'banned')::boolean, false) = false',
+        `SELECT email FROM neon_auth."user" u WHERE id = $1::uuid AND "emailVerified" = true AND coalesce((to_jsonb(u)->>'banned')::boolean, false) = false`,
         [body.userId],
       );
       if (!authUser.rows[0]) { reply(res, 422, { error: "verified_active_auth_user_required" }); return true; }
