@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateModuleRecordInput } from "../dist/module-records.js";
+import { validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -136,6 +136,16 @@ test("validates procurement detail lines and append-only asset event categories"
   assert.equal(validateModuleRecordInput("asset-events", {
     assetId: uuid, eventType: "delete"
   }), "invalid_eventType");
+});
+
+
+test("partial updates accept only known fields without requiring the full create form", () => {
+  assert.equal(validateModuleRecordPatchInput("employees", { preferredName: "Ust. Ahmad" }), null);
+  assert.equal(validateModuleRecordPatchInput("employees", { employmentStatus: "terminated" }), null);
+  assert.equal(validateModuleRecordPatchInput("employees", { organizationId: uuid }), "unsupported_field");
+  assert.equal(validateModuleRecordPatchInput("employees", { employeeNumber: 42 }), "invalid_employeeNumber");
+  assert.equal(validateModuleRecordPatchInput("employees", {}), null);
+  assert.equal(validateModuleRecordPatchInput("not-a-module", { name: "x" }), "module_resource_not_found");
 });
 
 test("unknown module resources fail closed", () => {
