@@ -1,11 +1,17 @@
 import { createAuthClient } from "@neondatabase/auth";
 
 type AuthResult<T> = { data: T | null; error: { message: string } | null };
+type AuthUserPayload = {
+  user?: unknown;
+  session?: { user?: unknown } | null;
+};
 type AuthClient = {
   token(): Promise<AuthResult<{ token?: string }>>;
-  getSession(): Promise<AuthResult<{ user?: unknown }>>;
-  signIn: { email(input: { email: string; password: string }): Promise<AuthResult<{ user?: unknown }>> };
-  signUp: { email(input: { email: string; password: string; name: string }): Promise<AuthResult<{ user?: unknown }>> };
+  getSession(): Promise<AuthResult<AuthUserPayload>>;
+  signIn: { email(input: { email: string; password: string }): Promise<AuthResult<AuthUserPayload>> };
+  signUp: { email(input: { email: string; password: string; name: string }): Promise<AuthResult<AuthUserPayload>> };
+  sendVerificationEmail(input: { email: string; callbackURL?: string }): Promise<AuthResult<unknown>>;
+  emailOtp: { verifyEmail(input: { email: string; otp: string }): Promise<AuthResult<unknown>> };
   signOut(): Promise<unknown>;
 };
 
@@ -18,7 +24,26 @@ export type PondokUser = {
   id: string;
   name?: string;
   email?: string;
+  emailVerified?: boolean;
 };
+
+/**
+ * Managed Better Auth getSession() returns the user under data.session.user.
+ * Some auth operations also return data.user, so accept both documented
+ * response shapes without treating a missing session as an authenticated user.
+ */
+function readPondokUser(payload: AuthUserPayload | null | undefined): PondokUser | null {
+  const candidate = payload?.session?.user ?? payload?.user;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+  const user = candidate as Record<string, unknown>;
+  if (typeof user.id !== "string" || !user.id) return null;
+  return {
+    id: user.id,
+    ...(typeof user.name === "string" ? { name: user.name } : {}),
+    ...(typeof user.email === "string" ? { email: user.email } : {}),
+    ...(typeof user.emailVerified === "boolean" ? { emailVerified: user.emailVerified } : {}),
+  };
+}
 
 export async function getAccessToken(): Promise<string> {
   if (!authClient) throw new Error("Neon Auth belum dikonfigurasi. Isi VITE_NEON_AUTH_URL.");
@@ -33,6 +58,5 @@ export async function getCurrentUser(): Promise<PondokUser | null> {
   if (!authClient) return null;
   const result = await authClient.getSession();
   if (result.error) throw new Error(result.error.message);
-  const user = result.data?.user;
-  return user ? user as PondokUser : null;
+  return readPondokUser(result.data);
 }
