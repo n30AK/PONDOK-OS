@@ -32,3 +32,11 @@ test("student profile rejects non-object payloads and oversized field values", (
   assert.equal(validateStudentProfileData(["not", "an", "object"]), "invalid_student_profile_data");
   assert.equal(validateStudentProfileData({ homeAddress: "x".repeat(1001) }), "invalid_student_profile_field");
 });
+
+test("student update accepts partial contextual profile changes", async () => {
+  const { validateStudentUpdateInput } = await import("../dist/academic.js");
+  assert.equal(validateStudentUpdateInput({ legalName: "Ahmad Baru", profileData: { guardianPhone: "08123456789" } }), null);
+  assert.equal(validateStudentUpdateInput({ birthDate: "2026-02-31" }), "invalid_birth_date");
+  assert.equal(validateStudentUpdateInput({ status: "active" }), "unsupported_student_update_field");
+  assert.equal(validateStudentUpdateInput({}), "empty_student_update");
+});
