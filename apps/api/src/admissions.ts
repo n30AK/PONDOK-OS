@@ -124,6 +124,35 @@ export async function handleAdmissionsRequest(
     return true;
   }
 
+  const periodOpenMatch = path.match(/^\\/v1\\/admissions\\/periods\\/([0-9a-f-]{36})\\/open$/i);
+  if (periodOpenMatch && req.method === "POST") {
+    if (!tenant.permissions.includes("admissions.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "admissions.periods.manage" }); return true; }
+    const result = await pool.query(
+      `UPDATE admissions.admission_periods
+       SET period_status = 'open'
+       WHERE organization_id = $1::uuid AND id = $2::uuid
+         AND period_status = 'draft' AND now() BETWEEN opens_at AND closes_at
+       RETURNING id, period_code AS "periodCode", period_status AS status`,
+      [organizationId, periodOpenMatch[1]],
+    );
+    if (!result.rows[0]) { reply(res, 409, { error: "period_not_found_or_outside_opening_window" }); return true; }
+    reply(res, 200, { data: result.rows[0] }); return true;
+  }
+
+  const periodCloseMatch = path.match(/^\\/v1\\/admissions\\/periods\\/([0-9a-f-]{36})\\/close$/i);
+  if (periodCloseMatch && req.method === "POST") {
+    if (!tenant.permissions.includes("admissions.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "admissions.periods.manage" }); return true; }
+    const result = await pool.query(
+      `UPDATE admissions.admission_periods
+       SET period_status = 'closed'
+       WHERE organization_id = $1::uuid AND id = $2::uuid AND period_status = 'open'
+       RETURNING id, period_code AS "periodCode", period_status AS status`,
+      [organizationId, periodCloseMatch[1]],
+    );
+    if (!result.rows[0]) { reply(res, 409, { error: "period_not_found_or_not_open" }); return true; }
+    reply(res, 200, { data: result.rows[0] }); return true;
+  }
+
   if (path === "/v1/admissions/applications" && req.method === "GET") {
     if (!tenant.permissions.includes("admissions.applications.read")) { reply(res, 403, { error: "permission_required", permission: "admissions.applications.read" }); return true; }
     const limitRaw = Number(url.searchParams.get("limit") ?? "50");
