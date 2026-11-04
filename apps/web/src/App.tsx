@@ -155,11 +155,15 @@ export default function App() {
     if (!authClient) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await authClient.signIn.email({ email, password });
+      const result = await authClient.signIn.email({ email: email.trim(), password });
       if (result.error) throw new Error(result.error.message);
       const current = await getCurrentUser();
+      if (!current) {
+        throw new Error("Kredensial diterima, tetapi sesi belum dapat dipulihkan. Periksa koneksi Neon Auth lalu coba masuk kembali.");
+      }
       setUser(current);
-      setNotice("Berhasil masuk. Pilih organisasi untuk membuka workspace.");
+      setPassword("");
+      setNotice("Berhasil masuk. Memuat organisasi dan hak akses Anda…");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Login gagal.");
     } finally { setBusy(false); }
