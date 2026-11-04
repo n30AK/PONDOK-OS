@@ -56,6 +56,8 @@ Form aplikasi tidak boleh menyatakan bahwa pesantren telah memiliki izin operasi
 
 ## Batas implementasi yang belum boleh disebut operasional penuh
 
+**Batas PR tahap ini:** endpoint tambahan pada feature branch menyediakan pembacaan daftar dan pembuatan record (GET/POST) dengan validasi dasar, permission, RLS, dan audit metadata. Endpoint tersebut belum menyediakan edit/hapus, approval workflow, pembatalan, koreksi, pengembalian, atau rekonsiliasi untuk seluruh domain. Form jurnal hanya membuat draft dua baris seimbang; form mutasi inventaris menulis ledger append-only. Form payroll yang ada belum merupakan mesin penggajian sesuai regulasi. Karena itu, daftar form di atas adalah fondasi input data, bukan pernyataan bahwa semua siklus kerja telah selesai.
+
 | Modul | Pekerjaan yang masih diperlukan |
 |---|---|
 | Akademik | Kurikulum terstruktur, jadwal, penilaian, rapor, remedial, kenaikan kelas, kelulusan, dan ekspor sesuai spesifikasi pelaporan yang berlaku |
