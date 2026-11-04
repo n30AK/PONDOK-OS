@@ -11,7 +11,7 @@ type Application = {
   applicantName: string; applicantBirthDate?: string | null; applicantGenderCode?: string | null;
   previousSchool?: string | null; guardianName?: string | null; guardianEmail?: string | null;
   guardianPhone?: string | null; address?: Record<string, string>; answers?: Record<string, string>;
-  status: string; submittedAt?: string | null; reviewedAt?: string | null;
+  status: string; submittedAt?: string | null; reviewedAt?: string | null; linkedStudentId?: string | null;
 };
 type ApiResult<T> = { data: T; pagination?: { limit: number; returned: number } };
 type Tab = "applications" | "periods";
@@ -49,6 +49,7 @@ export default function Admissions({ organizationId, permissions }: Props) {
   const canReview = permissions.includes("admissions.applications.review");
   const canSeeDocuments = permissions.includes("admissions.applications.documents");
   const canSeePrivate = canReview || canSeeDocuments;
+  const canConvert = canReview && permissions.includes("academic.students.create");
   const [tab, setTab] = useState<Tab>("applications");
   const [periods, setPeriods] = useState<Period[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
@@ -58,6 +59,7 @@ export default function Admissions({ organizationId, permissions }: Props) {
   const [notice, setNotice] = useState("");
   const [showPeriodForm, setShowPeriodForm] = useState(false);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
+  const [conversionForm, setConversionForm] = useState<{ applicationId: string; studentNumber: string; campusId: string } | null>(null);
   const [periodForm, setPeriodForm] = useState({
     periodCode: "PPDB-2027", name: "Penerimaan Santri Baru 2027",
     opensAt: localDateTime(1), closesAt: localDateTime(120)
@@ -194,6 +196,26 @@ export default function Admissions({ organizationId, permissions }: Props) {
     finally { setBusy(false); }
   };
 
+
+  const convertApplication = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!conversionForm) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await request<{ data: { studentId: string; studentNumber: string; legalName: string } }>(
+        `/v1/admissions/applications/${conversionForm.applicationId}/enroll`,
+        { method: "POST", body: JSON.stringify({
+          studentNumber: conversionForm.studentNumber.trim(),
+          campusId: conversionForm.campusId.trim()
+        }) }
+      );
+      setConversionForm(null);
+      setNotice(`Pendaftar berhasil ditautkan ke data santri ${result.data.studentNumber}.`);
+      await loadApplications(filter);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Konversi pendaftar gagal."); }
+    finally { setBusy(false); }
+  };
+
   return <section className="admissions-panel">
     <div className="admissions-heading">
       <div><div className="eyebrow">PENERIMAAN SANTRI BARU</div><h2>Manajemen PPDB</h2><p>Kelola periode penerimaan, pendaftaran, dan keputusan seleksi dalam ruang kerja tenant.</p></div>
@@ -283,12 +305,21 @@ export default function Admissions({ organizationId, permissions }: Props) {
             <td><div className="ppdb-row-actions">
               {application.status === "draft" && <button className="outline-button" disabled={busy} onClick={() => void applicationAction(application, "submit")}>Kirim</button>}
               {canReview && ["submitted", "under_review"].includes(application.status) && <select aria-label={`Keputusan ${application.applicationNumber}`} defaultValue="" disabled={busy} onChange={(event) => { const decision = event.target.value; if (decision) void applicationAction(application, "review", decision); }}><option value="">Putuskan…</option>{Object.entries(decisionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>}
-            </div></td>
+              {canConvert && application.status === "accepted" && !application.linkedStudentId && <button className="outline-button" disabled={busy} onClick={() => setConversionForm({ applicationId: application.id, studentNumber: "", campusId: localStorage.getItem(`pondok.campusId.${organizationId}`) ?? "" })}>Konversi</button>}
+              {application.linkedStudentId && <span className="ppdb-status good">Terhubung</span>}
+            </div>
+            {application.linkedStudentId && <small className="cell-sub">ID santri: {application.linkedStudentId.slice(0, 8)}</small>}
+            {conversionForm?.applicationId === application.id && <form className="ppdb-conversion-form" onSubmit={convertApplication}>
+              <label>Nomor induk santri<input value={conversionForm.studentNumber} onChange={(event) => setConversionForm((current) => current ? { ...current, studentNumber: event.target.value } : current)} required maxLength={64} /></label>
+              <label>ID kampus<input value={conversionForm.campusId} onChange={(event) => setConversionForm((current) => current ? { ...current, campusId: event.target.value } : current)} required placeholder="UUID kampus" /></label>
+              <div className="ppdb-row-actions"><button type="button" className="outline-button" onClick={() => setConversionForm(null)}>Batal</button><button className="primary" disabled={busy}>{busy ? "Memproses…" : "Buat data santri"}</button></div>
+            </form>}
+          </td>
           </tr>)}
           {applications.length === 0 && <tr><td colSpan={canSeePrivate ? 7 : 6} className="empty-state">{busy ? "Memuat pendaftaran…" : "Belum ada pendaftar pada filter ini."}</td></tr>}
         </tbody></table></div>
       </div>}
     </div>}
-    <p className="ppdb-footnote">Batas implementasi saat ini: unggah dan verifikasi dokumen, penjadwalan tes, daftar ulang, pembayaran, serta konversi pendaftar diterima menjadi data santri belum tersedia. Jangan gunakan status “operasional penuh” sebelum alur tersebut diuji dan dilengkapi.</p>
+    <p className="ppdb-footnote">Konversi pendaftar diterima menjadi profil santri kini tersedia bagi petugas dengan izin seleksi dan pembuatan data santri. Unggah/verifikasi dokumen, penjadwalan tes, daftar ulang, dan pembayaran masih memerlukan modul tersendiri. Alur lengkap tetap harus diuji sebelum dinyatakan operasional penuh.</p>
   </section>;
 }

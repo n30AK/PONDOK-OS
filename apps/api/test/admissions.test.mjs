@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   validateAdmissionPeriodInput,
   validateApplicationInput,
-  validateApplicationReviewInput
+  validateApplicationReviewInput,
+  validateEnrollmentConversionInput
 } from "../dist/admissions.js";
 
 const period = {
@@ -55,4 +56,18 @@ test("PPDB review decisions are restricted to the admissions workflow", () => {
   assert.equal(validateApplicationReviewInput({ decision: "needs_information" }), null);
   assert.equal(validateApplicationReviewInput({ decision: "approved" }), "invalid_review_decision");
   assert.equal(validateApplicationReviewInput({ decision: "rejected", notes: "x".repeat(2001) }), "invalid_review_notes");
+});
+
+test("accepted applicant conversion requires a tenant campus and a valid student number", () => {
+  assert.equal(validateEnrollmentConversionInput({
+    campusId: "123e4567-e89b-42d3-a456-426614174000",
+    studentNumber: "SAN-2027-0001"
+  }), null);
+  assert.equal(validateEnrollmentConversionInput({ campusId: "bad", studentNumber: "SAN-1" }), "invalid_campus_id");
+  assert.equal(validateEnrollmentConversionInput({
+    campusId: "123e4567-e89b-42d3-a456-426614174000", studentNumber: " "
+  }), "invalid_student_number");
+  assert.equal(validateEnrollmentConversionInput({
+    campusId: "123e4567-e89b-42d3-a456-426614174000", studentNumber: "x".repeat(65)
+  }), "invalid_student_number");
 });
