@@ -69,7 +69,7 @@ Run `pnpm db:migrate` only after checking the target connection string and recon
 The distribution model is centralized SaaS with company approval. New institutions submit an authenticated activation request; the request does not create a tenant or membership. A company Super Administrator approves or rejects it through the Central Command workspace.
 
 - `GET /v1/platform/admin/me`: reports whether the authenticated user has an active company Super Admin grant.
-- `POST /v1/platform/activation-requests`: submits an institution request bound to the authenticated user.
+- `POST /v1/platform/activation-requests`: submits an institution request bound to the authenticated user and requires the contact email to match that user's verified, unbanned Neon Auth account.
 - `GET /v1/platform/activation-requests/mine`: lists the caller's own requests.
 - `GET /v1/platform/admin/activation-requests`: lists requests for company operators.
 - `POST /v1/platform/admin/activation-requests/:id/approve`: approves a pending request and returns a 256-bit random activation token exactly once. The database stores only its SHA-256 digest. Token is user-bound and expires after 24 hours.
