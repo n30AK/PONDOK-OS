@@ -116,9 +116,11 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
   const redeem = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
-      await platformRequest("/v1/platform/activate", {
+      const activated = await platformRequest<{ data: { organizationId: string; campusId: string } }>("/v1/platform/activate", {
         method: "POST", body: JSON.stringify({ activationToken }),
       });
+      localStorage.setItem("pondok.organizationId", activated.data.organizationId);
+      localStorage.setItem(`pondok.campusId.${activated.data.organizationId}`, activated.data.campusId);
       setActivationToken("");
       setNotice("Aktivasi berhasil. Memuat workspace lembaga…");
       window.location.reload();
