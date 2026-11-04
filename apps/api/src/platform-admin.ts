@@ -1,6 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { TenantDatabase } from "./tenant-db.js";
+import {
+  transitionModuleRequest,
+  validateModuleManifest,
+  type ModuleManifestV1,
+  type ModuleRequestRecord,
+  type ModuleRequestStatus,
+} from "@pondok-os/domain-contracts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -14,13 +21,13 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req: IncomingMessage): Promise<Json | null> {
+async function readJson(req: IncomingMessage, maxBytes = 16_384): Promise<Json | null> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += part.length;
-    if (size > 16_384) return null;
+    if (size > maxBytes) return null;
     chunks.push(part);
   }
   try {
@@ -99,12 +106,376 @@ function errorCode(reason: unknown): string {
     ? String((reason as { code: unknown }).code) : "";
 }
 
+
+function isJsonRecord(value: unknown): value is Json {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Stable JSON representation: object keys are recursively sorted, array order is preserved. */
+export function canonicalizeModuleManifest(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) throw new Error("invalid_json_manifest_value");
+    return encoded;
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalizeModuleManifest(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) =>
+    `${JSON.stringify(key)}:${canonicalizeModuleManifest(record[key])}`,
+  ).join(",")}}`;
+}
+
+function moduleDigestHex(value: unknown): { digest: Buffer; hex: string } {
+  const digest = createHash("sha256").update(canonicalizeModuleManifest(value), "utf8").digest();
+  return { digest, hex: digest.toString("hex") };
+}
+
+function databaseTimestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function digestFromDatabase(value: Buffer | string): string {
+  if (Buffer.isBuffer(value)) return value.toString("hex");
+  return value.replace(/^\\x/i, "").toLowerCase();
+}
+
+async function handleModuleRegistryRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pool: TenantDatabase,
+  userId: string,
+): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const path = url.pathname;
+
+  if (path === "/v1/platform/modules/requests/mine" && req.method === "GET") {
+    try {
+      const scoped = await withPlatformScope(pool, userId, false, (client) =>
+        client.query(
+          `SELECT id, organization_id AS "organizationId", module_id AS "moduleId",
+                  module_version AS "moduleVersion", status,
+                  encode(manifest_digest, 'hex') AS "manifestDigest",
+                  created_at AS "createdAt", updated_at AS "updatedAt"
+           FROM platform.module_requests
+           ORDER BY created_at DESC LIMIT 100`,
+        ));
+      reply(res, 200, { data: scoped.value?.rows ?? [] });
+    } catch {
+      reply(res, 503, { error: "module_registry_unavailable" });
+    }
+    return true;
+  }
+
+  if (path === "/v1/platform/modules/requests" && req.method === "POST") {
+    const body = await readJson(req, 262_144);
+    if (!body || !UUID.test(String(body.organizationId ?? ""))
+      || !isJsonRecord(body.manifest)
+      || typeof body.idempotencyKey !== "string"
+      || body.idempotencyKey.length < 8 || body.idempotencyKey.length > 128) {
+      reply(res, 422, { error: "invalid_module_request" });
+      return true;
+    }
+    if (Object.hasOwn(body, "manifestDigest")) {
+      reply(res, 400, { error: "manifest_digest_must_be_computed_by_server" });
+      return true;
+    }
+    const manifestErrors = validateModuleManifest(body.manifest);
+    if (manifestErrors.length) {
+      reply(res, 422, { error: "invalid_module_manifest", details: manifestErrors });
+      return true;
+    }
+    const manifest = body.manifest as unknown as ModuleManifestV1;
+    const digest = moduleDigestHex(manifest);
+    try {
+      const scoped = await withPlatformScope(pool, userId, false, async (client) => {
+        const existing = await client.query(
+          `SELECT id, organization_id AS "organizationId", module_id AS "moduleId",
+                  module_version AS "moduleVersion", status,
+                  encode(manifest_digest, 'hex') AS "manifestDigest",
+                  created_at AS "createdAt", updated_at AS "updatedAt"
+           FROM platform.module_requests
+           WHERE submitted_by = $1::uuid AND idempotency_key = $2
+           LIMIT 1`,
+          [userId, body.idempotencyKey],
+        );
+        if (existing.rows[0]) return { existing: true, data: existing.rows[0] };
+
+        const organization = await client.query(
+          "SELECT id FROM core.organizations WHERE id = $1::uuid AND status = 'active'",
+          [body.organizationId],
+        );
+        if (!organization.rows[0]) return { error: "target_organization_not_active" as const };
+
+        const inserted = await client.query(
+          `INSERT INTO platform.module_requests
+            (organization_id, module_id, module_version, manifest, manifest_digest,
+             submitted_by, status, idempotency_key)
+           VALUES ($1::uuid, $2, $3, $4::jsonb, $5, $6::uuid, 'submitted', $7)
+           RETURNING id, organization_id AS "organizationId", module_id AS "moduleId",
+                     module_version AS "moduleVersion", status,
+                     encode(manifest_digest, 'hex') AS "manifestDigest",
+                     created_at AS "createdAt", updated_at AS "updatedAt"`,
+          [body.organizationId, manifest.moduleId, manifest.version, JSON.stringify(manifest),
+            digest.digest, userId, body.idempotencyKey],
+        );
+        const requestRecord = inserted.rows[0];
+        if (!requestRecord) throw new Error("module_request_insert_failed");
+        await client.query(
+          `INSERT INTO platform.module_request_events
+            (request_id, actor_user_id, action, from_status, to_status)
+           VALUES ($1::uuid, $2::uuid, 'submit', 'draft', 'submitted')`,
+          [requestRecord.id, userId],
+        );
+        await auditPlatform(client, userId, "module_request.submitted", "module_request", String(requestRecord.id), {
+          moduleId: manifest.moduleId, moduleVersion: manifest.version, manifestDigest: digest.hex,
+        });
+        return { existing: false, data: requestRecord };
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      if (scoped.value && "error" in scoped.value) {
+        reply(res, 422, { error: scoped.value.error });
+        return true;
+      }
+      if (!scoped.value || !("data" in scoped.value)) {
+        reply(res, 500, { error: "module_request_failed" });
+        return true;
+      }
+      reply(res, scoped.value.existing ? 200 : 201, { data: scoped.value.data });
+    } catch (reason) {
+      const code = errorCode(reason);
+      if (code === "42501") reply(res, 403, { error: "active_module_publisher_required" });
+      else if (code === "23505") reply(res, 409, { error: "module_request_idempotency_conflict" });
+      else if (code === "42P01" || code === "3F000") reply(res, 503, { error: "module_registry_not_installed" });
+      else reply(res, 500, { error: "module_request_failed" });
+    }
+    return true;
+  }
+
+  const requestDetail = path.match(/^\\/v1\\/platform\\/(?:admin\\/)?modules\\/requests\\/([0-9a-f-]{36})$/i);
+  if (requestDetail && req.method === "GET") {
+    const requestId = requestDetail[1]!;
+    if (!UUID.test(requestId)) { reply(res, 400, { error: "invalid_module_request_id" }); return true; }
+    try {
+      const scoped = await withPlatformScope(pool, userId, false, async (client) => {
+        const requestResult = await client.query(
+          `SELECT id, organization_id AS "organizationId", module_id AS "moduleId",
+                  module_version AS "moduleVersion", manifest, encode(manifest_digest, 'hex') AS "manifestDigest",
+                  submitted_by AS "submittedBy", status, reviewed_by AS "reviewedBy",
+                  reviewed_at AS "reviewedAt", review_note AS "reviewNote",
+                  created_at AS "createdAt", updated_at AS "updatedAt"
+           FROM platform.module_requests WHERE id = $1::uuid`,
+          [requestId],
+        );
+        if (!requestResult.rows[0]) return null;
+        const events = await client.query(
+          `SELECT id, actor_user_id AS "actorUserId", action,
+                  from_status AS "fromStatus", to_status AS "toStatus", note,
+                  correlation_id AS "correlationId", occurred_at AS "occurredAt"
+           FROM platform.module_request_events
+           WHERE request_id = $1::uuid ORDER BY occurred_at, id`,
+          [requestId],
+        );
+        return { ...requestResult.rows[0], events: events.rows };
+      });
+      if (!scoped.value) { reply(res, 404, { error: "module_request_not_found" }); return true; }
+      reply(res, 200, { data: scoped.value });
+    } catch {
+      reply(res, 503, { error: "module_registry_unavailable" });
+    }
+    return true;
+  }
+
+  if (path === "/v1/platform/admin/module-publishers" && req.method === "GET") {
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, (client) =>
+        client.query(
+          `SELECT user_id AS "userId", status, granted_by AS "grantedBy",
+                  created_at AS "createdAt", revoked_at AS "revokedAt"
+           FROM platform.module_publishers ORDER BY created_at DESC LIMIT 500`,
+        ));
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      reply(res, 200, { data: scoped.value?.rows ?? [] });
+    } catch {
+      reply(res, 503, { error: "module_registry_unavailable" });
+    }
+    return true;
+  }
+
+  if (path === "/v1/platform/admin/module-publishers" && req.method === "POST") {
+    const body = await readJson(req);
+    if (!body || typeof body.userId !== "string" || !UUID.test(body.userId)) {
+      reply(res, 422, { error: "invalid_module_publisher_user_id" });
+      return true;
+    }
+    try {
+      const authUser = await pool.query<{ email: string }>(
+        'SELECT email FROM neon_auth."user" WHERE id = $1::uuid AND "emailVerified" = true AND coalesce(banned, false) = false',
+        [body.userId],
+      );
+      if (!authUser.rows[0]) { reply(res, 422, { error: "verified_active_auth_user_required" }); return true; }
+      const scoped = await withPlatformScope(pool, userId, true, async (client) => {
+        const result = await client.query(
+          `INSERT INTO platform.module_publishers (user_id, granted_by, status)
+           VALUES ($1::uuid, $2::uuid, 'active')
+           ON CONFLICT (user_id) DO UPDATE
+             SET status = 'active', granted_by = EXCLUDED.granted_by, revoked_at = NULL
+           RETURNING user_id AS "userId", status, granted_by AS "grantedBy",
+                     created_at AS "createdAt", revoked_at AS "revokedAt"`,
+          [body.userId, userId],
+        );
+        await auditPlatform(client, userId, "module_publisher.granted", "module_publisher", body.userId);
+        return result.rows[0];
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      reply(res, 201, { data: scoped.value });
+    } catch (reason) {
+      const code = errorCode(reason);
+      reply(res, code === "42P01" || code === "3F000" ? 503 : 500, { error: "module_publisher_grant_failed" });
+    }
+    return true;
+  }
+
+  const revokePublisher = path.match(/^\\/v1\\/platform\\/admin\\/module-publishers\\/([0-9a-f-]{36})\\/revoke$/i);
+  if (revokePublisher && req.method === "POST") {
+    const targetUserId = revokePublisher[1]!;
+    if (!UUID.test(targetUserId)) { reply(res, 400, { error: "invalid_module_publisher_user_id" }); return true; }
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, async (client) => {
+        const result = await client.query(
+          `UPDATE platform.module_publishers
+           SET status = 'revoked', revoked_at = now()
+           WHERE user_id = $1::uuid AND status = 'active'
+           RETURNING user_id AS "userId", status, granted_by AS "grantedBy",
+                     created_at AS "createdAt", revoked_at AS "revokedAt"`,
+          [targetUserId],
+        );
+        if (!result.rows[0]) return null;
+        await auditPlatform(client, userId, "module_publisher.revoked", "module_publisher", targetUserId);
+        return result.rows[0];
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      if (!scoped.value) { reply(res, 404, { error: "module_publisher_not_found" }); return true; }
+      reply(res, 200, { data: scoped.value });
+    } catch {
+      reply(res, 503, { error: "module_publisher_revoke_failed" });
+    }
+    return true;
+  }
+
+  if (path === "/v1/platform/admin/modules/requests" && req.method === "GET") {
+    const status = url.searchParams.get("status");
+    const validStatuses = ["submitted","approved","rejected","installing","installed","failed","rollback_pending","rolled_back"];
+    if (status && !validStatuses.includes(status)) { reply(res, 422, { error: "invalid_module_request_status" }); return true; }
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, (client) =>
+        client.query(
+          `SELECT r.id, r.organization_id AS "organizationId", o.name AS "organizationName",
+                  r.module_id AS "moduleId", r.module_version AS "moduleVersion", r.status,
+                  encode(r.manifest_digest, 'hex') AS "manifestDigest",
+                  r.submitted_by AS "submittedBy", r.created_at AS "createdAt",
+                  r.reviewed_by AS "reviewedBy", r.reviewed_at AS "reviewedAt"
+           FROM platform.module_requests r
+           JOIN core.organizations o ON o.id = r.organization_id
+           WHERE ($1::text IS NULL OR r.status = $1)
+           ORDER BY CASE r.status WHEN 'submitted' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, r.created_at ASC
+           LIMIT 200`,
+          [status],
+        ));
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      reply(res, 200, { data: scoped.value?.rows ?? [] });
+    } catch {
+      reply(res, 503, { error: "module_registry_unavailable" });
+    }
+    return true;
+  }
+
+  const reviewRequest = path.match(/^\\/v1\\/platform\\/admin\\/modules\\/requests\\/([0-9a-f-]{36})\\/(approve|reject)$/i);
+  if (reviewRequest && req.method === "POST") {
+    const requestId = reviewRequest[1]!;
+    const action = reviewRequest[2]!.toLowerCase() as "approve" | "reject";
+    if (!UUID.test(requestId)) { reply(res, 400, { error: "invalid_module_request_id" }); return true; }
+    const body = await readJson(req);
+    const note = typeof body?.note === "string" ? body.note.trim() : "";
+    if (action === "reject" && (note.length < 3 || note.length > 1000)) {
+      reply(res, 422, { error: "review_note_required" });
+      return true;
+    }
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, async (client) => {
+        const locked = await client.query<{
+          id: string; organization_id: string; module_id: string; manifest_digest: Buffer;
+          submitted_by: string; status: ModuleRequestStatus; created_at: Date | string; updated_at: Date | string;
+        }>(
+          `SELECT id, organization_id, module_id, manifest_digest, submitted_by, status, created_at, updated_at
+           FROM platform.module_requests WHERE id = $1::uuid FOR UPDATE`,
+          [requestId],
+        );
+        const row = locked.rows[0];
+        if (!row) return { error: "module_request_not_found" as const };
+        const current: ModuleRequestRecord = {
+          id: row.id,
+          organizationId: row.organization_id,
+          moduleId: row.module_id,
+          manifestDigest: digestFromDatabase(row.manifest_digest),
+          submittedBy: row.submitted_by,
+          status: row.status,
+          createdAt: databaseTimestamp(row.created_at),
+          updatedAt: databaseTimestamp(row.updated_at),
+          audit: [],
+        };
+        const occurredAt = new Date().toISOString();
+        const next = transitionModuleRequest(current, {
+          action,
+          actor: { id: userId, roles: new Set(["super_admin"]) },
+          occurredAt,
+          ...(note ? { note } : {}),
+        });
+        await client.query(
+          `UPDATE platform.module_requests
+           SET status = $2, reviewed_by = $3::uuid, reviewed_at = $4::timestamptz,
+               review_note = $5, updated_at = $4::timestamptz
+           WHERE id = $1::uuid`,
+          [requestId, next.status, userId, occurredAt, note || null],
+        );
+        await client.query(
+          `INSERT INTO platform.module_request_events
+            (request_id, actor_user_id, action, from_status, to_status, note, occurred_at)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::timestamptz)`,
+          [requestId, userId, action, current.status, next.status, note || null, occurredAt],
+        );
+        await auditPlatform(client, userId, `module_request.${action}d`, "module_request", requestId, { note: note || null });
+        return { id: requestId, status: next.status, reviewedBy: userId, reviewedAt: occurredAt };
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      if (scoped.value && "error" in scoped.value) {
+        reply(res, 404, { error: scoped.value.error });
+        return true;
+      }
+      reply(res, 200, { data: scoped.value });
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "";
+      if (message.startsWith("MODULE_REQUEST_TRANSITION_DENIED:")) {
+        reply(res, 409, { error: message.slice("MODULE_REQUEST_TRANSITION_DENIED:".length) });
+      } else {
+        reply(res, 503, { error: "module_request_review_failed" });
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
 export async function handlePlatformRequest(
   req: IncomingMessage, res: ServerResponse, pool: TenantDatabase, userId: string,
 ): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
   if (!path.startsWith("/v1/platform/")) return false;
+
+  if (await handleModuleRegistryRequest(req, res, pool, userId)) return true;
 
   if (path === "/v1/platform/admin/me" && req.method === "GET") {
     try {
