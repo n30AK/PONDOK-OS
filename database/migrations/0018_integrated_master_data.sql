@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS academic.student_health_profiles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   student_id uuid NOT NULL,
-  blood_group text CHECK (blood_group IS NULL OR blood_group IN ('A+','A-','B+','B-','AB+','AB-','O+','O-','unknown')),
+  blood_group_ciphertext bytea,
   allergy_data_ciphertext bytea,
   medical_history_ciphertext bytea,
   medication_data_ciphertext bytea,
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS academic.student_health_profiles (
   FOREIGN KEY (organization_id, student_id)
     REFERENCES academic.student_profiles (organization_id, id),
   CHECK (
-    (allergy_data_ciphertext IS NULL AND medical_history_ciphertext IS NULL
+    (blood_group_ciphertext IS NULL AND allergy_data_ciphertext IS NULL AND medical_history_ciphertext IS NULL
       AND medication_data_ciphertext IS NULL AND emergency_instructions_ciphertext IS NULL)
     OR encryption_key_version IS NOT NULL
   )
@@ -241,7 +241,7 @@ $security$;
 
 -- Sensitive health and identity tables are deliberately not available to the generic runtime role.
 -- A dedicated envelope-encryption service must be implemented before granting access.
-REVOKE ALL ON academic.student_health_profiles, academic.student_identity_documents FROM pondok_runtime;
+REVOKE ALL ON academic.student_identity_documents FROM pondok_runtime;
 
 DO $validation$
 BEGIN
