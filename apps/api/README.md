@@ -76,6 +76,9 @@ The distribution model is centralized SaaS with company approval. New institutio
 - `POST /v1/platform/admin/activation-requests/:id/reject`: rejects a pending request with a recorded reason.
 - `POST /v1/platform/activate`: redeems the token for its bound user and creates the organization, owner membership, main campus, owner role and audit event in one transaction.
 
+
+Platform handlers use the separate `pondok_platform_runtime` NOLOGIN/NOBYPASSRLS role. They check Super Admin membership before switching roles, set the verified `app.user_id` transaction-locally, and rely on platform RLS for applicant/admin boundaries. Tenant creation is performed under this restricted role; campus, membership-role and tenant-audit inserts remain protected by the existing tenant RLS policies.
+
 The first Super Administrator is deliberately not self-assigned. After migration 0016 is separately approved and applied to Development, provision the first company account out-of-band using the controlled procedure in [Central activation architecture](../../docs/architecture/central-activation-control-plane.md). Verify the Neon Auth UUID, verified email and unbanned account first. No Production changes are part of this rollout.
 
 The current operator workflow reveals the raw activation token once in the authenticated Super Admin console for delivery through an approved company channel. Automated email delivery, licensing/billing workflows, distribution version management, support impersonation and tenant monitoring are later control-plane phases; they are not claimed as implemented by this activation slice.
