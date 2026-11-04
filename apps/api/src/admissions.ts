@@ -124,7 +124,7 @@ export async function handleAdmissionsRequest(
     return true;
   }
 
-  const periodOpenMatch = path.match(/^\\/v1\\/admissions\\/periods\\/([0-9a-f-]{36})\\/open$/i);
+  const periodOpenMatch = path.match(/^\/v1\/admissions\/periods\/([0-9a-f-]{36})\/open$/i);
   if (periodOpenMatch && req.method === "POST") {
     if (!tenant.permissions.includes("admissions.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "admissions.periods.manage" }); return true; }
     const result = await pool.query(
@@ -139,7 +139,7 @@ export async function handleAdmissionsRequest(
     reply(res, 200, { data: result.rows[0] }); return true;
   }
 
-  const periodCloseMatch = path.match(/^\\/v1\\/admissions\\/periods\\/([0-9a-f-]{36})\\/close$/i);
+  const periodCloseMatch = path.match(/^\/v1\/admissions\/periods\/([0-9a-f-]{36})\/close$/i);
   if (periodCloseMatch && req.method === "POST") {
     if (!tenant.permissions.includes("admissions.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "admissions.periods.manage" }); return true; }
     const result = await pool.query(
