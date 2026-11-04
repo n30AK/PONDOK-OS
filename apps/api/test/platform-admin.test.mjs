@@ -106,14 +106,21 @@ test("legacy public bootstrap endpoint is disabled by the centralized distributi
 
 test("company super admin can read the tenant registry under the restricted platform role", async () => {
   const { pool, calls } = poolWithClient(async (sql) => {
+    // The production code checks the administrator on the same connection
+    // before switching to the restricted platform role. Keep this authority
+    // check in the client mock rather than the pool-level query mock.
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
     if (sql.startsWith("SELECT o.id AS")) return { rows: [{ organizationId: requestId, name: "Pondok Contoh", slug: "pondok-contoh", status: "active", memberCount: 2 }] };
     return { rows: [] };
-  }, async () => ({ rows: [{ allowed: true }] }));
+  });
   const res = response();
   await handlePlatformRequest(request("/v1/platform/admin/tenants"), res, pool, userId);
   assert.equal(res.status, 200);
   assert.equal(JSON.parse(res.body).data[0].memberCount, 2);
-  assert.ok(calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
+  const authorityCheck = calls.findIndex((call) => call.sql.startsWith("SELECT EXISTS"));
+  const roleSwitch = calls.findIndex((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime");
+  assert.ok(authorityCheck >= 0);
+  assert.ok(roleSwitch > authorityCheck, "super-admin authority must be checked before switching roles");
   assert.ok(calls.some((call) => call.sql === "COMMIT"));
 });
 
