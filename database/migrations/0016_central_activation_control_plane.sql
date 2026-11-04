@@ -99,8 +99,41 @@ $function$;
 REVOKE ALL ON SCHEMA platform FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA platform FROM PUBLIC;
 REVOKE ALL ON FUNCTION platform.is_active_super_admin() FROM PUBLIC;
-GRANT USAGE ON SCHEMA platform TO pondok_runtime;
-GRANT EXECUTE ON FUNCTION platform.is_active_super_admin() TO pondok_runtime;
+
+DO $role$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pondok_platform_runtime') THEN
+    CREATE ROLE pondok_platform_runtime NOLOGIN NOBYPASSRLS;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_roles
+    WHERE rolname = 'pondok_platform_runtime' AND (rolcanlogin OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'pondok_platform_runtime must be NOLOGIN and NOBYPASSRLS';
+  END IF;
+END
+$role$;
+
+DO $grant$
+BEGIN
+  EXECUTE format('GRANT pondok_platform_runtime TO %I', current_user);
+END
+$grant$;
+
+GRANT USAGE ON SCHEMA platform, core, audit TO pondok_platform_runtime;
+GRANT EXECUTE ON FUNCTION platform.is_active_super_admin() TO pondok_platform_runtime;
+GRANT SELECT, INSERT, UPDATE ON platform.activation_requests TO pondok_platform_runtime;
+GRANT SELECT, INSERT ON platform.activation_tokens TO pondok_platform_runtime;
+GRANT UPDATE (consumed_at) ON platform.activation_tokens TO pondok_platform_runtime;
+GRANT SELECT, INSERT ON platform.audit_events TO pondok_platform_runtime;
+GRANT SELECT ON platform.tenant_licenses TO pondok_platform_runtime;
+
+-- The platform role can create a tenant only through the authenticated API
+-- transaction. Tenant-owned campus, membership-role and audit writes remain
+-- subject to their existing FORCE RLS policies.
+GRANT SELECT, INSERT ON core.organizations, core.organization_memberships TO pondok_platform_runtime;
+GRANT SELECT ON core.roles TO pondok_platform_runtime;
+GRANT INSERT ON core.campuses, core.membership_roles, audit.audit_events TO pondok_platform_runtime;
 
 ALTER TABLE platform.activation_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform.activation_requests FORCE ROW LEVEL SECURITY;
@@ -118,9 +151,15 @@ CREATE POLICY activation_requests_access ON platform.activation_requests
 ALTER TABLE platform.activation_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform.activation_tokens FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS activation_tokens_admin_only ON platform.activation_tokens;
-CREATE POLICY activation_tokens_admin_only ON platform.activation_tokens
-  USING (platform.is_active_super_admin())
-  WITH CHECK (platform.is_active_super_admin());
+CREATE POLICY activation_tokens_owner_or_admin ON platform.activation_tokens
+  USING (
+    requested_by = nullif(current_setting('app.user_id', true), '')::uuid
+    OR platform.is_active_super_admin()
+  )
+  WITH CHECK (
+    requested_by = nullif(current_setting('app.user_id', true), '')::uuid
+    OR platform.is_active_super_admin()
+  );
 
 ALTER TABLE platform.tenant_licenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform.tenant_licenses FORCE ROW LEVEL SECURITY;
@@ -132,9 +171,15 @@ CREATE POLICY tenant_licenses_admin_only ON platform.tenant_licenses
 ALTER TABLE platform.audit_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform.audit_events FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS platform_audit_admin_only ON platform.audit_events;
-CREATE POLICY platform_audit_admin_only ON platform.audit_events
-  USING (platform.is_active_super_admin())
-  WITH CHECK (platform.is_active_super_admin());
+CREATE POLICY platform_audit_actor_or_admin ON platform.audit_events
+  USING (
+    actor_user_id = nullif(current_setting('app.user_id', true), '')::uuid
+    OR platform.is_active_super_admin()
+  )
+  WITH CHECK (
+    actor_user_id = nullif(current_setting('app.user_id', true), '')::uuid
+    OR platform.is_active_super_admin()
+  );
 
 GRANT SELECT, INSERT ON platform.activation_requests TO pondok_runtime;
 GRANT SELECT ON platform.tenant_licenses, platform.audit_events TO pondok_runtime;
