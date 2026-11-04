@@ -183,6 +183,7 @@ async function createLibraryLoan(res: ServerResponse, pool: Pick<Pool, "query">,
 
 
 type HealthRow = {
+  [column: string]: any;
   id: string; student_id: string; blood_group_ciphertext: Buffer | null;
   allergy_data_ciphertext: Buffer | null; medical_history_ciphertext: Buffer | null;
   medication_data_ciphertext: Buffer | null; emergency_instructions_ciphertext: Buffer | null;
