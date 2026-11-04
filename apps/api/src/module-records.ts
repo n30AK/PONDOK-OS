@@ -9,7 +9,7 @@ type Json = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RESOURCES: Record<string, Resource> = {
-  "campuses": { table: "core.campuses", permission: "core.campus.manage", fields: { code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:160}, campusType:{column:"campus_type",max:24}, status:{column:"status",max:24} } },
+  "campuses": { table: "core.campuses", permission: "academic.classes.read", writePermission: "core.campus.manage", fields: { code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:160}, campusType:{column:"campus_type",max:24}, status:{column:"status",max:24} } },
   "academic-years": { table: "academic.academic_years", permission: "academic.classes.write", fields: { code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:120}, startsOn:{column:"starts_on",kind:"date",required:true}, endsOn:{column:"ends_on",kind:"date",required:true}, status:{column:"status",max:24} } },
   "academic-terms": { table: "academic.academic_terms", permission: "academic.classes.write", fields: { academicYearId:{column:"academic_year_id",kind:"uuid",required:true}, code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:120}, startsOn:{column:"starts_on",kind:"date",required:true}, endsOn:{column:"ends_on",kind:"date",required:true}, status:{column:"status",max:24} } },
   "programs": { table: "academic.programs", permission: "academic.classes.write", fields: { code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:120}, description:{column:"description",max:1000}, status:{column:"status",max:24} } },
@@ -78,6 +78,19 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const match = url.pathname.match(/^\/v1\/modules\/([a-z-]+)$/);
   if (!match) return false;
   if (req.method !== "GET" && req.method !== "POST") { res.setHeader("allow", "GET, POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
+  if (match[1] === "student-options") {
+    if (req.method !== "GET") { res.setHeader("allow","GET"); reply(res,405,{error:"method_not_allowed"}); return true; }
+    const tenant = await loadTenantContext(pool,userId,organizationId);
+    if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
+    const allowed = ["academic.students.read","boarding.rooms.manage","library.loans.write"].some(permission=>tenant.permissions.includes(permission));
+    if (!allowed) { reply(res,403,{error:"permission_required"}); return true; }
+    const result = await pool.query(
+      `SELECT id, student_number AS "studentNumber", legal_name AS "legalName"
+       FROM academic.student_profiles WHERE organization_id=$1::uuid AND status IN ('active','applicant')
+       ORDER BY legal_name LIMIT 200`, [organizationId],
+    );
+    reply(res,200,{data:result.rows}); return true;
+  }
   const resource = RESOURCES[match[1] ?? ""];
   if (!resource) { reply(res,404,{error:"module_resource_not_found"}); return true; }
   const tenant = await loadTenantContext(pool,userId,organizationId);
