@@ -84,10 +84,11 @@ function toFormValue(field:Field,row:Row):string|boolean{
 function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) {
  const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
  const groups=useMemo(()=>Array.from(new Set(available.map(r=>r.group))),[available]);
- const initialResource=available.find(r=>r.key===initialResourceKey)??available[0];
+ const requestedGroup=RESOURCES.find(r=>r.key===initialResourceKey)?.group;
+ const initialResource=available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup)??available[0];
  const [group,setGroup]=useState(initialResource?.group??groups[0]??"");
  const [resourceKey,setResourceKey]=useState(initialResource?.key??"");
- useEffect(()=>{const target=available.find(r=>r.key===initialResourceKey)??available[0];if(target){setGroup(target.group);setResourceKey(target.key);}},[initialResourceKey,available]);
+ useEffect(()=>{const target=available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup)??available[0];if(target){setGroup(target.group);setResourceKey(target.key);}},[initialResourceKey,available,requestedGroup]);
  const [rows,setRows]=useState<Row[]>([]);
  const [lookups,setLookups]=useState<Record<string,Lookup[]>>({});
  const [form,setForm]=useState<Record<string,string|boolean>>({});
