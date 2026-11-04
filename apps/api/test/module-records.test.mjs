@@ -55,6 +55,15 @@ test("validates catalog arrays and numeric asset values", () => {
   }), "invalid_acquisitionCost");
 });
 
+test("public content remains draft until a separate publication workflow exists", () => {
+  assert.equal(validateModuleRecordInput("cms-pages", {
+    slug: "profil", title: "Profil Pesantren", bodyMarkdown: "Konten profil.", pageStatus: "draft"
+  }), null);
+  assert.equal(validateModuleRecordInput("cms-pages", {
+    slug: "profil", title: "Profil Pesantren", bodyMarkdown: "Konten profil.", pageStatus: "published"
+  }), "invalid_pageStatus");
+});
+
 test("unknown module resources fail closed", () => {
   assert.equal(validateModuleRecordInput("unknown", {}), "module_resource_not_found");
 });
