@@ -4,25 +4,25 @@ import { getAccessToken } from "./auth";
 type Area = "finance" | "inventory" | "hr";
 type Row = Record<string, unknown>;
 type AreaData = Partial<Record<Area, Record<string, Row[]>>>;
-type Props = { organizationId: string; initialArea?: Area };
+type Props = { organizationId: string; permissions: string[]; initialArea?: Area };
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
-const columns: Record<Area, { title: string; path: string; fields: string[]; labels: string[] }[]> = {
+const columns: Record<Area, { title: string; path: string; fields: string[]; labels: string[]; read: string; write: string }[]> = {
   finance: [
-    { title: "Bagan akun", path: "/v1/finance/accounts", fields: ["accountCode", "accountName", "accountType", "isActive"], labels: ["Kode", "Nama akun", "Jenis", "Aktif"] },
-    { title: "Periode buku", path: "/v1/finance/periods", fields: ["code", "name", "startsOn", "endsOn", "status"], labels: ["Kode", "Periode", "Mulai", "Selesai", "Status"] },
-    { title: "Jurnal", path: "/v1/finance/journals?limit=50", fields: ["entryNumber", "entryDate", "description", "debit", "credit", "status"], labels: ["Nomor", "Tanggal", "Keterangan", "Debit", "Kredit", "Status"] }
+    { title: "Bagan akun", path: "/v1/finance/accounts", fields: ["accountCode", "accountName", "accountType", "isActive"], labels: ["Kode", "Nama akun", "Jenis", "Aktif"], read: "finance.accounts.read", write: "finance.accounts.write" },
+    { title: "Periode buku", path: "/v1/finance/periods", fields: ["code", "name", "startsOn", "endsOn", "status"], labels: ["Kode", "Periode", "Mulai", "Selesai", "Status"], read: "finance.journals.read", write: "finance.periods.manage" },
+    { title: "Jurnal", path: "/v1/finance/journals?limit=50", fields: ["entryNumber", "entryDate", "description", "debit", "credit", "status"], labels: ["Nomor", "Tanggal", "Keterangan", "Debit", "Kredit", "Status"], read: "finance.journals.read", write: "finance.journals.write" }
   ],
   inventory: [
-    { title: "Barang", path: "/v1/inventory/items", fields: ["itemCode", "itemName", "unitCode", "onHand", "reorderLevel"], labels: ["Kode", "Nama barang", "Satuan", "Stok", "Batas minimum"] },
-    { title: "Gudang", path: "/v1/inventory/warehouses", fields: ["warehouseCode", "warehouseName", "campusId", "isActive"], labels: ["Kode", "Nama gudang", "Kampus", "Aktif"] },
-    { title: "Mutasi stok", path: "/v1/inventory/movements?limit=50", fields: ["itemName", "warehouseName", "movementType", "quantity", "occurredAt"], labels: ["Barang", "Gudang", "Jenis", "Jumlah", "Waktu"] }
+    { title: "Barang", path: "/v1/inventory/items", fields: ["itemCode", "itemName", "unitCode", "onHand", "reorderLevel"], labels: ["Kode", "Nama barang", "Satuan", "Stok", "Batas minimum"], read: "inventory.items.read", write: "inventory.items.write" },
+    { title: "Gudang", path: "/v1/inventory/warehouses", fields: ["warehouseCode", "warehouseName", "campusId", "isActive"], labels: ["Kode", "Nama gudang", "Kampus", "Aktif"], read: "inventory.items.read", write: "inventory.items.write" },
+    { title: "Mutasi stok", path: "/v1/inventory/movements?limit=50", fields: ["itemName", "warehouseName", "movementType", "quantity", "occurredAt"], labels: ["Barang", "Gudang", "Jenis", "Jumlah", "Waktu"], read: "inventory.movements.read", write: "inventory.movements.write" }
   ],
   hr: [
-    { title: "Pegawai", path: "/v1/hr/employees?limit=100", fields: ["employeeNumber", "legalName", "email", "joinedOn", "employmentStatus"], labels: ["NIP", "Nama", "Email", "Bergabung", "Status"] },
-    { title: "Periode payroll", path: "/v1/hr/payroll/periods", fields: ["periodCode", "startsOn", "endsOn", "payDate", "status"], labels: ["Kode", "Mulai", "Selesai", "Tanggal bayar", "Status"] },
-    { title: "Proses payroll", path: "/v1/hr/payroll/runs", fields: ["runNumber", "runType", "periodCode", "earnings", "deductions", "status"], labels: ["Nomor proses", "Jenis", "Periode", "Pendapatan", "Potongan", "Status"] }
+    { title: "Pegawai", path: "/v1/hr/employees?limit=100", fields: ["employeeNumber", "legalName", "email", "joinedOn", "employmentStatus"], labels: ["NIP", "Nama", "Email", "Bergabung", "Status"], read: "hr.employees.read", write: "hr.employees.write" },
+    { title: "Periode payroll", path: "/v1/hr/payroll/periods", fields: ["periodCode", "startsOn", "endsOn", "payDate", "status"], labels: ["Kode", "Mulai", "Selesai", "Tanggal bayar", "Status"], read: "hr.payroll.read", write: "hr.payroll.prepare" },
+    { title: "Proses payroll", path: "/v1/hr/payroll/runs", fields: ["runNumber", "runType", "periodCode", "earnings", "deductions", "status"], labels: ["Nomor proses", "Jenis", "Periode", "Pendapatan", "Potongan", "Status"], read: "hr.payroll.read", write: "hr.payroll.prepare" }
   ]
 };
 
@@ -33,7 +33,7 @@ function display(value: unknown): string {
   return String(value);
 }
 
-export default function Operations({ organizationId, initialArea = "finance" }: Props) {
+export default function Operations({ organizationId, permissions, initialArea = "finance" }: Props) {
   const [area, setArea] = useState<Area>(initialArea);
   useEffect(() => { setArea(initialArea); setShowForm(false); setForm({}); }, [initialArea]);
   const [data, setData] = useState<AreaData>({});
@@ -63,7 +63,8 @@ export default function Operations({ organizationId, initialArea = "finance" }: 
   const reload = useCallback(async (selected: Area) => {
     setBusy(true); setError("");
     try {
-      const results = await Promise.all(columns[selected].map(async (item) => {
+      const readable = columns[selected].filter((item) => permissions.includes(item.read));
+      const results = await Promise.all(readable.map(async (item) => {
         const result = await request(item.path);
         return [item.path, Array.isArray(result) ? result : result ? [result] : []] as const;
       }));
@@ -71,9 +72,12 @@ export default function Operations({ organizationId, initialArea = "finance" }: 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional.");
     } finally { setBusy(false); }
-  }, [request]);
+  }, [request, permissions]);
 
-  useEffect(() => { void reload(area); }, [area, reload]);
+  const availableAreas = (["finance", "inventory", "hr"] as Area[]).filter((item) => columns[item].some((entry) => permissions.includes(entry.read)));
+  const canReadArea = (selected: Area) => columns[selected].some((item) => permissions.includes(item.read));
+
+  useEffect(() => { if (canReadArea(area)) void reload(area); }, [area, reload, permissions]);
   useEffect(() => {
     let active = true;
     void request("/v1/modules/campuses").then((result) => {
@@ -138,13 +142,31 @@ export default function Operations({ organizationId, initialArea = "finance" }: 
     } finally { setBusy(false); }
   };
 
-  const forms: Record<Area, { value: string; label: string }[]> = {
-    finance: [{ value: "account", label: "Tambah akun" }, { value: "period", label: "Buat periode buku" }, { value: "journal", label: "Buat jurnal seimbang" }],
-    inventory: [{ value: "item", label: "Tambah barang" }, { value: "warehouse", label: "Tambah gudang" }, { value: "movement", label: "Catat mutasi stok" }],
-    hr: [{ value: "employee", label: "Tambah pegawai" }, { value: "payroll-period", label: "Buat periode payroll" }]
+  const forms: Record<Area, { value: string; label: string; permission: string }[]> = {
+    finance: [
+      { value: "account", label: "Tambah akun", permission: "finance.accounts.write" },
+      { value: "period", label: "Buat periode buku", permission: "finance.periods.manage" },
+      { value: "journal", label: "Buat jurnal seimbang", permission: "finance.journals.write" }
+    ],
+    inventory: [
+      { value: "item", label: "Tambah barang", permission: "inventory.items.write" },
+      { value: "warehouse", label: "Tambah gudang", permission: "inventory.items.write" },
+      { value: "movement", label: "Catat mutasi stok", permission: "inventory.movements.write" }
+    ],
+    hr: [
+      { value: "employee", label: "Tambah pegawai", permission: "hr.employees.write" },
+      { value: "payroll-period", label: "Buat periode payroll", permission: "hr.payroll.prepare" }
+    ]
   };
-  const selectedForm = forms[area].find((item) => item.value === form.kind)?.value ?? forms[area][0]?.value;
+  const allowedForms = forms[area].filter((item) => permissions.includes(item.permission));
+  const selectedForm = allowedForms.find((item) => item.value === form.kind)?.value ?? allowedForms[0]?.value;
   const update = (key: string, value: string) => setForm((previous) => ({ ...previous, [key]: value }));
+
+  if (!canReadArea(area)) return <section className="operations-panel">
+    <div className="operations-heading"><div><div className="eyebrow">OPERASIONAL INSTITUSI</div><h2>{area === "finance" ? "Keuangan & Akuntansi" : area === "inventory" ? "Inventaris" : "SDM & Payroll"}</h2><p>Akses ke ruang kerja ini belum diberikan kepada akun Anda.</p></div></div>
+    <div className="alert warning">Tidak ada izin baca yang sesuai untuk modul ini. Menu tidak akan dialihkan ke modul lain. Hubungi administrator institusi untuk penyesuaian peran.</div>
+    {availableAreas.length > 0 && <div className="operations-tabs">{availableAreas.map((item) => <button key={item} className="operation-tab" onClick={() => setArea(item)}>{item === "finance" ? "Keuangan & Akuntansi" : item === "inventory" ? "Inventaris" : "SDM & Payroll"}</button>)}</div>}
+  </section>;
 
   return <section className="operations-panel">
     <div className="operations-heading">
@@ -152,16 +174,16 @@ export default function Operations({ organizationId, initialArea = "finance" }: 
       <button className="outline-button" onClick={() => void reload(area)} disabled={busy}>{busy ? "Memuat…" : "↻ Muat ulang"}</button>
     </div>
     <div className="operations-tabs">
-      {(["finance", "inventory", "hr"] as Area[]).map((item) => <button key={item} className={area === item ? "operation-tab active" : "operation-tab"} onClick={() => { setArea(item); setShowForm(false); setForm({}); }}>
+      {availableAreas.map((item) => <button key={item} className={area === item ? "operation-tab active" : "operation-tab"} onClick={() => { setArea(item); setShowForm(false); setForm({}); }}>
         {item === "finance" ? "Keuangan & Akuntansi" : item === "inventory" ? "Inventaris" : "SDM & Payroll"}
       </button>)}
     </div>
     {error && <div className="alert error">{error}</div>}
     {notice && <div className="alert success">{notice}</div>}
-    <div className="operations-actions">
-      <label>Jenis data<select value={selectedForm} onChange={(event) => setForm({ kind: event.target.value })}>{forms[area].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+    {allowedForms.length > 0 && <div className="operations-actions">
+      <label>Jenis data<select value={selectedForm} onChange={(event) => setForm({ kind: event.target.value })}>{allowedForms.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
       <button className="primary" onClick={() => { setForm((previous) => ({ ...previous, kind: selectedForm ?? "" })); setShowForm((value) => !value); }}>{showForm ? "Tutup formulir" : "+ Tambah data"}</button>
-    </div>
+    </div>}
     {showForm && <form className="student-form operations-form" onSubmit={submit}>
       <div className="form-context"><strong>{area === "finance" && form.kind === "account" ? "Master bagan akun" : area === "finance" && form.kind === "journal" ? "Jurnal umum berpasangan" : area === "finance" ? "Periode pembukuan" : area === "inventory" && form.kind === "item" ? "Master barang persediaan" : area === "inventory" && form.kind === "movement" ? "Penerimaan, pengeluaran, atau transfer stok" : area === "inventory" ? "Lokasi penyimpanan" : form.kind === "employee" ? "Data induk pegawai" : "Periode penggajian"}</strong><p>{area === "finance" && form.kind === "account" ? "Gunakan kode akun yang konsisten dengan struktur laporan keuangan pesantren." : area === "finance" && form.kind === "journal" ? "Jurnal draft wajib seimbang; lampirkan bukti transaksi melalui prosedur arsip lembaga sebelum posting." : area === "finance" ? "Tanggal awal dan akhir menentukan transaksi yang boleh dicatat pada periode ini." : area === "inventory" && form.kind === "item" ? "Satuan dan batas minimum dipakai untuk pengendalian persediaan." : area === "inventory" && form.kind === "movement" ? "Mutasi tersimpan sebagai ledger. Transfer mencatat keluar dan masuk sebagai satu grup." : area === "inventory" ? "Gudang harus dikaitkan dengan kampus yang benar bila lokasi bersifat spesifik." : form.kind === "employee" ? "Nomor pegawai adalah identitas internal; jangan gunakan NIK sebagai nomor pegawai." : "Periode payroll menentukan rentang kerja dan tanggal pembayaran."}</p></div><div className="form-grid">
         <label>{area === "finance" && form.kind === "account" ? "Kode akun" : area === "finance" ? "Kode periode buku" : area === "inventory" && form.kind === "item" ? "Kode barang" : area === "inventory" ? "Kode gudang" : form.kind === "employee" ? "Nomor pegawai" : "Kode periode payroll"}<input value={form.code ?? ""} onChange={(event) => update("code", event.target.value)} required maxLength={64} /></label>
@@ -178,7 +200,7 @@ export default function Operations({ organizationId, initialArea = "finance" }: 
       <div className="form-actions"><button type="button" className="outline-button" onClick={() => setShowForm(false)}>Batal</button><button className="primary" disabled={busy}>{busy ? "Menyimpan…" : "Simpan"}</button></div>
     </form>}
     <div className="operations-datasets">
-      {columns[area].map((item) => {
+      {columns[area].filter((item) => permissions.includes(item.read)).map((item) => {
         const rows = data[area]?.[item.path] ?? [];
         return <article className="table-card operation-table" key={item.path}>
           <div className="table-toolbar"><div><h3>{item.title}</h3><p>{rows.length} data</p></div></div>

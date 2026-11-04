@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getAccessToken } from "./auth";
 import { MASTER_DATA_CATALOG, getModuleGuidance } from "./module-catalog";
 
-type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string };
+type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string; onResourceChange?: (key: string) => void };
 type Field = {
   key: string; label: string; type?: "text" | "date" | "datetime-local" | "number" | "textarea" | "select" | "checkbox" | "relation" | "array" | "json";
   required?: boolean; options?: string[]; source?: string; valueKey?: string; labelKey?: string; hint?: string; max?: number; step?: string;
@@ -83,14 +83,22 @@ function toFormValue(field:Field,row:Row):string|boolean{
  return String(value);
 }
 
-function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) {
+export function getModuleResourceLabel(key:string):string { return key==="all"?"Semua Modul":RESOURCES.find(resource=>resource.key===key)?.label??"Modul"; }
+
+function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange}:Props) {
  const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
- const groups=useMemo(()=>["Master Data",...Array.from(new Set(available.map(r=>r.group)))],[available]);
- const requestedGroup=RESOURCES.find(r=>r.key===initialResourceKey)?.group;
- const initialResource=available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup)??available[0];
- const [group,setGroup]=useState(initialResource?.group??groups[0]??"");
- const [resourceKey,setResourceKey]=useState(initialResource?.key??"");
- useEffect(()=>{const target=available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup)??available[0];if(target){setGroup(target.group);setResourceKey(target.key);}},[initialResourceKey,available,requestedGroup]);
+ const groups=useMemo(()=>["Semua Modul","Master Data",...Array.from(new Set(available.map(r=>r.group)))],[available]);
+ const requestedGroup=initialResourceKey==="all"?"Semua Modul":RESOURCES.find(r=>r.key===initialResourceKey)?.group;
+ const initialResource=initialResourceKey==="all"?available[0]:available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup);
+ const [group,setGroup]=useState(initialResourceKey==="all"?"Semua Modul":initialResource?.group??requestedGroup??groups[0]??"");
+ const [resourceKey,setResourceKey]=useState(initialResource?.key??(initialResourceKey==="all"?"":initialResourceKey));
+ const internalSelection=useRef(false);
+ useEffect(()=>{
+  if(internalSelection.current){internalSelection.current=false;return;}
+  const target=initialResourceKey==="all"?available[0]:available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup);
+  if(initialResourceKey==="all"){setGroup("Semua Modul");if(target)setResourceKey(target.key);}
+  else{setGroup(target?.group??requestedGroup??groups[0]??"");setResourceKey(target?.key??initialResourceKey);}
+ },[initialResourceKey,available,requestedGroup,groups]);
  const [rows,setRows]=useState<Row[]>([]);
  const [lookups,setLookups]=useState<Record<string,Lookup[]>>({});
  const [form,setForm]=useState<Record<string,string|boolean>>({});
@@ -99,8 +107,10 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) 
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
- const resourcesInGroup=group==="Master Data"?available.filter(r=>MASTER_DATA_KEYS.has(r.key)):available.filter(r=>r.group===group);
- const resource=resourcesInGroup.find(r=>r.key===resourceKey)??resourcesInGroup[0]??available.find(r=>r.key===resourceKey)??available[0];
+ const resourcesInGroup=group==="Semua Modul"?available:group==="Master Data"?available.filter(r=>MASTER_DATA_KEYS.has(r.key)):available.filter(r=>r.group===group);
+ const resource=resourcesInGroup.find(r=>r.key===resourceKey)??(group==="Semua Modul"?resourcesInGroup[0]:undefined);
+ const requestedResource=RESOURCES.find(r=>r.key===initialResourceKey);
+ const requestedLabel=group==="Semua Modul"?"Semua Modul":requestedResource?.label??group;
  const guidance=resource?getModuleGuidance(resource.key):undefined;
  const canWrite=Boolean(resource&&permissions.includes(resource.write));
  const request=useCallback(async<T,>(endpoint:string,init:RequestInit={}):Promise<T>=>{
@@ -176,10 +186,11 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) 
   return toLabel(value);
  };
  if(available.length===0)return <div className="table-card"><h2>Modul belum dapat diakses</h2><p className="muted">Akun ini belum memiliki izin untuk membaca modul operasional. Hubungi administrator institusi.</p></div>;
+ if(!resource)return <div className="table-card"><h2>{requestedLabel}</h2><p className="muted">Menu ini tidak dialihkan ke modul lain. Akun Anda belum memiliki izin baca yang diperlukan untuk membuka data ini{requestedResource?" (izin: "+requestedResource.read+")":""}. Hubungi administrator institusi untuk penyesuaian hak akses.</p></div>;
  return <section className="operations-panel">
-  <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI</div><h2>Ruang kerja modul</h2><p>Form kontekstual, validasi API, pembatasan akses, dan jejak aktivitas untuk data baru.</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
-  <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=g==="Master Data"?available.find(r=>MASTER_DATA_KEYS.has(r.key)):available.find(r=>r.group===g);if(next)setResourceKey(next.key);}}>{g}</button>)}</div>
-  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>setResourceKey(e.target.value)}>{resourcesInGroup.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
+  <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI / {resource.group.toUpperCase()}</div><h2>{resource.label}</h2><p>{guidance?.purpose??"Kelola data sesuai konteks modul dan hak akses organisasi."}</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
+  <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=g==="Semua Modul"?available[0]:g==="Master Data"?available.find(r=>MASTER_DATA_KEYS.has(r.key)):available.find(r=>r.group===g);if(next){setResourceKey(next.key);internalSelection.current=initialResourceKey!==(g==="Semua Modul"?"all":next.key);onResourceChange?.(g==="Semua Modul"?"all":next.key);}}}>{g}</button>)}</div>
+  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>{setResourceKey(e.target.value);internalSelection.current=initialResourceKey!==e.target.value;onResourceChange?.(e.target.value);}}>{resourcesInGroup.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
   {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
   {showForm&&resource&&canWrite&&<form className="student-form operations-form" onSubmit={submit}>
    <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{guidance?.purpose??(editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren.")}</p>{guidance&&<><p><strong>Alur data:</strong> {guidance.lifecycle}</p><p><strong>Klasifikasi:</strong> {guidance.classification.toUpperCase()} · <strong>Acuan:</strong> {guidance.regulatoryRefs.join(", ")}</p><ul className="field-hint">{guidance.formNotes.map(note=><li key={note}>{note}</li>)}</ul>{guidance.operationalGaps.length>0&&<p className="field-hint"><strong>Pengembangan lanjutan:</strong> {guidance.operationalGaps.join("; ")}.</p>}</>}</div>
