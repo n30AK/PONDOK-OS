@@ -62,3 +62,22 @@ Only run the CLI against the explicitly intended non-production branch. It verif
 ## Migrations
 
 Run `pnpm db:migrate` only after checking the target connection string and reconciling any manually applied schema objects with `core.schema_migrations`. The runner serializes execution, verifies SHA-256 checksums, and applies each migration in its own transaction. For a branch moving to migration 0013, deploy the matching API build first.
+
+
+## Central activation and company administration
+
+The distribution model is centralized SaaS with company approval. New institutions submit an authenticated activation request; the request does not create a tenant or membership. A company Super Administrator approves or rejects it through the Central Command workspace.
+
+- `GET /v1/platform/admin/me`: reports whether the authenticated user has an active company Super Admin grant.
+- `POST /v1/platform/activation-requests`: submits an institution request bound to the authenticated user.
+- `GET /v1/platform/activation-requests/mine`: lists the caller's own requests.
+- `GET /v1/platform/admin/activation-requests`: lists requests for company operators.
+- `POST /v1/platform/admin/activation-requests/:id/approve`: approves a pending request and returns a 256-bit random activation token exactly once. The database stores only its SHA-256 digest. Token is user-bound and expires after 24 hours.
+- `POST /v1/platform/admin/activation-requests/:id/reject`: rejects a pending request with a recorded reason.
+- `POST /v1/platform/activate`: redeems the token for its bound user and creates the organization, owner membership, main campus, owner role and audit event in one transaction.
+
+The first Super Administrator is deliberately not self-assigned. After migration 0016 is separately approved and applied to Development, provision the first company account out-of-band using the controlled procedure in [Central activation architecture](../../docs/architecture/central-activation-control-plane.md). Verify the Neon Auth UUID, verified email and unbanned account first. No Production changes are part of this rollout.
+
+The current operator workflow reveals the raw activation token once in the authenticated Super Admin console for delivery through an approved company channel. Automated email delivery, licensing/billing workflows, distribution version management, support impersonation and tenant monitoring are later control-plane phases; they are not claimed as implemented by this activation slice.
+
+Migration `0016_central_activation_control_plane.sql` is a prepared migration only. It has not been applied to Neon Development or Production. The API currently requires the database schema to be present before platform endpoints can work; until then the portal reports that the control plane is not installed.
