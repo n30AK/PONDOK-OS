@@ -17,7 +17,7 @@ The repository currently contains:
 - Tenant-scoped API foundations for student records, finance journals, inventory items/warehouses/stock movements, HR employees and payroll transitions.
 - Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
 - PostgreSQL domain foundations for library, PPDB, CMS, boarding, procurement, fixed assets, CRM and hybrid sync.
-- Integrated master-data expansion prepared in migration 0018: structured student identity/address fields, guardian contact and legal-authority relations, educator profiles, temporal employee assignments, hierarchical departments/positions, and a separately encrypted student-health store. Health API encryption uses AES-256-GCM and fails closed until its server-side key is configured.
+- Integrated master data is active on Neon Development (migration 0018): structured student identity/address fields, guardian contact and legal-authority relations, educator profiles, temporal employee assignments, hierarchical departments/positions, and a separately encrypted student-health store. The Development API Function has its AES-256-GCM health key configured; real health-data acceptance and key recovery/rotation drills remain pending.
 - Global system role templates and bootstrap workflows.
 - PWA shell caching, Docker images, Nginx reverse proxy and Compose deployment for cloud-connected mode.
 - CI executes migrations on disposable PostgreSQL 18, typechecks, builds workspaces and containers, and runs unit tests.
@@ -57,7 +57,7 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 
 - Neon development branch: `br-proud-paper-b312lfxi`.
 - Neon production branch: `br-late-cherry-b3uqtuvh` — do not run development migrations here.
-- The Neon development migration ledger includes migrations 0013 and 0014. Migration 0013 forces tenant RLS on 59 organization-owned tables; migration 0014 creates the `pondok_runtime` NOLOGIN/NOBYPASSRLS role and protects membership-role/role-permission reads.
+- The Neon Development migration ledger includes migrations 0013–0018. Migration 0013 forces tenant RLS on 59 organization-owned tables across 15 schema groups; migration 0014 creates the `pondok_runtime` NOLOGIN/NOBYPASSRLS role; migrations 0017–0018 add the module registry and integrated master data.
 - CI applies all migrations to disposable PostgreSQL 18; migrations 0013 and 0014 have also been explicitly applied and verified on Neon Development. Production remains untouched.
 - Bootstrap and migration commands are explicit; they are not run automatically at application startup.
 
@@ -66,8 +66,8 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 - The backend verifies JWTs and resolves membership/permissions from the selected organization.
 - Authenticated tenant requests set `app.user_id` and `app.organization_id` transaction-locally before tenant queries.
 - Migration 0013 enables and forces RLS on 59 organization-owned tables across 15 schema groups. Its integration test verifies missing-context denial, bidirectional tenant isolation, and cross-tenant write rejection.
-- Migrations 0013 and 0014 are active on Neon Development. API tenant transactions switch to `pondok_runtime` before tenant queries so the `neondb_owner` connection cannot bypass RLS. Live sign-in/bootstrap and two-tenant API acceptance remain pending.
-- Migration 0018 is committed in the master-data PR but is not applied to Neon Development or Production. One verified Development Super Admin is provisioned; the first organization has not yet been created. Apply 0018 only after explicit approval, and use the one-time first-tenant bootstrap form only after its PR is merged and deployed.
+- Migrations 0013–0018 are recorded on Neon Development. The four new master-data tables have ENABLE + FORCE RLS and tenant policies. API tenant transactions switch to `pondok_runtime` before tenant queries so the `neondb_owner` connection cannot bypass RLS. The Development `pondokapi` Function deployment #23 is completed and includes the health-encryption key/version secrets. Live two-tenant API acceptance remains pending.
+- Migration 0018 is applied only to Neon Development; Production remains untouched. One verified Development Super Administrator is active and the owner role template is ready. No organization or membership exists yet. The first-tenant form is available in Central Command and requires the actual institution and main-campus details before it can create the first workspace.
 - `core.organization_memberships` is intentionally excluded from that RLS migration as the membership authority; API lookups filter by the verified user ID and selected organization. This remains a separate hardening boundary.
 - These controls are not a completed security certification. The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
 - Never commit database URLs, passwords, signing keys, bootstrap tokens, or personal data.
