@@ -87,9 +87,9 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
     if (!authClient || !contactEmail) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await authClient.sendVerificationEmail({
+      const result = await authClient.emailOtp.sendVerificationOtp({
         email: contactEmail,
-        callbackURL: `${window.location.origin}${window.location.pathname}`,
+        type: "email-verification",
       });
       if (result.error) throw new Error(result.error.message);
       setNotice("Kode verifikasi dikirim ke email akun Anda. Periksa kotak masuk dan folder spam.");
