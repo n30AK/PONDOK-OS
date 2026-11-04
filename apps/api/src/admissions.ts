@@ -160,16 +160,20 @@ export async function handleAdmissionsRequest(
     const status = url.searchParams.get("status");
     const allowedStatuses = new Set(["draft", "submitted", "under_review", "accepted", "waitlisted", "rejected", "withdrawn", "enrolled"]);
     if (status && !allowedStatuses.has(status)) { reply(res, 400, { error: "invalid_application_status" }); return true; }
-    const values: unknown[] = [organizationId];
-    const statusClause = status ? (values.push(status), `AND a.application_status = $2`) : "";
+    const canViewSensitive = tenant.permissions.includes("admissions.applications.review") || tenant.permissions.includes("admissions.applications.documents");
+    const values: unknown[] = [organizationId, canViewSensitive];
+    const statusClause = status ? (values.push(status), `AND a.application_status = $3`) : "";
     values.push(limit);
     const result = await pool.query(
       `SELECT a.id, a.admission_period_id AS "admissionPeriodId", p.name AS "periodName",
               a.application_number AS "applicationNumber", a.applicant_name AS "applicantName",
               a.applicant_birth_date AS "applicantBirthDate", a.applicant_gender_code AS "applicantGenderCode",
               a.previous_school AS "previousSchool", a.desired_program_id AS "desiredProgramId",
-              a.guardian_name AS "guardianName", a.guardian_email AS "guardianEmail",
-              a.guardian_phone AS "guardianPhone", a.address, a.answers,
+              CASE WHEN $2::boolean THEN a.guardian_name ELSE NULL END AS "guardianName",
+              CASE WHEN $2::boolean THEN a.guardian_email ELSE NULL END AS "guardianEmail",
+              CASE WHEN $2::boolean THEN a.guardian_phone ELSE NULL END AS "guardianPhone",
+              CASE WHEN $2::boolean THEN a.address ELSE '{}'::jsonb END AS address,
+              CASE WHEN $2::boolean THEN a.answers ELSE '{}'::jsonb END AS answers,
               a.application_status AS status, a.submitted_at AS "submittedAt",
               a.reviewed_at AS "reviewedAt", a.linked_student_id AS "linkedStudentId",
               a.created_at AS "createdAt"
