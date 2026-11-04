@@ -211,7 +211,7 @@ JOIN core.permissions p ON (
     'hr.educators.read','hr.educators.write','hr.organization.read','hr.organization.write'
   ))
   OR (r.role_key = 'academic_admin' AND p.permission_key IN (
-    'hr.educators.read','hr.educators.write','hr.organization.read'
+    'hr.employees.read','hr.educators.read','hr.educators.write','hr.organization.read'
   ))
   OR (r.role_key = 'hr_admin' AND p.permission_key IN (
     'hr.educators.read','hr.educators.write','hr.organization.read','hr.organization.write'
@@ -238,6 +238,10 @@ BEGIN
   END LOOP;
 END
 $security$;
+
+-- Sensitive health and identity tables are deliberately not available to the generic runtime role.
+-- A dedicated envelope-encryption service must be implemented before granting access.
+REVOKE ALL ON academic.student_health_profiles, academic.student_identity_documents FROM pondok_runtime;
 
 DO $validation$
 BEGIN
