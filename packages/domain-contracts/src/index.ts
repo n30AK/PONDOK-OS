@@ -37,3 +37,6 @@ export function hasPermission(
 ): boolean {
   return context.permissions.has(permission);
 }
+
+export { assertValidModuleManifest, validateModuleManifest } from "./module-manifest.js";
+export type { ModuleManifestV1, ModuleCategory, ModuleDataClassification } from "./module-manifest.js";
