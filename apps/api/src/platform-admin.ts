@@ -122,6 +122,19 @@ export async function handlePlatformRequest(
     const validation = validateActivationRequest(body);
     if (validation) { reply(res, 422, { error: validation }); return true; }
     try {
+      const authUser = await pool.query<{ email: string }>(
+        'SELECT email FROM neon_auth."user" WHERE id = $1::uuid AND "emailVerified" = true AND coalesce(banned, false) = false',
+        [userId],
+      );
+      const verifiedEmail = authUser.rows[0]?.email?.trim().toLowerCase();
+      if (!verifiedEmail) { reply(res, 403, { error: "verified_email_required" }); return true; }
+      if ((body.contactEmail as string).trim().toLowerCase() !== verifiedEmail) {
+        reply(res, 422, { error: "contact_email_must_match_verified_account" }); return true;
+      }
+    } catch {
+      reply(res, 503, { error: "account_verification_unavailable" }); return true;
+    }
+    try {
       const scoped = await withPlatformScope(pool, userId, false, async (client) => {
         const result = await client.query<{ id: string; status: string; createdAt: string }>(
           `INSERT INTO platform.activation_requests
