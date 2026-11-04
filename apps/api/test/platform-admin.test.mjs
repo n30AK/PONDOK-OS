@@ -32,8 +32,8 @@ function poolWithClient(queryImpl, ownerQuery = async () => ({ rows: [] })) {
   const calls = [];
   const client = {
     async query(sql, values = []) {
-      calls.push({ sql: sql.replace(/\\s+/g, " ").trim(), values });
-      return queryImpl(sql.replace(/\\s+/g, " ").trim(), values);
+      calls.push({ sql: sql.trim(), values });
+      return queryImpl(sql.trim(), values);
     },
     release() {}
   };
