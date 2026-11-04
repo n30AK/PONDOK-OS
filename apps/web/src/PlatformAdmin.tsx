@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { getAccessToken, getCurrentUser } from "./auth";
+import { authClient, getAccessToken, getCurrentUser } from "./auth";
 
 type TenantRecord = {
   organizationId: string; name: string; slug: string; organizationType: string; status: string;
@@ -40,6 +40,8 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
   const [requests, setRequests] = useState<ActivationRequest[]>([]);
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [contactEmail, setContactEmail] = useState("");
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
   const [contactName, setContactName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
@@ -76,8 +78,39 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
     void getCurrentUser().then((user) => {
       if (user?.email) setContactEmail(user.email);
       if (user?.name) setContactName(user.name);
+      setEmailVerified(user?.emailVerified === true);
     }).catch(() => undefined);
   }, []);
+
+  const sendVerificationCode = async () => {
+    if (!authClient || !contactEmail) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.sendVerificationEmail({
+        email: contactEmail,
+        callbackURL: `${window.location.origin}${window.location.pathname}`,
+      });
+      if (result.error) throw new Error(result.error.message);
+      setNotice("Kode verifikasi dikirim ke email akun Anda. Periksa kotak masuk dan folder spam.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Pengiriman kode verifikasi gagal.");
+    } finally { setBusy(false); }
+  };
+
+  const verifyAccountEmail = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!authClient || !contactEmail) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.emailOtp.verifyEmail({ email: contactEmail, otp: verificationCode.trim() });
+      if (result.error) throw new Error(result.error.message);
+      setEmailVerified(true);
+      setVerificationCode("");
+      setNotice("Email berhasil diverifikasi. Anda sekarang dapat mengajukan aktivasi lembaga.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Verifikasi email gagal.");
+    } finally { setBusy(false); }
+  };
 
   const submitRequest = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -155,13 +188,24 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
       <p className="muted">Permohonan terikat pada akun yang sedang login. Email adalah kontak administrasi, bukan kredensial atau token keamanan.</p>
       <form className="platform-form" onSubmit={submitRequest}>
         <label>Nama penanggung jawab<input value={contactName} onChange={(event) => setContactName(event.target.value)} required maxLength={120}/></label>
-        <label>Email kontak<input type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} required maxLength={254}/></label>
+        <label>Email akun terverifikasi<input type="email" value={contactEmail} readOnly required maxLength={254}/></label>
+      {!emailVerified && <div className="form-section">
+        <h3>Verifikasi email akun</h3>
+        <p className="muted">Alamat email harus diverifikasi sebelum permohonan aktivasi dapat diproses. Kode berlaku 15 menit.</p>
+        <div className="platform-actions">
+          <button type="button" className="outline-button" onClick={() => void sendVerificationCode()} disabled={busy || !contactEmail}>Kirim kode verifikasi</button>
+        </div>
+        <form className="platform-redeem" onSubmit={verifyAccountEmail}>
+          <input inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\\D/g, "").slice(0, 8))} minLength={6} maxLength={8} required placeholder="Kode verifikasi email"/>
+          <button className="primary" disabled={busy || verificationCode.length < 6}>Verifikasi email</button>
+        </form>
+      </div>}
         <label>Nama lembaga<input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} onBlur={() => setOrganizationSlug(value => value || organizationName.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""))} required minLength={3} maxLength={180}/></label>
         <label>Slug lembaga<input value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"-"))} required maxLength={80}/></label>
         <label>Jenis lembaga<select value={organizationType} onChange={(event) => setOrganizationType(event.target.value)}><option value="pesantren">Pesantren</option><option value="madrasah">Madrasah</option><option value="sekolah">Sekolah</option><option value="yayasan">Yayasan</option><option value="other">Lainnya</option></select></label>
         <label>Kode kampus utama<input value={campusCode} onChange={(event) => setCampusCode(event.target.value.toUpperCase())} required maxLength={24}/></label>
         <label>Nama kampus utama<input value={campusName} onChange={(event) => setCampusName(event.target.value)} required maxLength={120}/></label>
-        <button className="primary" disabled={busy}>Kirim permohonan</button>
+        <button className="primary" disabled={busy || !emailVerified}>Kirim permohonan</button>
       </form>
     </div>}
 
