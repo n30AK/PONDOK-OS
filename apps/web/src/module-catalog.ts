@@ -9,9 +9,9 @@ export type ModuleGuidance = {
   purpose: string;
   lifecycle: string;
   classification: DataClassification;
-  formNotes: string[];
-  regulatoryRefs: string[];
-  operationalGaps: string[];
+  formNotes: readonly string[];
+  regulatoryRefs: readonly string[];
+  operationalGaps: readonly string[];
 };
 
 export const MODULE_CATALOG_VERSION = "1.0.0";
