@@ -208,7 +208,7 @@ async function handleModuleRegistryRequest(
         );
         if (!organization.rows[0]) return { error: "target_organization_not_active" as const };
 
-        const inserted = await client.query(
+        const inserted = await client.query<{ id: string; organizationId: string; moduleId: string; moduleVersion: string; status: string; manifestDigest: string; createdAt: Date; updatedAt: Date }>(
           `INSERT INTO platform.module_requests
             (organization_id, module_id, module_version, manifest, manifest_digest,
              submitted_by, status, idempotency_key)
@@ -305,14 +305,15 @@ async function handleModuleRegistryRequest(
 
   if (path === "/v1/platform/admin/module-publishers" && req.method === "POST") {
     const body = await readJson(req);
-    if (!body || typeof body.userId !== "string" || !UUID.test(body.userId)) {
+    const targetUserId = body?.userId;
+    if (typeof targetUserId !== "string" || !UUID.test(targetUserId)) {
       reply(res, 422, { error: "invalid_module_publisher_user_id" });
       return true;
     }
     try {
       const authUser = await pool.query<{ email: string }>(
         `SELECT email FROM neon_auth."user" u WHERE id = $1::uuid AND "emailVerified" = true AND coalesce((to_jsonb(u)->>'banned')::boolean, false) = false`,
-        [body.userId],
+        [targetUserId],
       );
       if (!authUser.rows[0]) { reply(res, 422, { error: "verified_active_auth_user_required" }); return true; }
       const scoped = await withPlatformScope(pool, userId, true, async (client) => {
@@ -323,9 +324,9 @@ async function handleModuleRegistryRequest(
              SET status = 'active', granted_by = EXCLUDED.granted_by, revoked_at = NULL
            RETURNING user_id AS "userId", status, granted_by AS "grantedBy",
                      created_at AS "createdAt", revoked_at AS "revokedAt"`,
-          [body.userId, userId],
+          [targetUserId, userId],
         );
-        await auditPlatform(client, userId, "module_publisher.granted", "module_publisher", body.userId);
+        await auditPlatform(client, userId, "module_publisher.granted", "module_publisher", targetUserId);
         return result.rows[0];
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
