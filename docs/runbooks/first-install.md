@@ -7,7 +7,7 @@ PONDOK OS uses a centralized company approval model. New institutions must not c
 1. Confirm the Neon Development branch is selected: `br-proud-paper-b312lfxi`.
 2. Confirm the Development Neon Auth and API URLs belong to the same branch.
 3. Confirm migration `0016_central_activation_control_plane.sql` is recorded in `core.schema_migrations` on Development.
-4. Confirm migrations `0017` and `0018` are present in `core.schema_migrations` on Development and verify the seven Module Registry/master-data tables. These migrations have been applied to Development only; Production remains untouched.
+4. Confirm migrations `0017`, `0018` and `0019` are present in `core.schema_migrations` on Development; verify the seven Module Registry/master-data tables and confirm `core.organization_memberships` has ENABLE + FORCE RLS with three explicit policies. Production remains untouched.
 5. Sign in to the verified, unbanned Development Neon Auth account provisioned as the company Super Administrator. The current Development account has been verified and is active.
 6. Verify the account's UUID, email verification status and unbanned status using the Development Auth database.
 
