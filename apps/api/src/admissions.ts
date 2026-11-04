@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
 import { loadTenantContext } from "./tenant-access.js";
-import { validateStudentProfileData } from "./academic.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -270,7 +269,7 @@ export async function handleAdmissionsRequest(
   }
 
 
-  const enrollMatch = path.match(/^\\/v1\\/admissions\\/applications\\/([0-9a-f-]{36})\\/enroll$/i);
+  const enrollMatch = path.match(/^\/v1\/admissions\/applications\/([0-9a-f-]{36})\/enroll$/i);
   if (enrollMatch && req.method === "POST") {
     if (!tenant.permissions.includes("admissions.applications.review")) {
       reply(res, 403, { error: "permission_required", permission: "admissions.applications.review" }); return true;
