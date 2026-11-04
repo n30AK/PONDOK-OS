@@ -81,11 +81,6 @@ function toFormValue(field:Field,row:Row):string|boolean{
  return String(value);
 }
 
- if (value===null||value===undefined||value==="") return "—";
- if (typeof value==="boolean") return value?"Ya":"Tidak";
- if (typeof value==="object") return JSON.stringify(value);
- return String(value);
-}
 function ModuleWorkspace({organizationId,permissions}:Props) {
  const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
  const groups=useMemo(()=>Array.from(new Set(available.map(r=>r.group))),[available]);
