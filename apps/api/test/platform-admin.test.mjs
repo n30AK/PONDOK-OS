@@ -63,7 +63,7 @@ test("applicant request is created and audited under the restricted platform rol
   const { pool, calls } = poolWithClient(async (sql) => {
     if (sql.startsWith("INSERT INTO platform.activation_requests")) return { rows: [{ id: requestId, status: "pending" }] };
     return { rows: [] };
-  });
+  }, async () => ({ rows: [{ email: valid.contactEmail }] }));
   const res = response();
   await handlePlatformRequest(request("/v1/platform/activation-requests", "POST", valid), res, pool, userId);
   assert.equal(res.status, 201);
