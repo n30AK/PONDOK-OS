@@ -183,6 +183,31 @@ export async function handlePlatformRequest(
     return true;
   }
 
+  if (path === "/v1/platform/admin/tenants" && req.method === "GET") {
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, (client) =>
+        client.query(
+          `SELECT o.id AS "organizationId", o.name, o.slug,
+                  o.organization_type AS "organizationType", o.status,
+                  o.created_at AS "createdAt",
+                  count(m.id) FILTER (WHERE m.membership_status = 'active')::int AS "memberCount",
+                  l.plan_code AS "planCode", l.status AS "licenseStatus",
+                  l.ends_at AS "licenseEndsAt"
+           FROM core.organizations o
+           LEFT JOIN core.organization_memberships m ON m.organization_id = o.id
+           LEFT JOIN platform.tenant_licenses l ON l.organization_id = o.id
+           GROUP BY o.id, l.id
+           ORDER BY o.created_at DESC
+           LIMIT 500`,
+        ));
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      reply(res, 200, { data: scoped.value?.rows ?? [] });
+    } catch {
+      reply(res, 503, { error: "platform_tenant_registry_unavailable" });
+    }
+    return true;
+  }
+
   if (path.startsWith("/v1/platform/admin/")) {
     if (path === "/v1/platform/admin/activation-requests" && req.method === "GET") {
       const status = url.searchParams.get("status");

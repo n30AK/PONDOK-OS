@@ -103,3 +103,25 @@ test("legacy public bootstrap endpoint is disabled by the centralized distributi
   assert.equal(res.status, 410);
   assert.equal(JSON.parse(res.body).error, "legacy_bootstrap_disabled_use_central_activation");
 });
+
+test("company super admin can read the tenant registry under the restricted platform role", async () => {
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT o.id AS")) return { rows: [{ organizationId: requestId, name: "Pondok Contoh", slug: "pondok-contoh", status: "active", memberCount: 2 }] };
+    return { rows: [] };
+  }, async () => ({ rows: [{ allowed: true }] }));
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/admin/tenants"), res, pool, userId);
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse(res.body).data[0].memberCount, 2);
+  assert.ok(calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
+});
+
+test("non-admin cannot read the tenant registry", async () => {
+  const { pool, calls } = poolWithClient(async () => ({ rows: [] }), async () => ({ rows: [{ allowed: false }] }));
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/admin/tenants"), res, pool, userId);
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "platform_super_admin_required");
+  assert.ok(!calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
+});

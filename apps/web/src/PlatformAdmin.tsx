@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { getAccessToken, getCurrentUser } from "./auth";
 
+type TenantRecord = {
+  organizationId: string; name: string; slug: string; organizationType: string; status: string;
+  createdAt: string; memberCount: number; planCode?: string | null; licenseStatus?: string | null; licenseEndsAt?: string | null;
+};
+
 type ActivationRequest = {
   id: string;
   requestedBy?: string;
@@ -33,6 +38,7 @@ async function platformRequest<T>(path: string, init: RequestInit = {}): Promise
 export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [mine, setMine] = useState<ActivationRequest[]>([]);
   const [requests, setRequests] = useState<ActivationRequest[]>([]);
+  const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [contactEmail, setContactEmail] = useState("");
   const [contactName, setContactName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
@@ -49,13 +55,16 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
   const load = useCallback(async () => {
     setBusy(true); setError("");
     try {
-      const [own, admin] = await Promise.all([
+      const [own, admin, registry] = await Promise.all([
         platformRequest<{ data: ActivationRequest[] }>("/v1/platform/activation-requests/mine"),
         isSuperAdmin
           ? platformRequest<{ data: ActivationRequest[] }>("/v1/platform/admin/activation-requests")
           : Promise.resolve({ data: [] as ActivationRequest[] }),
+        isSuperAdmin
+          ? platformRequest<{ data: TenantRecord[] }>("/v1/platform/admin/tenants")
+          : Promise.resolve({ data: [] as TenantRecord[] }),
       ]);
-      setMine(own.data); setRequests(admin.data);
+      setMine(own.data); setRequests(admin.data); setTenants(registry.data);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Gagal memuat data aktivasi.");
     } finally { setBusy(false); }
@@ -130,7 +139,7 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
   };
 
   const pendingCount = requests.filter((request) => request.status === "pending").length;
-  const activeCount = requests.filter((request) => request.status === "activated").length;
+  const activeCount = tenants.filter((tenant) => tenant.status === "active").length;
 
   return <section className="platform-console">
     <div className="platform-heading">
@@ -161,6 +170,21 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
       <article><span>{isSuperAdmin ? "Tenant diaktifkan" : "Disetujui / aktif"}</span><strong>{isSuperAdmin ? activeCount : mine.filter((item) => ["approved","activated"].includes(item.status)).length}</strong></article>
       <article><span>Menunggu keputusan</span><strong>{mine.filter((item) => item.status === "pending").length}</strong></article>
     </div>
+
+    {isSuperAdmin && <div className="platform-panel">
+      <h3>Registry lembaga</h3>
+      <p className="muted">Daftar tenant yang telah terbentuk. Status lisensi ditampilkan terpisah dari status organisasi.</p>
+      <div className="platform-table-wrap"><table><thead><tr><th>Lembaga</th><th>Status organisasi</th><th>Pengguna aktif</th><th>Paket / lisensi</th><th>Dibuat</th></tr></thead>
+        <tbody>{tenants.map((tenant) => <tr key={tenant.organizationId}>
+          <td><strong>{tenant.name}</strong><small className="cell-sub">{tenant.slug} · {tenant.organizationType}</small></td>
+          <td><span className="status-chip">{tenant.status}</span></td>
+          <td>{tenant.memberCount}</td>
+          <td>{tenant.planCode ?? "Belum ditetapkan"}<small className="cell-sub">{tenant.licenseStatus ?? "Lisensi belum dibuat"}</small></td>
+          <td>{new Date(tenant.createdAt).toLocaleDateString("id-ID")}</td>
+        </tr>)}
+        {tenants.length === 0 && <tr><td colSpan={5} className="empty-state">{busy ? "Memuat registry…" : "Belum ada tenant terdaftar."}</td></tr>}</tbody>
+      </table></div>
+    </div>}
 
     <div className="platform-panel">
       <h3>{isSuperAdmin ? "Antrean permohonan aktivasi" : "Status permohonan saya"}</h3>
