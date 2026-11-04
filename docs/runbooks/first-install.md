@@ -6,16 +6,22 @@ PONDOK OS uses a centralized company approval model. New institutions must not c
 
 1. Confirm the Neon Development branch is selected: `br-proud-paper-b312lfxi`.
 2. Confirm the Development Neon Auth and API URLs belong to the same branch.
-3. Review migration `0016_central_activation_control_plane.sql`.
-4. Obtain separate approval before applying migration 0016 to Development. This runbook does not authorize applying it.
-5. Sign in to the Development Neon Auth account intended to operate as the company Super Administrator.
+3. Confirm migration `0016_central_activation_control_plane.sql` is recorded in `core.schema_migrations` on Development.
+4. Review any new migration separately. Migration 0018 requires explicit approval before application; this runbook does not authorize it.
+5. Sign in to the verified, unbanned Development Neon Auth account intended to operate as the company Super Administrator.
 6. Verify the account's UUID, email verification status and unbanned status using the Development Auth database.
 
 ## Provision the first company Super Administrator
 
-The first Super Administrator is not self-service. After migration 0016 is approved and applied to Development, use the controlled SQL grant in [Central activation architecture](../architecture/central-activation-control-plane.md).
+The first Super Administrator is not self-service. On the current Development environment, the controlled bootstrap has been completed for the single verified, unbanned Auth account. For any future replacement or additional Super Administrator, use the controlled SQL grant in [Central activation architecture](../architecture/central-activation-control-plane.md), after independent identity verification.
 
-The SQL must target the Development branch and verify the intended `neon_auth."user"` row. Never grant Super Admin based only on a submitted email, a tenant membership, or a browser parameter. Production must remain untouched.
+Never grant Super Admin based only on a submitted email, a tenant membership, or a browser parameter. Production must remain untouched.
+
+## One-time first tenant bootstrap
+
+When Development has exactly one verified, active Super Administrator and no organization exists, the Super Administrator may use the **Inisialisasi lembaga pertama** form in Central Command. The API rechecks the administrator authority, verified/unbanned Auth account, and zero-organization condition inside a transaction protected by an advisory lock. It atomically creates the first organization, owner membership, main campus, owner role assignment and tenant/platform audit events. The Super Administrator becomes the first Pemilik Institusi. The endpoint returns HTTP 409 after any organization already exists and cannot be used as a general tenant-creation endpoint.
+
+This bootstrap is only for the first Development tenant. Subsequent institutions must use the normal applicant → approval → one-time activation-token workflow.
 
 ## Institution registration and approval
 

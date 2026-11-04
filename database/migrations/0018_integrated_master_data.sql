@@ -51,7 +51,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS student_guardians_one_primary
   WHERE is_primary = true;
 
 -- Medical details are stored separately from general student records.
--- Free-text medical history is encrypted by the application using envelope encryption;
+-- Free-text medical history is encrypted by the application with AES-256-GCM;
 -- raw medical text must never be written into profile_data or ordinary audit metadata.
 CREATE TABLE IF NOT EXISTS academic.student_health_profiles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

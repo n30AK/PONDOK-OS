@@ -689,6 +689,76 @@ export async function handlePlatformRequest(
     }
   }
 
+
+  if (path === "/v1/platform/admin/bootstrap-first-tenant" && req.method === "POST") {
+    const body = await readJson(req);
+    if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
+    let authUser: { email: string } | undefined;
+    try {
+      const verified = await pool.query<{ email: string }>(
+        'SELECT email FROM neon_auth."user" WHERE id = $1::uuid AND "emailVerified" = true AND coalesce(banned, false) = false',
+        [userId],
+      );
+      authUser = verified.rows[0];
+    } catch { reply(res, 503, { error: "account_verification_unavailable" }); return true; }
+    if (!authUser?.email) { reply(res, 403, { error: "verified_email_required" }); return true; }
+    const validation = validateActivationRequest({
+      ...body,
+      contactEmail: authUser.email,
+      contactName: typeof body.contactName === "string" ? body.contactName : "Institution Owner",
+    });
+    if (validation) { reply(res, 422, { error: validation }); return true; }
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('pondok:first-tenant-bootstrap'))");
+        const count = await client.query<{ total: number }>("SELECT count(*)::int AS total FROM core.organizations");
+        if (Number(count.rows[0]?.total ?? 0) !== 0) return { error: "first_tenant_already_exists" as const };
+        const ownerRole = await client.query<{ id: string }>(
+          "SELECT id FROM core.roles WHERE organization_id IS NULL AND role_key='institution_owner' AND is_system=true LIMIT 1",
+        );
+        if (!ownerRole.rows[0]) throw new Error("institution_owner_role_missing");
+        const organization = await client.query<{ id: string }>(
+          "INSERT INTO core.organizations (slug,name,organization_type,status) VALUES ($1,$2,$3,'active') RETURNING id",
+          [body.organizationSlug, String(body.organizationName).trim(), body.organizationType],
+        );
+        const organizationId = organization.rows[0]?.id;
+        if (!organizationId) throw new Error("organization_insert_failed");
+        const membership = await client.query<{ id: string }>(
+          "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1::uuid,$2::uuid,'active') RETURNING id",
+          [organizationId,userId],
+        );
+        const membershipId = membership.rows[0]?.id;
+        if (!membershipId) throw new Error("membership_insert_failed");
+        await client.query("SELECT set_config('app.organization_id',$1,true)",[organizationId]);
+        const campus = await client.query<{ id: string }>(
+          "INSERT INTO core.campuses (organization_id,code,name,campus_type,status) VALUES ($1::uuid,$2,$3,'main','active') RETURNING id",
+          [organizationId,body.campusCode,String(body.campusName).trim()],
+        );
+        const campusId = campus.rows[0]?.id;
+        if (!campusId) throw new Error("campus_insert_failed");
+        await client.query("INSERT INTO core.membership_roles (membership_id,role_id) VALUES ($1::uuid,$2::uuid)",[membershipId,ownerRole.rows[0].id]);
+        await client.query(
+          `INSERT INTO audit.audit_events (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+           VALUES ($1::uuid,$2::uuid,'organization.first_tenant_bootstrapped','organization',$3,
+             jsonb_build_object('campus_id',$4::text,'membership_id',$5::text,'bootstrap','controlled-first-tenant'))`,
+          [organizationId,userId,organizationId,campusId,membershipId],
+        );
+        await auditPlatform(client,userId,"organization.first_tenant_bootstrapped","organization",organizationId,{organizationType:body.organizationType});
+        return { organizationId, membershipId, campusId };
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      if (scoped.value && "error" in scoped.value) { reply(res, 409, { error: scoped.value.error }); return true; }
+      if (!scoped.value) { reply(res, 500, { error: "first_tenant_bootstrap_failed" }); return true; }
+      reply(res, 201, { data: scoped.value, message: "Lembaga pertama berhasil diinisialisasi." });
+    } catch (reason) {
+      const code = errorCode(reason);
+      reply(res, code === "23505" ? 409 : code === "23503" ? 422 : 500, {
+        error: code === "23505" ? "organization_slug_or_campus_code_exists" : code === "23503" ? "related_record_not_found" : "first_tenant_bootstrap_failed"
+      });
+    }
+    return true;
+  }
+
   if (path === "/v1/platform/activate" && req.method === "POST") {
     const body = await readJson(req);
     if (!body || typeof body.activationToken !== "string" || body.activationToken.length < 40 || body.activationToken.length > 128) {

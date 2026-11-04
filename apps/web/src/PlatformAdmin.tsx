@@ -171,6 +171,23 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
     } finally { setBusy(false); }
   };
 
+
+  const bootstrapFirstTenant = async (event: FormEvent) => {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await platformRequest<{ data: { organizationId: string; campusId: string } }>("/v1/platform/admin/bootstrap-first-tenant", {
+        method: "POST",
+        body: JSON.stringify({ contactName, organizationName, organizationSlug, organizationType, campusCode, campusName }),
+      });
+      localStorage.setItem("pondok.organizationId", result.data.organizationId);
+      localStorage.setItem(`pondok.campusId.${result.data.organizationId}`, result.data.campusId);
+      setNotice("Lembaga pertama berhasil dibuat. Workspace sedang dimuat…");
+      window.location.reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Inisialisasi lembaga pertama gagal.");
+    } finally { setBusy(false); }
+  };
+
   const pendingCount = requests.filter((request) => request.status === "pending").length;
   const activeCount = tenants.filter((tenant) => tenant.status === "active").length;
 
@@ -206,6 +223,21 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
         <label>Kode kampus utama<input value={campusCode} onChange={(event) => setCampusCode(event.target.value.toUpperCase())} required maxLength={24}/></label>
         <label>Nama kampus utama<input value={campusName} onChange={(event) => setCampusName(event.target.value)} required maxLength={120}/></label>
         <button className="primary" disabled={busy || !emailVerified}>Kirim permohonan</button>
+      </form>
+    </div>}
+
+
+    {isSuperAdmin && tenants.length === 0 && <div className="platform-panel">
+      <h3>Inisialisasi lembaga pertama</h3>
+      <p className="muted">Bootstrap satu kali untuk Development. Setelah lembaga pertama dibuat, formulir ini otomatis dinonaktifkan. Akun Super Admin ini juga menjadi Pemilik Institusi pertama.</p>
+      <form className="platform-form" onSubmit={bootstrapFirstTenant}>
+        <label>Nama penanggung jawab<input value={contactName} onChange={(event) => setContactName(event.target.value)} required minLength={2} maxLength={120}/></label>
+        <label>Nama resmi lembaga<input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} onBlur={() => setOrganizationSlug(value => value || organizationName.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""))} required minLength={3} maxLength={180}/></label>
+        <label>Slug lembaga<input value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"-"))} required maxLength={80}/></label>
+        <label>Jenis lembaga<select value={organizationType} onChange={(event) => setOrganizationType(event.target.value)}><option value="pesantren">Pesantren</option><option value="madrasah">Madrasah</option><option value="sekolah">Sekolah</option><option value="yayasan">Yayasan</option><option value="other">Lainnya</option></select></label>
+        <label>Kode kampus utama<input value={campusCode} onChange={(event) => setCampusCode(event.target.value.toUpperCase())} required maxLength={24}/></label>
+        <label>Nama kampus utama<input value={campusName} onChange={(event) => setCampusName(event.target.value)} required maxLength={120}/></label>
+        <button className="primary" disabled={busy}>Buat workspace lembaga pertama</button>
       </form>
     </div>}
 
