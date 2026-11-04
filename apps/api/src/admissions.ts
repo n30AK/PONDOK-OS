@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
 import { loadTenantContext } from "./tenant-access.js";
+import { validateStudentProfileData } from "./academic.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -74,6 +75,13 @@ export function validateApplicationInput(value: Json): string | null {
 export function validateApplicationReviewInput(value: Json): string | null {
   if (!["accepted", "waitlisted", "rejected", "needs_information"].includes(String(value.decision))) return "invalid_review_decision";
   if (value.notes !== undefined && value.notes !== null && (typeof value.notes !== "string" || value.notes.length > 2000)) return "invalid_review_notes";
+  return null;
+}
+
+
+export function validateEnrollmentConversionInput(value: Json): string | null {
+  if (typeof value.campusId !== "string" || !UUID.test(value.campusId)) return "invalid_campus_id";
+  if (typeof value.studentNumber !== "string" || value.studentNumber.trim().length < 1 || value.studentNumber.trim().length > 64) return "invalid_student_number";
   return null;
 }
 
@@ -259,6 +267,82 @@ export async function handleAdmissionsRequest(
     );
     if (!result.rows[0]) { reply(res, 409, { error: "application_not_found_or_not_reviewable" }); return true; }
     reply(res, 200, { data: result.rows[0] }); return true;
+  }
+
+
+  const enrollMatch = path.match(/^\\/v1\\/admissions\\/applications\\/([0-9a-f-]{36})\\/enroll$/i);
+  if (enrollMatch && req.method === "POST") {
+    if (!tenant.permissions.includes("admissions.applications.review")) {
+      reply(res, 403, { error: "permission_required", permission: "admissions.applications.review" }); return true;
+    }
+    if (!tenant.permissions.includes("academic.students.create")) {
+      reply(res, 403, { error: "permission_required", permission: "academic.students.create" }); return true;
+    }
+    const body = await readJson(req);
+    if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
+    const validationError = validateEnrollmentConversionInput(body);
+    if (validationError) { reply(res, 422, { error: validationError }); return true; }
+    try {
+      const result = await pool.query(
+        `WITH candidate AS MATERIALIZED (
+           SELECT id, applicant_name, applicant_birth_date, applicant_gender_code, previous_school,
+                  guardian_name, guardian_email, guardian_phone, address, answers
+           FROM admissions.applications
+           WHERE organization_id = $1::uuid AND id = $2::uuid
+             AND application_status = 'accepted' AND linked_student_id IS NULL
+           FOR UPDATE
+         ), created_student AS (
+           INSERT INTO academic.student_profiles
+             (organization_id, campus_id, student_number, legal_name, birth_date, gender_code, profile_data, status)
+           SELECT $1::uuid, $3::uuid, $4, c.applicant_name, c.applicant_birth_date,
+                  c.applicant_gender_code,
+                  jsonb_strip_nulls(jsonb_build_object(
+                    'guardianName', c.guardian_name,
+                    'guardianPhone', c.guardian_phone,
+                    'guardianEmail', c.guardian_email,
+                    'province', c.address->>'province',
+                    'regency', c.address->>'regency',
+                    'district', c.address->>'district',
+                    'village', c.address->>'village',
+                    'postalCode', c.address->>'postalCode',
+                    'originSchool', c.previous_school,
+                    'educationTrack', CASE WHEN c.answers->>'educationTrack' IN ('formal','muadalah','nonformal','salafiyah','other') THEN c.answers->>'educationTrack' END,
+                    'boardingStatus', CASE WHEN c.answers->>'boardingInterest' IN ('mukim','non_mukim') THEN c.answers->>'boardingInterest' END
+                  )),
+                  'applicant'
+           FROM candidate c
+           RETURNING id, student_number AS "studentNumber", legal_name AS "legalName", status
+         ), linked AS (
+           UPDATE admissions.applications a
+           SET linked_student_id = s.id, updated_at = now()
+           FROM candidate c CROSS JOIN created_student s
+           WHERE a.organization_id = $1::uuid AND a.id = c.id AND a.linked_student_id IS NULL
+           RETURNING a.id AS "applicationId", a.linked_student_id AS "studentId"
+         )
+         SELECT linked."applicationId", linked."studentId", created_student."studentNumber",
+                created_student."legalName", created_student.status AS "studentStatus"
+         FROM linked CROSS JOIN created_student`,
+        [organizationId, enrollMatch[1], body.campusId, (body.studentNumber as string).trim()],
+      );
+      if (!result.rows[0]) {
+        const existing = await pool.query(
+          `SELECT application_status AS status, linked_student_id AS "linkedStudentId"
+           FROM admissions.applications WHERE organization_id = $1::uuid AND id = $2::uuid`,
+          [organizationId, enrollMatch[1]],
+        );
+        if (!existing.rows[0]) { reply(res, 404, { error: "application_not_found" }); return true; }
+        if (existing.rows[0].linkedStudentId) {
+          reply(res, 409, { error: "application_already_converted", studentId: existing.rows[0].linkedStudentId }); return true;
+        }
+        reply(res, 409, { error: "application_must_be_accepted_before_conversion", status: existing.rows[0].status }); return true;
+      }
+      reply(res, 201, { data: result.rows[0] });
+    } catch (reason) {
+      const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
+      reply(res, code === "23505" ? 409 : code === "23503" ? 422 : 500,
+        { error: code === "23505" ? "student_number_already_exists" : code === "23503" ? "campus_not_found_in_organization" : "application_conversion_failed" });
+    }
+    return true;
   }
 
   if (path.startsWith("/v1/admissions/")) { res.setHeader("allow", "GET, POST"); reply(res, 405, { error: "method_not_allowed" }); return true; }
