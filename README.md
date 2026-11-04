@@ -17,6 +17,7 @@ The repository currently contains:
 - Tenant-scoped API foundations for student records, finance journals, inventory items/warehouses/stock movements, HR employees and payroll transitions.
 - Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
 - PostgreSQL domain foundations for library, PPDB, CMS, boarding, procurement, fixed assets, CRM and hybrid sync.
+- Integrated master-data expansion prepared in migration 0018: structured student identity/address fields, guardian contact and legal-authority relations, educator profiles, temporal employee assignments, hierarchical departments/positions, and a separately encrypted student-health store. Health API encryption uses AES-256-GCM and fails closed until its server-side key is configured.
 - Global system role templates and bootstrap workflows.
 - PWA shell caching, Docker images, Nginx reverse proxy and Compose deployment for cloud-connected mode.
 - CI executes migrations on disposable PostgreSQL 18, typechecks, builds workspaces and containers, and runs unit tests.
@@ -72,4 +73,4 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 
 ## Development
 
-See [architecture blueprint](docs/architecture/blueprint.md), [implementation status](docs/architecture/implementation-status.md), [implementation roadmap](docs/roadmap/implementation.md), [production readiness gate](docs/runbooks/production-readiness.md), [first-install runbook](docs/runbooks/first-install.md), [backup/restore drill](docs/runbooks/backup-restore.md), [API runtime](apps/api/README.md), and [web workspace](apps/web/README.md).
+See [student data protection and health encryption](docs/security/student-data-protection.md), [architecture blueprint](docs/architecture/blueprint.md), [implementation status](docs/architecture/implementation-status.md), [implementation roadmap](docs/roadmap/implementation.md), [production readiness gate](docs/runbooks/production-readiness.md), [first-install runbook](docs/runbooks/first-install.md), [backup/restore drill](docs/runbooks/backup-restore.md), [API runtime](apps/api/README.md), and [web workspace](apps/web/README.md).
