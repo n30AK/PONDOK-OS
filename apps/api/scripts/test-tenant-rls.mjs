@@ -11,6 +11,14 @@ try {
   assert.equal(runtimeRole.rowCount, 1, "restricted runtime role must exist");
   assert.equal(runtimeRole.rows[0].rolcanlogin, false, "runtime role must not allow login");
   assert.equal(runtimeRole.rows[0].rolbypassrls, false, "runtime role must not bypass RLS");
+  const membershipSecurity = await client.query(`
+    SELECT c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced,
+           (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policy_count
+    FROM pg_class c WHERE c.oid = 'core.organization_memberships'::regclass
+  `);
+  assert.equal(membershipSecurity.rows[0].rls_enabled, true, "membership authority RLS enabled");
+  assert.equal(membershipSecurity.rows[0].rls_forced, true, "membership authority FORCE RLS enabled");
+  assert.equal(Number(membershipSecurity.rows[0].policy_count), 3, "membership authority has only the three explicit access policies");
   const result = await client.query(`
     SELECT n.nspname AS schema_name, c.relname AS table_name,
            c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced,
@@ -54,6 +62,10 @@ try {
   );
   await client.query("SET LOCAL ROLE pondok_runtime");
   await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)", [userA, tenantA]);
+  const ownMembership = await client.query("SELECT organization_id FROM core.organization_memberships WHERE user_id = $1::uuid", [userA]);
+  const otherMembership = await client.query("SELECT organization_id FROM core.organization_memberships WHERE user_id = $1::uuid", [userB]);
+  assert.equal(ownMembership.rowCount, 1, "tenant runtime can read the authenticated user's active membership");
+  assert.equal(otherMembership.rowCount, 0, "tenant runtime cannot read another user's membership");
   await client.query(
     "INSERT INTO finance.accounts (id, organization_id, account_code, account_name, account_type) VALUES ($1,$2,'RLS-A','Tenant A account','asset')",
     [accountA, tenantA],
@@ -116,6 +128,11 @@ try {
     "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
     [bootstrapUser, bootstrapTenant],
   );
+  const visibleBootstrapMembership = await client.query(
+    "SELECT id FROM core.organization_memberships WHERE user_id = $1::uuid",
+    [bootstrapUser],
+  );
+  assert.equal(visibleBootstrapMembership.rowCount, 1, "tenant runtime can read its own bootstrap membership");
   await client.query(
     "INSERT INTO core.campuses (id, organization_id, code, name, campus_type, status) VALUES ($1,$2,'UTAMA','Kampus Utama','main','active')",
     [bootstrapCampus, bootstrapTenant],
@@ -148,6 +165,69 @@ try {
   assert.equal(bootstrapAuditVisible.rowCount, 1, "first bootstrap must write its audit event under FORCE RLS");
   assert.equal(bootstrapRoleVisible.rowCount, 1, "first bootstrap must assign the owner role under RLS");
   assert.ok(bootstrapPermissionsVisible.rowCount > 0, "global owner permissions must remain visible under RLS");
+
+  // Platform runtime can create the first membership only for an active Super Admin.
+  const adminId = "11111111-1111-4111-8111-111111111111";
+  const platformTenant = "22222222-2222-4222-8222-222222222222";
+  const platformMember = "33333333-3333-4333-8333-333333333333";
+  const unrelatedMember = "44444444-4444-4444-8444-444444444444";
+  await client.query("BEGIN");
+  await client.query(
+    "INSERT INTO core.organizations (id,slug,name,organization_type,status) VALUES ($1,'rls-platform-ci','RLS Platform CI','pesantren','active')",
+    [platformTenant],
+  );
+  await client.query(
+    "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1,$2,'active'),($1,$3,'active')",
+    [platformTenant, platformMember, unrelatedMember],
+  );
+  await client.query(
+    "INSERT INTO platform.super_admins (user_id,email,display_name,status) VALUES ($1,'rls-admin@example.invalid','RLS CI Admin','active')",
+    [adminId],
+  );
+  await client.query("SELECT set_config('app.user_id',$1,true)", [adminId]);
+  await client.query("SET LOCAL ROLE pondok_platform_runtime");
+  const adminVisibleMemberships = await client.query("SELECT id FROM core.organization_memberships");
+  assert.equal(adminVisibleMemberships.rowCount, 2, "platform Super Admin can read membership registry");
+  await client.query("ROLLBACK");
+
+  // Normal applicants can only create a membership after their own activation
+  // token has been consumed and the request is atomically bound to the new org.
+  const applicantId = "55555555-5555-4555-8555-555555555555";
+  const activationTenant = "66666666-6666-4666-8666-666666666666";
+  const activationRequest = "77777777-7777-4777-8777-777777777777";
+  const tokenHash = Buffer.from("88".repeat(32), "hex");
+  await client.query("BEGIN");
+  await client.query(
+    "INSERT INTO core.organizations (id,slug,name,organization_type,status) VALUES ($1,'rls-activation-ci','RLS Activation CI','pesantren','active')",
+    [activationTenant],
+  );
+  await client.query(
+    `INSERT INTO platform.activation_requests
+      (id,requested_by,contact_email,contact_name,organization_name,organization_slug,organization_type,campus_code,campus_name,status)
+     VALUES ($1,$2,'applicant@example.invalid','RLS Applicant','RLS Activation CI','rls-activation-ci','pesantren','UTAMA','Kampus Utama','approved')`,
+    [activationRequest, applicantId],
+  );
+  await client.query(
+    "INSERT INTO platform.activation_tokens (token_hash,request_id,requested_by,expires_at,created_by) VALUES ($1,$2,$3,now()+interval '1 day',$4)",
+    [tokenHash, activationRequest, applicantId, adminId],
+  );
+  await client.query("SELECT set_config('app.user_id',$1,true)", [applicantId]);
+  await client.query("SET LOCAL ROLE pondok_platform_runtime");
+  await client.query("UPDATE platform.activation_tokens SET consumed_at=now() WHERE token_hash=$1", [tokenHash]);
+  await client.query(
+    "UPDATE platform.activation_requests SET status='activated',organization_id=$2::uuid,updated_at=now() WHERE id=$1::uuid",
+    [activationRequest, activationTenant],
+  );
+  await client.query(
+    "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1::uuid,$2::uuid,'active')",
+    [activationTenant, applicantId],
+  );
+  const applicantMembership = await client.query(
+    "SELECT organization_id FROM core.organization_memberships WHERE user_id=$1::uuid",
+    [applicantId],
+  );
+  assert.equal(applicantMembership.rowCount, 1, "applicant can create their membership after token consumption");
+  await client.query("ROLLBACK");
   await client.query("ROLLBACK");
 
   process.stdout.write(`Tenant RLS passed: ${result.rowCount} protected tables, fail-closed context, bidirectional tenant isolation, and RLS-compatible first bootstrap.\\n`);
