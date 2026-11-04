@@ -94,6 +94,24 @@ async function withPlatformScope<T>(
   } finally { client.release(); }
 }
 
+export async function listUserOrganizations(
+  pool: TenantDatabase,
+  userId: string,
+): Promise<Array<{ id: string; name: string; slug: string }>> {
+  const scoped = await withPlatformScope(pool, userId, false, (client) =>
+    client.query<{ id: string; name: string; slug: string }>(
+      `SELECT o.id, o.name, o.slug
+       FROM core.organization_memberships om
+       JOIN core.organizations o ON o.id = om.organization_id
+       WHERE om.user_id = $1::uuid
+         AND om.membership_status = 'active'
+         AND o.status = 'active'
+       ORDER BY o.name ASC`,
+      [userId],
+    ));
+  return scoped.value?.rows ?? [];
+}
+
 async function auditPlatform(client: Pick<DbClient, "query">, actor: string, action: string, resourceType: string, resourceId: string | null, metadata: Json = {}): Promise<void> {
   await client.query(
     "INSERT INTO platform.audit_events (actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid, $2, $3, $4, $5::jsonb)",
@@ -794,12 +812,9 @@ export async function handlePlatformRequest(
         );
         const organizationId = org.rows[0]?.id;
         if (!organizationId) throw new Error("organization_insert_failed");
-        const membership = await client.query<{ id: string }>(
-          "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1::uuid, $2::uuid, 'active') RETURNING id",
-          [organizationId, userId],
-        );
-        const membershipId = membership.rows[0]?.id;
-        if (!membershipId) throw new Error("membership_insert_failed");
+        // Consume and bind the approved activation before inserting membership.
+        // Migration 0019 permits applicant membership creation only after this
+        // transaction proves the consumed token belongs to this organization.
         await client.query(
           "UPDATE platform.activation_tokens SET consumed_at = now() WHERE token_hash = $1",
           [digest],
@@ -808,6 +823,12 @@ export async function handlePlatformRequest(
           "UPDATE platform.activation_requests SET status = 'activated', organization_id = $2::uuid, updated_at = now() WHERE id = $1::uuid",
           [activation.request_id, organizationId],
         );
+        const membership = await client.query<{ id: string }>(
+          "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1::uuid, $2::uuid, 'active') RETURNING id",
+          [organizationId, userId],
+        );
+        const membershipId = membership.rows[0]?.id;
+        if (!membershipId) throw new Error("membership_insert_failed");
         await auditPlatform(client, userId, "activation.redeemed", "activation_request", activation.request_id, { organizationId });
         await client.query(
           "SELECT set_config('app.organization_id', $1, true)",
