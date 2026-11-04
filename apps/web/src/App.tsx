@@ -301,7 +301,7 @@ export default function App() {
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memproses…" : "Masuk ke workspace"} <span>→</span></button>
           <p className="login-note">Akses pengguna baru harus diberikan oleh administrator pesantren.</p>
-          <button type="button" className="text-button auth-toggle" onClick={() => { setFirstSetup(true); setError(""); }}>Penyiapan institusi pertama kali →</button>
+          
         </form>}
       </section>
     </main>;
@@ -342,7 +342,7 @@ export default function App() {
               <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
             </> : organizations.length === 0 ? <>
               <p>Akun ini belum terhubung ke organisasi pesantren.</p>
-              <div className="alert warning">Akun ini belum terhubung ke organisasi pesantren. Jika ini administrator pertama, lanjutkan penyiapan institusi menggunakan token bootstrap satu kali. Jika bukan, minta administrator mengaktifkan keanggotaan akun Anda.</div><p className="muted">Untuk lembaga baru, ajukan aktivasi melalui formulir di bawah. Aktivasi mandiri dengan token bootstrap lama tidak digunakan dalam alur distribusi terpusat.</p>
+              <div className="alert warning">Akun ini belum memiliki workspace aktif. Ajukan permohonan aktivasi lembaga melalui formulir Central Activation di bawah. Workspace baru dibuat setelah perusahaan menyetujui permohonan.</div><p className="muted">Untuk lembaga baru, ajukan aktivasi melalui formulir di bawah. Aktivasi mandiri dengan token bootstrap lama tidak digunakan dalam alur distribusi terpusat.</p>
             </> : <p>Menyiapkan workspace pesantren Anda…</p>}
             {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
