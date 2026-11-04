@@ -10,8 +10,10 @@ type AuthClient = {
   getSession(): Promise<AuthResult<AuthUserPayload>>;
   signIn: { email(input: { email: string; password: string }): Promise<AuthResult<AuthUserPayload>> };
   signUp: { email(input: { email: string; password: string; name: string }): Promise<AuthResult<AuthUserPayload>> };
-  sendVerificationEmail(input: { email: string; callbackURL?: string }): Promise<AuthResult<unknown>>;
-  emailOtp: { verifyEmail(input: { email: string; otp: string }): Promise<AuthResult<unknown>> };
+  emailOtp: {
+    sendVerificationOtp(input: { email: string; type: "email-verification" }): Promise<AuthResult<unknown>>;
+    verifyEmail(input: { email: string; otp: string }): Promise<AuthResult<unknown>>;
+  };
   signOut(): Promise<unknown>;
 };
 
