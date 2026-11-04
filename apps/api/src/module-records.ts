@@ -64,11 +64,11 @@ function validDate(value: string): boolean {
   const [y,m,d] = value.split("-").map(Number); const date = new Date(Date.UTC(y ?? 0,(m ?? 1)-1,d ?? 0));
   return date.getUTCFullYear()===y && date.getUTCMonth()===(m ?? 1)-1 && date.getUTCDate()===d;
 }
-function validate(fields: Resource["fields"], body: Json): string | null {
+function validate(fields: Resource["fields"], body: Json, partial = false): string | null {
   for (const key of Object.keys(body)) if (!fields[key]) return "unsupported_field";
   for (const [key, field] of Object.entries(fields)) {
     const value = body[key];
-    if (field.required && (value === undefined || value === null || value === "")) return `required_${key}`;
+    if (!partial && field.required && (value === undefined || value === null || value === "")) return `required_${key}`;
     if (value === undefined || value === null || value === "") continue;
     if (field.kind === "uuid" && (typeof value !== "string" || !UUID.test(value))) return `invalid_${key}`;
     if (field.kind === "date" && (typeof value !== "string" || !validDate(value))) return `invalid_${key}`;
@@ -96,11 +96,17 @@ export function validateModuleRecordInput(resourceKey: string, body: Json): stri
   return validate(resource.fields, body);
 }
 
+export function validateModuleRecordPatchInput(resourceKey: string, body: Json): string | null {
+  const resource = RESOURCES[resourceKey];
+  if (!resource) return "module_resource_not_found";
+  return validate(resource.fields, body, true);
+}
+
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const match = url.pathname.match(/^\/v1\/modules\/([a-z-]+)$/);
   if (!match) return false;
-  if (req.method !== "GET" && req.method !== "POST") { res.setHeader("allow", "GET, POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
+  if (req.method !== "GET" && req.method !== "POST" && req.method !== "PATCH") { res.setHeader("allow", "GET, POST, PATCH"); reply(res,405,{error:"method_not_allowed"}); return true; }
   if (match[1] === "student-options") {
     if (req.method !== "GET") { res.setHeader("allow","GET"); reply(res,405,{error:"method_not_allowed"}); return true; }
     const tenant = await loadTenantContext(pool,userId,organizationId);
@@ -118,8 +124,8 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   if (!resource) { reply(res,404,{error:"module_resource_not_found"}); return true; }
   const tenant = await loadTenantContext(pool,userId,organizationId);
   if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
-  const write = req.method === "POST";
-  const requiredPermission = req.method === "POST" ? (resource.writePermission ?? resource.permission) : resource.permission;
+  const write = req.method !== "GET";
+  const requiredPermission = write ? (resource.writePermission ?? resource.permission) : resource.permission;
   if (!tenant.permissions.includes(requiredPermission)) { reply(res,403,{error:"permission_required",permission:requiredPermission}); return true; }
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
@@ -129,18 +135,48 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   }
   const body=await readJson(req);
   if (!body) { reply(res,400,{error:"invalid_json_or_body_too_large"}); return true; }
+  const recordId=url.searchParams.get("id");
+  if (req.method === "PATCH") {
+    if (!recordId || !UUID.test(recordId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
+    const error=validate(resource.fields,body,true);
+    if (error) { reply(res,422,{error}); return true; }
+    const entries=Object.entries(resource.fields).filter(([key])=>Object.prototype.hasOwnProperty.call(body,key));
+    if (!entries.length) { reply(res,400,{error:"no_mutable_fields"}); return true; }
+    const sets=entries.map(([,field],i)=>{const kind=field.kind;const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":"";return `${field.column}=${i+1}${suffix}`;});
+    const values=entries.map(([key,field])=>field.kind==="json"?JSON.stringify(body[key]):body[key]);
+    values.push(organizationId,recordId);
+    await pool.query("SAVEPOINT module_record_write");
+    try {
+      const result=await pool.query(`UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING *`,values);
+      if (!result.rows.length) { reply(res,404,{error:"record_not_found"}); return true; }
+      const record=result.rows[0] as Record<string,unknown>;
+      await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,[organizationId,userId,"module.record.update",resource.table,String(record.id ?? ""),JSON.stringify({resource:match[1],fields:entries.map(([key])=>key)})]);
+      await pool.query("RELEASE SAVEPOINT module_record_write");
+      reply(res,200,{data:record});
+    } catch(reason) {
+      await pool.query("ROLLBACK TO SAVEPOINT module_record_write").catch(() => undefined);
+      await pool.query("RELEASE SAVEPOINT module_record_write").catch(() => undefined);
+      const code=typeof reason==="object"&&reason!==null&&"code" in reason?String((reason as {code:unknown}).code):"";
+      reply(res,code==="23505"?409:code==="23503"?422:code==="23514"?422:500,{error:code==="23505"?"duplicate_record":code==="23503"?"related_record_not_found_in_tenant":code==="23514"?"record_constraint_rejected":"module_record_update_failed"});
+    }
+    return true;
+  }
   const error=validateModuleRecordInput(match[1] ?? "",body);
   if (error) { reply(res,422,{error}); return true; }
   const entries=Object.entries(resource.fields).filter(([key])=>Object.prototype.hasOwnProperty.call(body,key));
   const columns=["organization_id",...entries.map(([,field])=>field.column),...(resource.actorColumn?[resource.actorColumn]:[])];
   const values=[organizationId,...entries.map(([key,field])=>field.kind==="json"?JSON.stringify(body[key]):body[key]),...(resource.actorColumn?[userId]:[])];
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
+  await pool.query("SAVEPOINT module_record_write");
   try {
     const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING *`,values);
     const record = result.rows[0] as Record<string, unknown>;
     await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
+    await pool.query("RELEASE SAVEPOINT module_record_write");
     reply(res,201,{data:record});
   } catch (reason) {
+    await pool.query("ROLLBACK TO SAVEPOINT module_record_write").catch(() => undefined);
+    await pool.query("RELEASE SAVEPOINT module_record_write").catch(() => undefined);
     const code=typeof reason==="object"&&reason!==null&&"code" in reason?String((reason as {code:unknown}).code):"";
     reply(res,code==="23505"?409:code==="23503"?422:code==="23514"?422:500,{error:code==="23505"?"duplicate_record":code==="23503"?"related_record_not_found_in_tenant":code==="23514"?"record_constraint_rejected":"module_record_create_failed"});
   }

@@ -32,6 +32,7 @@ test("creates a tenant-scoped module record and records a minimal audit event", 
   const calls = [];
   const pool = { async query(sql, values) {
     calls.push({ sql, values });
+    if (sql.startsWith("SAVEPOINT") || sql.startsWith("RELEASE SAVEPOINT") || sql.startsWith("ROLLBACK TO SAVEPOINT")) return { rows: [] };
     if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.classes.read", "academic.classes.write"])] };
     if (sql.startsWith("INSERT INTO academic.programs")) return { rows: [{ id: recordId, code: "TAHFIDZ", name: "Tahfidz" }] };
     if (sql.startsWith("INSERT INTO audit.audit_events")) return { rows: [] };
@@ -72,4 +73,22 @@ test("reads a module only with its read permission", async () => {
   await handleModuleRecordsRequest(request("GET", "/v1/modules/programs"), res, pool, userId, organizationId);
   assert.equal(res.statusCode, 200);
   assert.equal(JSON.parse(res.body).data[0].name, "Tahfidz");
+});
+
+
+test("rolls back the module write when its audit event cannot be inserted", async () => {
+  const calls = [];
+  const pool = { async query(sql) {
+    calls.push(sql);
+    if (sql.startsWith("SAVEPOINT") || sql.startsWith("RELEASE SAVEPOINT") || sql.startsWith("ROLLBACK TO SAVEPOINT")) return { rows: [] };
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.classes.read", "academic.classes.write"])] };
+    if (sql.startsWith("INSERT INTO academic.programs")) return { rows: [{ id: recordId, code: "TAHFIDZ", name: "Tahfidz" }] };
+    if (sql.startsWith("INSERT INTO audit.audit_events")) { const error = new Error("audit unavailable"); error.code = "XX000"; throw error; }
+    throw new Error("unexpected query");
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("POST", "/v1/modules/programs", { code: "TAHFIDZ", name: "Tahfidz" }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 500);
+  assert.ok(calls.includes("ROLLBACK TO SAVEPOINT module_record_write"));
+  assert.ok(calls.includes("RELEASE SAVEPOINT module_record_write"));
 });
