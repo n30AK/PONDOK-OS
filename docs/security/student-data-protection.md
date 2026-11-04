@@ -14,7 +14,7 @@ Health information and identity-document numbers are separate restricted records
 
 The health API uses AES-256-GCM with a fresh 96-bit nonce for each value. Blood group, allergies, medical history, medication information and emergency instructions are encrypted before persistence. The database stores ciphertext, nonce and authentication tag together; audit events record only field names and actor/action metadata.
 
-The Development API Function deployment #23 has these server-side environment variables configured. Production has not been configured or changed. For any new branch/deployment, provision the following variables before enabling health access:
+The Development API Function deployment #25 has these server-side environment variables configured. Production has not been configured or changed. For any new branch/deployment, provision the following variables before enabling health access:
 
 - `STUDENT_HEALTH_ENCRYPTION_KEY`: Base64-encoded 32-byte random key.
 - `STUDENT_HEALTH_ENCRYPTION_KEY_VERSION`: stable key version label, for example `v1`.
@@ -33,7 +33,7 @@ The health API is permission-gated by `academic.students.health.read` and `acade
 
 ## Required operational controls before real data import
 
-Migration 0018 is applied on Development; verify RLS on every new tenant-owned table before importing real data.
+Migration 0018 is applied on Development; migration 0019 also forces RLS on the membership authority table. Verify RLS on every tenant-owned table before importing real data.
 2. Set the encryption secrets in the server runtime and test create/read/update/decryption, invalid-key, wrong-tenant and unauthorized-user cases.
 3. Define written consent/notice, purpose limitation, retention/deletion, guardian authority verification, emergency disclosure and incident-response procedures.
 4. Restrict health data to designated staff; do not include it in routine exports, search indexes, AI prompts, analytics or generic audit payloads.

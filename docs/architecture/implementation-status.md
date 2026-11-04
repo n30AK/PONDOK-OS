@@ -4,11 +4,11 @@ This file separates shipped code from roadmap intent. "CI passed" means the repo
 
 ## Verified Development snapshot (2026-11-05)
 
-- Migrations 0017 and 0018 are applied and recorded in the Development migration ledger; Production was not modified.
-- The seven Module Registry/master-data tables are present. The four new tenant-owned tables have ENABLE + FORCE RLS and tenant policies.
+- Migrations 0017, 0018 and 0019 are applied and recorded in the Development migration ledger; Production was not modified.
+- The seven Module Registry/master-data tables are present. The four new master-data tables and `core.organization_memberships` have ENABLE + FORCE RLS and scoped policies. A live Development catalog audit found no remaining organization-owned table without forced RLS.
 - The six new health/educator/organization permissions exist; owner/admin role templates include all six.
 - One verified, unbanned Super Administrator is active; the `institution_owner` system role is present.
-- Neon Function `pondokapi` Development deployment #23 completed with `STUDENT_HEALTH_ENCRYPTION_KEY` and `STUDENT_HEALTH_ENCRYPTION_KEY_VERSION` configured.
+- Neon Function `pondokapi` Development deployment #25 completed with `STUDENT_HEALTH_ENCRYPTION_KEY` and `STUDENT_HEALTH_ENCRYPTION_KEY_VERSION` configured.
 - No organization, campus, membership, or real student/employee data exists yet. The first institution must be created with its actual details through Central Command before tenant-scoped modules can be exercised.
 - These are infrastructure and schema checks, not live end-to-end acceptance or production certification.
 
@@ -17,7 +17,7 @@ This file separates shipped code from roadmap intent. "CI passed" means the repo
 | Monorepo and CI | Implemented foundation | pnpm/Turbo workspace; migration runner with checksums/advisory locking; disposable PostgreSQL migration integration; workspace build/typecheck/tests and Docker image builds |
 | Core tenant schema | Foundation implemented | organizations, campuses, memberships, roles, permissions, settings and audit event table |
 | Identity and onboarding | Initial implementation; first-tenant gate ready | Neon Managed Auth EdDSA JWT verification; centralized activation workflow; Development Super Admin verified; one-time first-tenant bootstrap form and endpoint are deployed. Actual tenant creation awaits the institution's real name, slug and campus details. |
-| Tenant authorization | Development database activation complete; live acceptance partial | Migrations 0013 and 0014 are applied on Neon Development. 59 organization-owned tables across 15 schema groups enforce RLS; `pondok_runtime` is NOLOGIN/NOBYPASSRLS and API tenant transactions switch to it before queries. `core.membership_roles` and `core.role_permissions` also enforce RLS. CI and staging tests cover fail-closed context, cross-tenant read/write denial and bootstrap writes. Live two-identity/two-organization API acceptance and campus-level authorization remain incomplete; `core.organization_memberships` remains the membership authority excluded from RLS. |
+| Tenant authorization | Hardened on Development | Migrations 0013–0019; runtime role is NOLOGIN/NOBYPASSRLS; `core.organization_memberships` now has FORCE RLS with tenant self-read, platform self/admin read, and controlled insert policies. The Development catalog audit reports no remaining organization-owned table without forced RLS. |
 | Academic/student | Partial operational API/UI | Master student profile, structured addresses, guardian records/relationships, health profile and identity-document schema/API foundations are present. Health data uses AES-256-GCM and restricted permissions. Full document vault, guardian consent workflow, academic scheduling/grading, and end-to-end acceptance remain incomplete. |
 | Finance/accounting | Partial operational UI/API | chart of accounts, fiscal periods, journal draft creation/listing, balanced posting guard, period close and immutable posted journal records; basic account/period list and create screens; journal posting, full statements, budgeting and cash/bank reconciliation UI pending |
 | Inventory | Partial operational UI/API | item, warehouse and append-only stock movement endpoints; basic item/warehouse list and create screens; receiving/issue/transfer UI, stock opname, valuation and procurement integration pending |
@@ -36,7 +36,7 @@ This file separates shipped code from roadmap intent. "CI passed" means the repo
 | Tauri desktop | Not implemented | installer, local services and auto-update required |
 | Kiosk | Not implemented | kiosk UX, device registration and hardened browser policy required |
 | Commercial Control Center | Not implemented | separate provider plane, billing, license issuance and support CRM required |
-| Live acceptance | Not completed | Development API Function deployment #23 is completed and the database schema/security checks pass. No first tenant exists, so tenant-scoped end-to-end workflows, two-tenant API isolation and real institution UAT have not been completed. First-tenant bootstrap is available to the verified Super Administrator through Central Command and requires actual institution details. |
+| Live acceptance | Not completed | Development API Function deployment #25 is completed and the database schema/security checks pass. No first tenant exists, so tenant-scoped end-to-end workflows, two-tenant API isolation and real institution UAT have not been completed. First-tenant bootstrap is available to the verified Super Administrator through Central Command and requires actual institution details. |
 
 ## Completion criteria
 
