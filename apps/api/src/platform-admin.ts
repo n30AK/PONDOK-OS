@@ -246,7 +246,25 @@ async function handleModuleRegistryRequest(
     } catch (reason) {
       const code = errorCode(reason);
       if (code === "42501") reply(res, 403, { error: "active_module_publisher_required" });
-      else if (code === "23505") reply(res, 409, { error: "module_request_idempotency_conflict" });
+      else if (code === "23505") {
+        try {
+          const retry = await withPlatformScope(pool, userId, false, (client) =>
+            client.query(
+              `SELECT id, organization_id AS "organizationId", module_id AS "moduleId",
+                      module_version AS "moduleVersion", status,
+                      encode(manifest_digest, 'hex') AS "manifestDigest",
+                      created_at AS "createdAt", updated_at AS "updatedAt"
+               FROM platform.module_requests
+               WHERE submitted_by = $1::uuid AND idempotency_key = $2 LIMIT 1`,
+              [userId, body.idempotencyKey],
+            ));
+          const existing = retry.value?.rows[0];
+          if (existing) reply(res, 200, { data: existing });
+          else reply(res, 409, { error: "module_request_idempotency_conflict" });
+        } catch {
+          reply(res, 409, { error: "module_request_idempotency_conflict" });
+        }
+      }
       else if (code === "42P01" || code === "3F000") reply(res, 503, { error: "module_registry_not_installed" });
       else reply(res, 500, { error: "module_request_failed" });
     }
@@ -366,7 +384,7 @@ async function handleModuleRegistryRequest(
   }
 
   if (path === "/v1/platform/admin/modules/requests" && req.method === "GET") {
-    const status = url.searchParams.get("status");
+    const status = url.searchParams.get("status") || null;
     const validStatuses = ["submitted","approved","rejected","installing","installed","failed","rollback_pending","rolled_back"];
     if (status && !validStatuses.includes(status)) { reply(res, 422, { error: "invalid_module_request_status" }); return true; }
     try {
