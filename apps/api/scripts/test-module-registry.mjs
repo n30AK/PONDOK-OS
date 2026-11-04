@@ -15,6 +15,16 @@ const secondRequestId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const digest = Buffer.alloc(32, 7);
 const manifest = { manifestVersion: 1, moduleId: "org.example.registry", version: "1.0.0" };
 
+async function expectDenied(work, predicate, message) {
+  await client.query("SAVEPOINT expected_denial");
+  try {
+    await assert.rejects(work, predicate, message);
+  } finally {
+    await client.query("ROLLBACK TO SAVEPOINT expected_denial");
+    await client.query("RELEASE SAVEPOINT expected_denial");
+  }
+}
+
 try {
   const tables = await client.query(`
     SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -73,7 +83,7 @@ try {
   await client.query("SELECT set_config('app.user_id',$1,true)", [outsider]);
   const hidden = await client.query("SELECT id FROM platform.module_requests WHERE id=$1", [requestId]);
   assert.equal(hidden.rowCount, 0, "other users cannot read a publisher's request");
-  await assert.rejects(
+  await expectDenied(
     () => client.query(
       "INSERT INTO platform.module_requests (id,organization_id,module_id,module_version,manifest,manifest_digest,submitted_by,status,idempotency_key) VALUES ($1,$2,'org.example.denied','1.0.0',$3::jsonb,$4,$5,'submitted','registry-ci-key-002')",
       [secondRequestId, org, JSON.stringify(manifest), digest, outsider],
@@ -83,12 +93,12 @@ try {
   );
 
   await client.query("SELECT set_config('app.user_id',$1,true)", [publisher]);
-  await assert.rejects(
+  await expectDenied(
     () => client.query("UPDATE platform.module_requests SET status='approved' WHERE id=$1", [requestId]),
     (error) => error?.code === "42501",
     "publishers cannot approve or alter workflow state",
   );
-  await assert.rejects(
+  await expectDenied(
     () => client.query("UPDATE platform.module_requests SET manifest='{}'::jsonb WHERE id=$1", [requestId]),
     (error) => error?.code === "42501",
     "submission manifest is immutable",
@@ -107,7 +117,7 @@ try {
   assert.equal(approved.rows[0].status, "approved");
   assert.equal(approved.rows[0].reviewed_by, admin);
 
-  await assert.rejects(
+  await expectDenied(
     () => client.query(
       "UPDATE platform.module_requests SET reviewed_by=$2 WHERE id=$1",
       [requestId, publisher],
