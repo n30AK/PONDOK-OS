@@ -201,6 +201,10 @@ INSERT INTO core.permissions (permission_key, description) VALUES
  ('hr.organization.write','Manage organizational structure and assignments')
 ON CONFLICT (permission_key) DO UPDATE SET description = EXCLUDED.description;
 
+INSERT INTO core.roles (organization_id, role_key, role_name, is_system) VALUES
+ (NULL,'health_officer','Petugas Kesehatan Santri',true)
+ON CONFLICT (organization_id, role_key) DO UPDATE SET role_name=EXCLUDED.role_name, is_system=true;
+
 INSERT INTO core.role_permissions (role_id, permission_key)
 SELECT r.id, p.permission_key
 FROM core.roles r
@@ -212,6 +216,9 @@ JOIN core.permissions p ON (
   ))
   OR (r.role_key = 'academic_admin' AND p.permission_key IN (
     'hr.employees.read','hr.educators.read','hr.educators.write','hr.organization.read'
+  ))
+  OR (r.role_key = 'health_officer' AND p.permission_key IN (
+    'academic.students.read','academic.students.health.read','academic.students.health.write'
   ))
   OR (r.role_key = 'hr_admin' AND p.permission_key IN (
     'hr.educators.read','hr.educators.write','hr.organization.read','hr.organization.write'
