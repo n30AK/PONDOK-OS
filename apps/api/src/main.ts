@@ -351,7 +351,7 @@ export function createApiServer(dependencies: ApiDependencies = {}) {
   });
 }
 
-function secureDatabaseConnectionString(value: string): string {
+export function secureDatabaseConnectionString(value: string): string {
   const url = new URL(value);
   // Neon currently treats these modes as verify-full, but pg v9 will adopt
   // weaker libpq semantics. Pin certificate and hostname verification now.
