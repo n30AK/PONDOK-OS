@@ -16,7 +16,7 @@ PONDOK OS uses a centralized SaaS control plane with approval-based activation.
 ## Security boundaries
 
 1. Email is an identity/contact attribute, never a secret or token derivation input.
-2. The API verifies Neon JWT issuer, signature, expiry and subject before all platform operations.
+2. The API verifies Neon JWT issuer, signature, expiry and subject before all platform operations. Activation applicants must also have a verified, unbanned Neon Auth email, and the submitted contact email must match it.
 3. Super Administrator status is stored separately from tenant memberships in `platform.super_admins`.
 4. A tenant owner cannot promote themselves to Super Administrator.
 5. Activation tokens are generated with a cryptographic random source, stored as SHA-256 hashes, single-use, user-bound and time-limited.
@@ -70,7 +70,7 @@ Do not run this against Production. Do not grant Super Admin using an email-only
 
 `pending -> approved -> activated` or `pending -> rejected`.
 
-- Applicant: sign in, submit institution and primary-campus details, view own request status.
+- Applicant: sign in with a verified, unbanned Neon Auth account; the contact email must match that verified account; submit institution and primary-campus details; view own request status.
 - Company Super Admin: list pending requests, inspect details, approve/reject.
 - Approval: API issues a 256-bit random token, returns it once, stores only its digest, binds it to the requesting user, and sets a 24-hour expiry.
 - Redemption: requesting user signs in and submits token; API locks token/request rows, checks binding/expiry/consumption, creates tenant records and consumes token in one transaction.
