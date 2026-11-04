@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import { loadTenantContext } from "./tenant-access.js";
 
 type Field = { column: string; kind?: "text" | "date" | "uuid" | "number" | "boolean" | "json" | "array" | "timestamp"; required?: boolean; max?: number };
-type Resource = { table: string; permission: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
+type Resource = { table: string; permission: string; writePermission?: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
 type Json = Record<string, unknown>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,7 +21,7 @@ const RESOURCES: Record<string, Resource> = {
   "boarding-rooms": { table: "boarding.rooms", order: "id", permission: "boarding.rooms.manage", fields: { dormitoryId:{column:"dormitory_id",kind:"uuid",required:true}, roomCode:{column:"room_code",required:true,max:32}, floorLabel:{column:"floor_label",max:40}, capacity:{column:"capacity",kind:"number",required:true}, isActive:{column:"is_active",kind:"boolean"} } },
   "boarding-beds": { table: "boarding.beds", order: "id", permission: "boarding.rooms.manage", fields: { roomId:{column:"room_id",kind:"uuid",required:true}, bedCode:{column:"bed_code",required:true,max:32}, bedStatus:{column:"bed_status",max:24} } },
   "boarding-assignments": { table: "boarding.bed_assignments", actorColumn: "assigned_by", permission: "boarding.assignments.manage", fields: { bedId:{column:"bed_id",kind:"uuid",required:true}, studentId:{column:"student_id",kind:"uuid",required:true}, assignedFrom:{column:"assigned_from",kind:"date",required:true}, assignedUntil:{column:"assigned_until",kind:"date"} } },
-  "leave-requests": { table: "boarding.leave_requests", permission: "boarding.leave.decide", fields: { studentId:{column:"student_id",kind:"uuid",required:true}, requestedFrom:{column:"requested_from",kind:"timestamp",required:true}, requestedUntil:{column:"requested_until",kind:"timestamp",required:true}, destination:{column:"destination",max:240}, reason:{column:"reason",required:true,max:1000} } },
+  "leave-requests": { table: "boarding.leave_requests", permission: "boarding.leave.read", writePermission: "boarding.leave.decide", fields: { studentId:{column:"student_id",kind:"uuid",required:true}, requestedFrom:{column:"requested_from",kind:"timestamp",required:true}, requestedUntil:{column:"requested_until",kind:"timestamp",required:true}, destination:{column:"destination",max:240}, reason:{column:"reason",required:true,max:1000} } },
   "incidents": { table: "boarding.incidents", actorColumn: "recorded_by", permission: "boarding.incidents.write", fields: { studentId:{column:"student_id",kind:"uuid",required:true}, incidentType:{column:"incident_type",required:true,max:80}, severity:{column:"severity",required:true,max:24}, description:{column:"description",required:true,max:2000}, occurredAt:{column:"occurred_at",kind:"timestamp",required:true} } },
   "library-catalog": { table: "library.catalog_items", permission: "library.catalog.write", fields: { isbn:{column:"isbn",max:24}, itemCode:{column:"item_code",required:true,max:48}, title:{column:"title",required:true,max:240}, subtitle:{column:"subtitle",max:240}, authors:{column:"authors",kind:"array"}, publisher:{column:"publisher",max:160}, publicationYear:{column:"publication_year",kind:"number"}, category:{column:"category",max:80}, languageCode:{column:"language_code",max:8}, isReferenceOnly:{column:"is_reference_only",kind:"boolean"}, isActive:{column:"is_active",kind:"boolean"} } },
   "library-copies": { table: "library.copies", permission: "library.catalog.write", fields: { catalogItemId:{column:"catalog_item_id",kind:"uuid",required:true}, campusId:{column:"campus_id",kind:"uuid"}, barcode:{column:"barcode",required:true,max:64}, shelfLocation:{column:"shelf_location",max:80}, copyStatus:{column:"copy_status",max:24}, acquiredOn:{column:"acquired_on",kind:"date"} } },
@@ -82,7 +82,8 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const tenant = await loadTenantContext(pool,userId,organizationId);
   if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
   const write = req.method === "POST";
-  if (!tenant.permissions.includes(resource.permission)) { reply(res,403,{error:"permission_required",permission:resource.permission}); return true; }
+  const requiredPermission = req.method === "POST" ? (resource.writePermission ?? resource.permission) : resource.permission;
+  if (!tenant.permissions.includes(requiredPermission)) { reply(res,403,{error:"permission_required",permission:requiredPermission}); return true; }
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
     const limit=Number.isInteger(limitRaw)?Math.min(Math.max(limitRaw,1),200):100;
@@ -99,7 +100,9 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const placeholders=values.map((_,i)=>{ const kind=i===0|| (resource.actorColumn&&i===values.length-1)?"uuid":entries[i-1]?.[1].kind; return `${i+1}${kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""}`; });
   try {
     const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING *`,values);
-    reply(res,201,{data:result.rows[0]});
+    const record = result.rows[0] as Record<string, unknown>;
+    await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
+    reply(res,201,{data:record});
   } catch (reason) {
     const code=typeof reason==="object"&&reason!==null&&"code" in reason?String((reason as {code:unknown}).code):"";
     reply(res,code==="23505"?409:code==="23503"?422:code==="23514"?422:500,{error:code==="23505"?"duplicate_record":code==="23503"?"related_record_not_found_in_tenant":code==="23514"?"record_constraint_rejected":"module_record_create_failed"});
