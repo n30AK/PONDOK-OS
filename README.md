@@ -67,6 +67,7 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 - Authenticated tenant requests set `app.user_id` and `app.organization_id` transaction-locally before tenant queries.
 - Migration 0013 enables and forces RLS on 59 organization-owned tables across 15 schema groups. Its integration test verifies missing-context denial, bidirectional tenant isolation, and cross-tenant write rejection.
 - Migrations 0013 and 0014 are active on Neon Development. API tenant transactions switch to `pondok_runtime` before tenant queries so the `neondb_owner` connection cannot bypass RLS. Live sign-in/bootstrap and two-tenant API acceptance remain pending.
+- Migration 0018 is committed in the master-data PR but is not applied to Neon Development or Production. One verified Development Super Admin is provisioned; the first organization has not yet been created. Apply 0018 only after explicit approval, and use the one-time first-tenant bootstrap form only after its PR is merged and deployed.
 - `core.organization_memberships` is intentionally excluded from that RLS migration as the membership authority; API lookups filter by the verified user ID and selected organization. This remains a separate hardening boundary.
 - These controls are not a completed security certification. The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
 - Never commit database URLs, passwords, signing keys, bootstrap tokens, or personal data.
