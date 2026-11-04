@@ -85,7 +85,7 @@ function toFormValue(field:Field,row:Row):string|boolean{
 
 function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) {
  const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
- const groups=useMemo(()=>Array.from(new Set(available.map(r=>r.group))),[available]);
+ const groups=useMemo(()=>["Master Data",...Array.from(new Set(available.map(r=>r.group)))],[available]);
  const requestedGroup=RESOURCES.find(r=>r.key===initialResourceKey)?.group;
  const initialResource=available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup)??available[0];
  const [group,setGroup]=useState(initialResource?.group??groups[0]??"");
@@ -99,7 +99,9 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) 
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
- const resource=available.find(r=>r.key===resourceKey)??available[0];
+ const resourcesInGroup=group==="Master Data"?available.filter(r=>MASTER_DATA_KEYS.has(r.key)):available.filter(r=>r.group===group);
+ const resource=resourcesInGroup.find(r=>r.key===resourceKey)??resourcesInGroup[0]??available.find(r=>r.key===resourceKey)??available[0];
+ const guidance=resource?getModuleGuidance(resource.key):undefined;
  const canWrite=Boolean(resource&&permissions.includes(resource.write));
  const request=useCallback(async<T,>(endpoint:string,init:RequestInit={}):Promise<T>=>{
   const token=await getAccessToken();
