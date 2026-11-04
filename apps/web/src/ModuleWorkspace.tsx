@@ -64,6 +64,23 @@ function toLabel(value: unknown): string {
  if (typeof value==="object") return JSON.stringify(value);
  return String(value);
 }
+function toColumn(key:string):string{return key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`);}
+function toFormValue(field:Field,row:Row):string|boolean{
+ const value=row[toColumn(field.key)];
+ if(field.type==="checkbox")return Boolean(value);
+ if(value===null||value===undefined)return "";
+ if(field.type==="json")return JSON.stringify(value,null,2);
+ if(field.type==="array")return Array.isArray(value)?value.join(", "):String(value);
+ if(field.type==="datetime-local"){
+  const date=new Date(String(value));
+  if(Number.isNaN(date.getTime()))return "";
+  const local=new Date(date.getTime()-date.getTimezoneOffset()*60000);
+  return local.toISOString().slice(0,16);
+ }
+ if(field.type==="date")return String(value).slice(0,10);
+ return String(value);
+}
+
 function ModuleWorkspace({organizationId,permissions}:Props) {
  const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
  const groups=useMemo(()=>Array.from(new Set(available.map(r=>r.group))),[available]);
@@ -72,6 +89,7 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
  const [rows,setRows]=useState<Row[]>([]);
  const [lookups,setLookups]=useState<Record<string,Lookup[]>>({});
  const [form,setForm]=useState<Record<string,string|boolean>>({});
+ const [editingRow,setEditingRow]=useState<Row|null>(null);
  const [showForm,setShowForm]=useState(false);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
@@ -110,7 +128,13 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
   })).then(entries=>{if(active)setLookups(Object.fromEntries(entries));});
   return()=>{active=false;};
  },[organizationId,request,resource]);
- useEffect(()=>{setForm({});setShowForm(false);},[resourceKey]);
+ useEffect(()=>{setForm({});setShowForm(false);setEditingRow(null);},[resourceKey]);
+ const beginEdit=(row:Row)=>{
+  if(!resource||!canWrite||!row.id)return;
+  setEditingRow(row);
+  setForm(Object.fromEntries(resource.fields.map(field=>[field.key,toFormValue(field,row)])));
+  setShowForm(true);setError("");setNotice("");
+ };
  const submit=async(event:FormEvent)=>{
   event.preventDefault();if(!resource)return;
   setBusy(true);setError("");setNotice("");
@@ -126,8 +150,12 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
     else if(field.type==="datetime-local")payload[field.key]=new Date(String(value)).toISOString();
     else payload[field.key]=value;
    }
-   await request(resource.endpoint,{method:"POST",body:JSON.stringify(payload)});
-   setForm({});setShowForm(false);setNotice("Data tersimpan dan aktivitas dicatat.");await load();
+   const endpoint=editingRow?.id
+    ? `${resource.endpoint}?id=${encodeURIComponent(String(editingRow.id))}`
+    : resource.endpoint;
+   await request(endpoint,{method:editingRow?"PATCH":"POST",body:JSON.stringify(payload)});
+   setForm({});setShowForm(false);setEditingRow(null);
+   setNotice(editingRow?"Perubahan data berhasil disimpan dan diaudit.":"Data tersimpan dan aktivitas dicatat.");await load();
   }catch(e){setError(e instanceof Error?e.message:"Gagal menyimpan data.");}
   finally{setBusy(false);}
  };
@@ -144,10 +172,10 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
  return <section className="operations-panel">
   <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI</div><h2>Ruang kerja modul</h2><p>Form kontekstual, validasi API, pembatasan akses, dan jejak aktivitas untuk data baru.</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
   <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=available.find(r=>r.group===g);if(next)setResourceKey(next.key);}}>{g}</button>)}</div>
-  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>setResourceKey(e.target.value)}>{available.filter(r=>r.group===group).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>setShowForm(v=>!v)}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
+  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>setResourceKey(e.target.value)}>{available.filter(r=>r.group===group).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
   {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
   {showForm&&resource&&canWrite&&<form className="student-form operations-form" onSubmit={submit}>
-   <div className="form-context"><strong>{resource.label}</strong><p>Isi sesuai dokumen sumber dan kebijakan pesantren. Kolom yang wajib ditandai dengan *. Data sensitif dibatasi sesuai hak akses.</p></div>
+   <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren. Kolom yang wajib ditandai dengan *. Data sensitif dibatasi sesuai hak akses."}</p></div>
    <div className="form-grid">{resource.fields.map(field=><label key={field.key}>{field.label}{field.required?" *":""}
     {field.type==="relation"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih {field.label.toLowerCase()}</option>{(lookups[field.source??""]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select>
     :field.type==="select"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih</option>{(field.options??[]).map(o=><option key={o} value={o}>{o.replaceAll("_"," ")}</option>)}</select>
@@ -156,9 +184,9 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
     :<input type={field.type==="array"?"text":field.type??"text"} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))} required={field.required} maxLength={field.max} step={field.step} min={field.type==="number"?"0":undefined}/>}
     {field.hint&&<small className="field-hint">{field.hint}</small>}
    </label>)}</div>
-   <div className="form-actions"><button type="button" className="outline-button" onClick={()=>setShowForm(false)}>Batal</button><button className="primary" disabled={busy}>{busy?"Menyimpan…":"Simpan data"}</button></div>
+   <div className="form-actions"><button type="button" className="outline-button" onClick={()=>{setShowForm(false);setEditingRow(null);setForm({});}}>Batal</button><button className="primary" disabled={busy}>{busy?"Menyimpan…":editingRow?"Simpan perubahan":"Simpan data"}</button></div>
   </form>}
-  {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
+  {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}{canWrite&&<th>Aksi</th>}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}{canWrite&&<td><button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>beginEdit(row)}>Koreksi</button></td>}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length+(canWrite?1:0)} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
   <p className="operations-footnote">PONDOK OS tidak menggantikan EMIS/SIMTREN atau sistem resmi Kementerian Agama. Nomor izin, NSP, status legal, dan dokumen persetujuan harus diverifikasi melalui kanal instansi berwenang.</p>
  </section>;
 }
