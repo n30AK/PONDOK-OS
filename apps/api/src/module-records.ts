@@ -102,8 +102,94 @@ export function validateModuleRecordPatchInput(resourceKey: string, body: Json):
   return validate(resource.fields, body, true);
 }
 
+async function handleLibraryLoanReturn(res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string, loanId: string): Promise<void> {
+  await pool.query("SAVEPOINT library_loan_return");
+  try {
+    const loanResult = await pool.query("SELECT id, copy_id, loan_status FROM library.loans WHERE organization_id=$1::uuid AND id=$2::uuid FOR UPDATE", [organizationId, loanId]);
+    if (!loanResult.rows.length) {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_return");
+      await pool.query("RELEASE SAVEPOINT library_loan_return");
+      reply(res, 404, { error: "loan_not_found" }); return;
+    }
+    const loan = loanResult.rows[0] as { id: string; copy_id: string; loan_status: string };
+    if (loan.loan_status !== "open") {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_return");
+      await pool.query("RELEASE SAVEPOINT library_loan_return");
+      reply(res, 409, { error: "loan_not_open" }); return;
+    }
+    const copyResult = await pool.query("SELECT id, copy_status FROM library.copies WHERE organization_id=$1::uuid AND id=$2::uuid FOR UPDATE", [organizationId, loan.copy_id]);
+    if (!copyResult.rows.length || (copyResult.rows[0] as { copy_status: string }).copy_status !== "on_loan") {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_return");
+      await pool.query("RELEASE SAVEPOINT library_loan_return");
+      reply(res, 409, { error: "copy_not_on_loan" }); return;
+    }
+    const returned = await pool.query("UPDATE library.loans SET loan_status='returned', returned_at=now(), received_by=$1::uuid WHERE organization_id=$2::uuid AND id=$3::uuid AND loan_status='open' RETURNING *", [userId, organizationId, loanId]);
+    await pool.query("UPDATE library.copies SET copy_status='available' WHERE organization_id=$1::uuid AND id=$2::uuid", [organizationId, loan.copy_id]);
+    await pool.query("INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)", [organizationId, userId, "library.loan.return", "library.loans", loanId, JSON.stringify({ copyId: loan.copy_id })]);
+    await pool.query("RELEASE SAVEPOINT library_loan_return");
+    reply(res, 200, { data: returned.rows[0] });
+  } catch (reason) {
+    await pool.query("ROLLBACK TO SAVEPOINT library_loan_return").catch(() => undefined);
+    await pool.query("RELEASE SAVEPOINT library_loan_return").catch(() => undefined);
+    const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
+    reply(res, code === "23503" ? 422 : 500, { error: code === "23503" ? "related_record_not_found_in_tenant" : "library_loan_return_failed" });
+  }
+}
+
+async function createLibraryLoan(res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string, body: Json): Promise<void> {
+  const error = validateModuleRecordInput("library-loans", body);
+  if (error) { reply(res, 422, { error }); return; }
+  const copyId = String(body.copyId), borrowerId = String(body.borrowerId), dueAt = String(body.dueAt);
+  await pool.query("SAVEPOINT library_loan_issue");
+  try {
+    const copyResult = await pool.query(`SELECT c.id, c.copy_status, ci.is_reference_only, ci.is_active
+      FROM library.copies c JOIN library.catalog_items ci ON ci.organization_id=c.organization_id AND ci.id=c.catalog_item_id
+      WHERE c.organization_id=$1::uuid AND c.id=$2::uuid FOR UPDATE OF c`, [organizationId, copyId]);
+    if (!copyResult.rows.length) {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_issue"); await pool.query("RELEASE SAVEPOINT library_loan_issue");
+      reply(res, 404, { error: "library_copy_not_found" }); return;
+    }
+    const copy = copyResult.rows[0] as { copy_status: string; is_reference_only: boolean; is_active: boolean };
+    if (copy.copy_status !== "available" || copy.is_reference_only || !copy.is_active) {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_issue"); await pool.query("RELEASE SAVEPOINT library_loan_issue");
+      reply(res, 409, { error: "library_copy_unavailable" }); return;
+    }
+    const borrower = await pool.query("SELECT id FROM academic.student_profiles WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active'", [organizationId, borrowerId]);
+    if (!borrower.rows.length) {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_issue"); await pool.query("RELEASE SAVEPOINT library_loan_issue");
+      reply(res, 422, { error: "active_student_borrower_required" }); return;
+    }
+    const updatedCopy = await pool.query("UPDATE library.copies SET copy_status='on_loan' WHERE organization_id=$1::uuid AND id=$2::uuid AND copy_status='available' RETURNING id", [organizationId, copyId]);
+    if (!updatedCopy.rows.length) {
+      await pool.query("ROLLBACK TO SAVEPOINT library_loan_issue"); await pool.query("RELEASE SAVEPOINT library_loan_issue");
+      reply(res, 409, { error: "library_copy_unavailable" }); return;
+    }
+    const loan = await pool.query("INSERT INTO library.loans (organization_id, copy_id, borrower_type, borrower_id, due_at, issued_by) VALUES ($1::uuid,$2::uuid,'student',$3::uuid,$4::timestamptz,$5::uuid) RETURNING *", [organizationId, copyId, borrowerId, dueAt, userId]);
+    const loanId = String((loan.rows[0] as { id: string }).id);
+    await pool.query("INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)", [organizationId, userId, "library.loan.issue", "library.loans", loanId, JSON.stringify({ copyId, borrowerType: "student", borrowerId })]);
+    await pool.query("RELEASE SAVEPOINT library_loan_issue");
+    reply(res, 201, { data: loan.rows[0] });
+  } catch (reason) {
+    await pool.query("ROLLBACK TO SAVEPOINT library_loan_issue").catch(() => undefined);
+    await pool.query("RELEASE SAVEPOINT library_loan_issue").catch(() => undefined);
+    const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
+    reply(res, code === "23505" ? 409 : code === "23503" || code === "23514" ? 422 : 500, { error: code === "23505" ? "duplicate_record" : code === "23503" ? "related_record_not_found_in_tenant" : code === "23514" ? "record_constraint_rejected" : "library_loan_issue_failed" });
+  }
+}
+
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
+  const returnMatch = url.pathname.match(/^\/v1\/modules\/library-loans\/([0-9a-f-]{36})\/return$/i);
+  if (returnMatch) {
+    if (req.method !== "POST") { res.setHeader("allow", "POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
+    const tenant = await loadTenantContext(pool,userId,organizationId);
+    if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
+    if (!tenant.permissions.includes("library.loans.write")) { reply(res,403,{error:"permission_required",permission:"library.loans.write"}); return true; }
+    const loanId = returnMatch[1] ?? "";
+    if (!UUID.test(loanId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
+    await handleLibraryLoanReturn(res,pool,userId,organizationId,loanId);
+    return true;
+  }
   const match = url.pathname.match(/^\/v1\/modules\/([a-z-]+)$/);
   if (!match) return false;
   if (req.method !== "GET" && req.method !== "POST" && req.method !== "PATCH") { res.setHeader("allow", "GET, POST, PATCH"); reply(res,405,{error:"method_not_allowed"}); return true; }
@@ -159,6 +245,10 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       const code=typeof reason==="object"&&reason!==null&&"code" in reason?String((reason as {code:unknown}).code):"";
       reply(res,code==="23505"?409:code==="23503"?422:code==="23514"?422:500,{error:code==="23505"?"duplicate_record":code==="23503"?"related_record_not_found_in_tenant":code==="23514"?"record_constraint_rejected":"module_record_update_failed"});
     }
+    return true;
+  }
+  if (match[1] === "library-loans") {
+    await createLibraryLoan(res,pool,userId,organizationId,body);
     return true;
   }
   const error=validateModuleRecordInput(match[1] ?? "",body);
