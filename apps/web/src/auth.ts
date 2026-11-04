@@ -10,6 +10,8 @@ type AuthClient = {
   getSession(): Promise<AuthResult<AuthUserPayload>>;
   signIn: { email(input: { email: string; password: string }): Promise<AuthResult<AuthUserPayload>> };
   signUp: { email(input: { email: string; password: string; name: string }): Promise<AuthResult<AuthUserPayload>> };
+  sendVerificationEmail(input: { email: string; callbackURL?: string }): Promise<AuthResult<unknown>>;
+  emailOtp: { verifyEmail(input: { email: string; otp: string }): Promise<AuthResult<unknown>> };
   signOut(): Promise<unknown>;
 };
 
@@ -22,6 +24,7 @@ export type PondokUser = {
   id: string;
   name?: string;
   email?: string;
+  emailVerified?: boolean;
 };
 
 /**
@@ -38,6 +41,7 @@ function readPondokUser(payload: AuthUserPayload | null | undefined): PondokUser
     id: user.id,
     ...(typeof user.name === "string" ? { name: user.name } : {}),
     ...(typeof user.email === "string" ? { email: user.email } : {}),
+    ...(typeof user.emailVerified === "boolean" ? { emailVerified: user.emailVerified } : {}),
   };
 }
 
