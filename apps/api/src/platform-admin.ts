@@ -26,7 +26,7 @@ async function readJson(req: IncomingMessage): Promise<Json | null> {
   } catch { return null; }
 }
 
-function validateRequest(value: Json): string | null {
+export function validateActivationRequest(value: Json): string | null {
   if (typeof value.contactEmail !== "string" || value.contactEmail.trim().length > 254
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.contactEmail.trim())) return "invalid_contact_email";
   if (typeof value.contactName !== "string" || value.contactName.trim().length < 2 || value.contactName.length > 120) return "invalid_contact_name";
@@ -73,7 +73,7 @@ export async function handlePlatformRequest(
   if (path === "/v1/platform/activation-requests" && req.method === "POST") {
     const body = await readJson(req);
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
-    const validation = validateRequest(body);
+    const validation = validateActivationRequest(body);
     if (validation) { reply(res, 422, { error: validation }); return true; }
     try {
       const result = await pool.query(
