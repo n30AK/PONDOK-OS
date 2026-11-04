@@ -153,3 +153,64 @@ test("does not issue a reference-only or unavailable library copy", async () => 
   assert.equal(res.statusCode, 409);
   assert.equal(JSON.parse(res.body).error, "library_copy_unavailable");
 });
+
+
+test("encrypts student health fields before persistence and keeps audit metadata value-free", async () => {
+  const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  const previousVersion = process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = "test-v1";
+  const calls = [];
+  const pool = { async query(sql, values = []) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.health.read", "academic.students.health.write"])] };
+    if (sql.startsWith("SAVEPOINT") || sql.startsWith("RELEASE SAVEPOINT") || sql.startsWith("ROLLBACK TO SAVEPOINT")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO academic.student_health_profiles")) {
+      return { rows: [{
+        id: recordId, student_id: userId, blood_group_ciphertext: values[2],
+        allergy_data_ciphertext: values[3], medical_history_ciphertext: values[4],
+        medication_data_ciphertext: values[5], emergency_instructions_ciphertext: values[6],
+        encryption_key_version: values[7], created_at: new Date(), updated_at: new Date()
+      }] };
+    }
+    if (sql.startsWith("INSERT INTO audit.audit_events")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  try {
+    const res = responseDouble();
+    await handleModuleRecordsRequest(request("POST", "/v1/modules/student-health-profiles", {
+      studentId: userId, bloodGroup: "O+", allergyData: [{ allergen: "peanuts", severity: "high" }],
+      medicalHistory: "Riwayat yang bersifat privat", medicationData: [{ name: "obat rutin" }]
+    }), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 201);
+    const data = JSON.parse(res.body).data;
+    assert.equal(data.blood_group, "O+");
+    assert.equal(data.medical_history, "Riwayat yang bersifat privat");
+    const insert = calls.find(call => call.sql.startsWith("INSERT INTO academic.student_health_profiles"));
+    assert.ok(Buffer.isBuffer(insert.values[2]));
+    assert.notEqual(insert.values[2].toString("utf8").includes("O+"), true);
+    const audit = calls.find(call => call.sql.startsWith("INSERT INTO audit.audit_events"));
+    assert.deepEqual(JSON.parse(audit.values[5]).fields, ["bloodGroup", "allergyData", "medicalHistory", "medicationData"]);
+    assert.equal(JSON.stringify(audit.values).includes("Riwayat yang bersifat privat"), false);
+  } finally {
+    if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
+    if (previousVersion === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = previousVersion;
+  }
+});
+
+test("fails closed when the student health encryption key is missing", async () => {
+  const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.health.read"])] };
+    throw new Error("no data query should run without an encryption key");
+  }};
+  try {
+    const res = responseDouble();
+    await handleModuleRecordsRequest(request("GET", "/v1/modules/student-health-profiles"), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 503);
+    assert.equal(JSON.parse(res.body).error, "student_health_encryption_not_configured");
+  } finally {
+    if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
+  }
+});
