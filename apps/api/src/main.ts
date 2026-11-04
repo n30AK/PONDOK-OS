@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { readBearerToken, verifyAccessToken } from "./identity.js";
 import { loadTenantContext } from "./tenant-access.js";
 import { handleAcademicRequest } from "./academic.js";
+import { handleAdmissionsRequest } from "./admissions.js";
 import { handleSyncRequest } from "./sync.js";
 import { handleFinanceRequest } from "./finance.js";
 import { handleInventoryRequest } from "./inventory.js";
@@ -62,7 +63,7 @@ export async function handleRequest(
     return;
   }
 
-  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/bootstrap/");
+  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/admissions/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/bootstrap/");
   const allowedMethods = pathname.startsWith("/v1/academic/")
     ? ["GET", "HEAD", "POST", "PATCH"]
     : writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
@@ -157,6 +158,30 @@ export async function handleRequest(
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleAcademicRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch {
       sendJson(response, 500, { error: "academic_service_unavailable" }); return;
+    }
+  }
+
+  if (pathname.startsWith("/v1/admissions/")) {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    const organizationId = request.headers["x-organization-id"];
+    if (typeof organizationId !== "string" || !UUID_PATTERN.test(organizationId)) {
+      sendJson(response, 400, { error: "invalid_organization_id" }); return;
+    }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" }); return;
+    }
+    try {
+      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleAdmissionsRequest(request, response, tenantPool, identity.userId, organizationId))) return;
+    } catch {
+      sendJson(response, 500, { error: "admissions_service_unavailable" }); return;
     }
   }
 
