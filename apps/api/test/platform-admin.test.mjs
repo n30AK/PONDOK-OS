@@ -28,6 +28,17 @@ function response() {
     end(body = "") { this.body = body; }
   };
 }
+function poolWithClient(queryImpl, ownerQuery = async () => ({ rows: [] })) {
+  const calls = [];
+  const client = {
+    async query(sql, values = []) {
+      calls.push({ sql: sql.replace(/\\s+/g, " ").trim(), values });
+      return queryImpl(sql.replace(/\\s+/g, " ").trim(), values);
+    },
+    release() {}
+  };
+  return { calls, pool: { query: ownerQuery, connect: async () => client } };
+}
 
 test("validates the institution application and rejects unsafe slugs or unsupported types", () => {
   assert.equal(validateActivationRequest(valid), null);
@@ -37,49 +48,45 @@ test("validates the institution application and rejects unsafe slugs or unsuppor
 });
 
 test("a normal authenticated user cannot access company approval endpoints", async () => {
-  const pool = { query: async () => ({ rows: [{ allowed: false }] }) };
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: false }] };
+    return { rows: [] };
+  });
   const res = response();
   await handlePlatformRequest(request("/v1/platform/admin/activation-requests"), res, pool, userId);
   assert.equal(res.status, 403);
   assert.equal(JSON.parse(res.body).error, "platform_super_admin_required");
+  assert.ok(calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime") === false);
 });
 
-test("applicant can create a request without receiving a tenant or activation token", async () => {
-  const calls = [];
-  const pool = { query: async (sql, values = []) => {
-    calls.push({ sql, values });
+test("applicant request is created and audited under the restricted platform role", async () => {
+  const { pool, calls } = poolWithClient(async (sql) => {
     if (sql.startsWith("INSERT INTO platform.activation_requests")) return { rows: [{ id: requestId, status: "pending" }] };
     return { rows: [] };
-  } };
+  });
   const res = response();
   await handlePlatformRequest(request("/v1/platform/activation-requests", "POST", valid), res, pool, userId);
   assert.equal(res.status, 201);
   assert.equal(JSON.parse(res.body).data.status, "pending");
-  assert.equal(calls.length, 2);
-  assert.match(calls[0].sql, /INSERT INTO platform\.activation_requests/);
+  assert.ok(calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
+  assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
   assert.doesNotMatch(res.body, /activationToken|organizationId/);
 });
 
 test("approval creates a high-entropy token and returns it once after commit", async () => {
-  const calls = [];
-  const client = {
-    async query(sql, values = []) {
-      calls.push({ sql, values });
-      if (sql.includes("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: userId, status: "pending" }] };
-      return { rows: [] };
-    },
-    release() {}
-  };
-  const pool = {
-    query: async () => ({ rows: [{ allowed: true }] }),
-    connect: async () => client
-  };
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: userId, status: "pending" }] };
+    return { rows: [] };
+  });
   const res = response();
   await handlePlatformRequest(request(`/v1/platform/admin/activation-requests/${requestId}/approve`, "POST"), res, pool, userId);
   const body = JSON.parse(res.body);
   assert.equal(res.status, 200);
   assert.equal(body.data.expiresInHours, 24);
   assert.match(body.data.activationToken, /^[A-Za-z0-9_-]{40,}$/);
+  assert.ok(calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
   assert.ok(calls.some((call) => call.sql === "COMMIT"));
   const insert = calls.find((call) => call.sql.startsWith("INSERT INTO platform.activation_tokens"));
   assert.ok(insert);
