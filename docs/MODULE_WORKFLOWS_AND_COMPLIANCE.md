@@ -88,3 +88,21 @@ Sebagian alur tersebut membutuhkan tabel/constraint/migrasi tambahan. Tidak ada 
 - [ ] Uji penerimaan eksternal untuk setiap integrasi resmi yang diklaim.
 
 **Status dokumen:** formulir dan API dasar pada feature branch; bukan sertifikasi kepatuhan, bukan bukti integrasi Kemenag, dan belum merupakan persetujuan penggunaan untuk pencatatan resmi lembaga.
+
+
+## Addendum — pemanfaatan tabel Development yang sudah tersedia
+
+Audit skema Development menemukan beberapa tabel yang sebelumnya belum ditampilkan sebagai formulir. Feature branch kini juga menambahkan menu input dasar berikut tanpa migrasi baru:
+
+| Kelompok | Formulir tambahan | Batas kontrol |
+|---|---|---|
+| Akademik | Mata pelajaran per kelas dan jam per minggu | Relasi kelas/mata pelajaran harus satu tenant; kombinasi duplikat ditolak constraint |
+| Akademik | Data wali dan relasi santri-wali | Hanya nama dan relasi minimum; bukan tempat menyimpan NIK/KK |
+| SDM | Pegawai, unit/departemen, jabatan, kontrak kerja | Data kontrak awal berstatus draft; akses berdasarkan permission SDM |
+| SDM | Periode penggajian dan draft siklus payroll | Hanya periode open dan run draft; belum menghitung PPh 21, BPJS, THR, lembur, atau take-home pay |
+| Pengadaan | Rincian permintaan dan rincian pesanan | Baris detail terpisah dari header; belum ada approval, penerimaan, faktur, atau rekonsiliasi |
+| Aset | Riwayat penugasan, perpindahan, pemeliharaan, audit, dan penghapusan | Peristiwa dicatat append-only melalui API; perubahan status aset masih memerlukan alur persetujuan terpisah |
+
+Permintaan pengadaan mengisi kolom pemohon dari identitas JWT server, bukan dari payload browser. Catatan peristiwa aset juga mengisi pencatat dari identitas sesi. Form payroll hanya menyediakan persiapan draft, bukan perhitungan atau pengesahan gaji.
+
+**Catatan status:** penambahan formulir tidak mengubah batas fitur yang belum tersedia. API generik masih list/create; persetujuan, perubahan, pembatalan, pengembalian, dan rekonsiliasi harus dibangun sebagai alur khusus dan diuji sebelum penggunaan resmi.
