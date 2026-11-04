@@ -11,7 +11,6 @@ Authenticated routes require:
 - `NEON_AUTH_JWKS_URL`: exact JWKS URL from that same branch.
 - `PORT`: optional, defaults to 3001.
 - `CORS_ALLOWED_ORIGINS`: comma-separated exact browser origins for deployed clients.
-- `PONDOK_BOOTSTRAP_TOKEN_SHA256`: temporary SHA-256 digest for first-organization setup only; remove immediately after initialization.
 
 Never commit populated environment files or print database URLs in logs.
 
@@ -19,7 +18,6 @@ Never commit populated environment files or print database URLs in logs.
 
 - `GET /health/live`: process liveness.
 - `GET /health/ready`: database readiness.
-- `POST /v1/bootstrap/organization`: guarded first-tenant setup with verified Neon JWT and one-time setup token.
 - `GET /v1/tenant/context`: verify Neon JWT, active organization membership, and resolve server-side roles/permissions.
 - `/v1/academic/*`: student list/create endpoints.
 - `/v1/finance/*`: chart of accounts, fiscal periods, journal draft creation/listing, posting and period close.
@@ -37,27 +35,9 @@ Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 59 org
 
 The table `core.organization_memberships` is intentionally excluded as the membership authority to avoid recursive policy evaluation. The API resolves membership using the verified JWT subject and selected organization. Direct database access to this table remains a separate hardening boundary.
 
-## First institution setup
+## Legacy bootstrap (disabled)
 
-See [First institution installation](../../docs/runbooks/first-install.md). Generate the one-time token locally:
-
-```bash
-node scripts/create-bootstrap-token.mjs
-```
-
-Only its SHA-256 digest belongs in the API environment. The raw token is entered once in the web setup form. Remove the digest from the API environment immediately after success. The endpoint refuses to create a second organization.
-
-The API bootstrap now uses ordered statements in one transaction: it creates the organization and owner membership under the elevated bootstrap transaction, sets transaction-local tenant context, then switches to `pondok_runtime` before creating the main campus, owner role assignment and audit event. This is required for campus and audit RLS policies after migration 0013. Migration 0014 grants the restricted role only the necessary schema/table/sequence privileges.
-
-The separate CLI bootstrap command remains available for controlled operator workflows:
-
-```powershell
-$env:DATABASE_URL = "<development database URL>"
-$env:PONDOK_BOOTSTRAP_CONFIRM = "CREATE_ORGANIZATION"
-pnpm --filter @pondok-os/api db:bootstrap -- --user-id "<existing Neon Auth user UUID>" --slug "pondok-contoh" --name "Pondok Contoh" --campus-code "UTAMA" --campus-name "Kampus Utama"
-```
-
-Only run the CLI against the explicitly intended non-production branch. It verifies the user exists in `neon_auth."user"`, creates the tenant/membership/campus/owner assignment and audit event in one transaction.
+`POST /v1/bootstrap/organization` now returns HTTP 410 and cannot create an institution. The old `PONDOK_BOOTSTRAP_TOKEN_SHA256` environment variable is no longer required by the API. The historical CLI bootstrap script is retained only for repository archaeology and must not be used for new institution onboarding. See [First institution activation](../../docs/runbooks/first-install.md) for the approval-based flow.
 
 ## Migrations
 
