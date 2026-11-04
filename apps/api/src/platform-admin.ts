@@ -253,7 +253,7 @@ async function handleModuleRegistryRequest(
     return true;
   }
 
-  const requestDetail = path.match(/^\\/v1\\/platform\\/(?:admin\\/)?modules\\/requests\\/([0-9a-f-]{36})$/i);
+  const requestDetail = path.match(/^\/v1\/platform\/(?:admin\/)?modules\/requests\/([0-9a-f-]{36})$/i);
   if (requestDetail && req.method === "GET") {
     const requestId = requestDetail[1]!;
     if (!UUID.test(requestId)) { reply(res, 400, { error: "invalid_module_request_id" }); return true; }
@@ -337,7 +337,7 @@ async function handleModuleRegistryRequest(
     return true;
   }
 
-  const revokePublisher = path.match(/^\\/v1\\/platform\\/admin\\/module-publishers\\/([0-9a-f-]{36})\\/revoke$/i);
+  const revokePublisher = path.match(/^\/v1\/platform\/admin\/module-publishers\/([0-9a-f-]{36})\/revoke$/i);
   if (revokePublisher && req.method === "POST") {
     const targetUserId = revokePublisher[1]!;
     if (!UUID.test(targetUserId)) { reply(res, 400, { error: "invalid_module_publisher_user_id" }); return true; }
@@ -391,15 +391,15 @@ async function handleModuleRegistryRequest(
     return true;
   }
 
-  const reviewRequest = path.match(/^\\/v1\\/platform\\/admin\\/modules\\/requests\\/([0-9a-f-]{36})\\/(approve|reject)$/i);
+  const reviewRequest = path.match(/^\/v1\/platform\/admin\/modules\/requests\/([0-9a-f-]{36})\/(approve|reject)$/i);
   if (reviewRequest && req.method === "POST") {
     const requestId = reviewRequest[1]!;
     const action = reviewRequest[2]!.toLowerCase() as "approve" | "reject";
     if (!UUID.test(requestId)) { reply(res, 400, { error: "invalid_module_request_id" }); return true; }
     const body = await readJson(req);
     const note = typeof body?.note === "string" ? body.note.trim() : "";
-    if (action === "reject" && (note.length < 3 || note.length > 1000)) {
-      reply(res, 422, { error: "review_note_required" });
+    if ((action === "reject" && note.length < 3) || note.length > 1000) {
+      reply(res, 422, { error: action === "reject" ? "review_note_required" : "review_note_too_long" });
       return true;
     }
     try {
@@ -445,7 +445,7 @@ async function handleModuleRegistryRequest(
            VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::timestamptz)`,
           [requestId, userId, action, current.status, next.status, note || null, occurredAt],
         );
-        await auditPlatform(client, userId, `module_request.${action}d`, "module_request", requestId, { note: note || null });
+        await auditPlatform(client, userId, action === "approve" ? "module_request.approved" : "module_request.rejected", "module_request", requestId, { note: note || null });
         return { id: requestId, status: next.status, reviewedBy: userId, reviewedAt: occurredAt };
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
