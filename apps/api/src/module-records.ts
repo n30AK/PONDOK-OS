@@ -73,6 +73,12 @@ function validate(fields: Resource["fields"], body: Json): string | null {
   return null;
 }
 
+export function validateModuleRecordInput(resourceKey: string, body: Json): string | null {
+  const resource = RESOURCES[resourceKey];
+  if (!resource) return "module_resource_not_found";
+  return validate(resource.fields, body);
+}
+
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const match = url.pathname.match(/^\/v1\/modules\/([a-z-]+)$/);
@@ -106,7 +112,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   }
   const body=await readJson(req);
   if (!body) { reply(res,400,{error:"invalid_json_or_body_too_large"}); return true; }
-  const error=validate(resource.fields,body);
+  const error=validateModuleRecordInput(match[1] ?? "",body);
   if (error) { reply(res,422,{error}); return true; }
   const entries=Object.entries(resource.fields).filter(([key])=>Object.prototype.hasOwnProperty.call(body,key));
   const columns=["organization_id",...entries.map(([,field])=>field.column),...(resource.actorColumn?[resource.actorColumn]:[])];
