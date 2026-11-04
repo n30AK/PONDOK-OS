@@ -21,3 +21,6 @@
 @media(max-width:900px){.ppdb-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ppdb-period-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.admissions-heading,.ppdb-toolbar{align-items:flex-start;flex-direction:column}.ppdb-filter{align-items:flex-start;flex-direction:column}.admissions-panel .form-section .form-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:420px){.ppdb-metrics{grid-template-columns:1fr 1fr}.admissions-panel .form-section .form-grid{grid-template-columns:1fr}.ppdb-period-card dl{grid-template-columns:1fr}}
+
+
+.ppdb-conversion-form{display:grid;grid-template-columns:1fr;gap:8px;min-width:210px;max-width:260px;margin-top:9px;padding:10px;background:#f7faf7;border:1px solid var(--line);border-radius:9px}.ppdb-conversion-form label{display:flex;flex-direction:column;gap:5px;font-size:9px;font-weight:700;color:#63736a}.ppdb-conversion-form input{width:100%;min-width:0;border:1px solid #dfe7e1;border-radius:7px;padding:8px;font:10px "DM Sans",sans-serif;color:#33483d}.ppdb-conversion-form .ppdb-row-actions{justify-content:flex-end}.ppdb-conversion-form .primary,.ppdb-conversion-form .outline-button{padding:7px 9px;font-size:9px}
