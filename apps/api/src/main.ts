@@ -47,7 +47,7 @@ export async function handleRequest(
     && [...configuredOrigins, ...developmentOrigins].includes(origin);
   if (originAllowed && origin) {
     response.setHeader("access-control-allow-origin", origin);
-    response.setHeader("access-control-allow-methods", "GET, HEAD, POST, OPTIONS");
+    response.setHeader("access-control-allow-methods", "GET, HEAD, POST, PATCH, OPTIONS");
     response.setHeader("access-control-allow-headers", "Authorization, Content-Type, X-Organization-Id, X-Bootstrap-Token");
     response.setHeader("access-control-max-age", "600");
     response.setHeader("vary", "Origin");
@@ -63,7 +63,9 @@ export async function handleRequest(
   }
 
   const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/bootstrap/");
-  const allowedMethods = writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
+  const allowedMethods = pathname.startsWith("/v1/academic/")
+    ? ["GET", "HEAD", "POST", "PATCH"]
+    : writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
   if (!allowedMethods.includes(method)) {
     response.setHeader("allow", allowedMethods.join(", "));
     sendJson(response, 405, { error: "method_not_allowed" });
