@@ -165,6 +165,7 @@ try {
   assert.equal(bootstrapAuditVisible.rowCount, 1, "first bootstrap must write its audit event under FORCE RLS");
   assert.equal(bootstrapRoleVisible.rowCount, 1, "first bootstrap must assign the owner role under RLS");
   assert.ok(bootstrapPermissionsVisible.rowCount > 0, "global owner permissions must remain visible under RLS");
+  await client.query("ROLLBACK");
 
   // Platform runtime can create the first membership only for an active Super Admin.
   const adminId = "11111111-1111-4111-8111-111111111111";
@@ -227,7 +228,6 @@ try {
     [applicantId],
   );
   assert.equal(applicantMembership.rowCount, 1, "applicant can create their membership after token consumption");
-  await client.query("ROLLBACK");
   await client.query("ROLLBACK");
 
   process.stdout.write(`Tenant RLS passed: ${result.rowCount} protected tables, fail-closed context, bidirectional tenant isolation, and RLS-compatible first bootstrap.\\n`);
