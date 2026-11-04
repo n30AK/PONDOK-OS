@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
 import { loadTenantContext } from "./tenant-access.js";
 
@@ -180,8 +181,183 @@ async function createLibraryLoan(res: ServerResponse, pool: Pick<Pool, "query">,
   }
 }
 
+
+type HealthRow = {
+  id: string; student_id: string; blood_group_ciphertext: Buffer | null;
+  allergy_data_ciphertext: Buffer | null; medical_history_ciphertext: Buffer | null;
+  medication_data_ciphertext: Buffer | null; emergency_instructions_ciphertext: Buffer | null;
+  encryption_key_version: string | null; created_at: Date; updated_at: Date; legal_name?: string;
+};
+
+function getStudentHealthKey(): { key: Buffer; version: string } | null {
+  const encoded = process.env.STUDENT_HEALTH_ENCRYPTION_KEY ?? "";
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) return null;
+  return { key, version: process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION ?? "v1" };
+}
+
+function encryptHealthValue(value: unknown, key: Buffer): Buffer | null {
+  if (value === undefined || value === null || value === "") return null;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(value), "utf8")), cipher.final()]);
+  return Buffer.concat([Buffer.from([1]), iv, cipher.getAuthTag(), encrypted]);
+}
+
+function decryptHealthValue(value: Buffer | null, key: Buffer): unknown {
+  if (!value) return null;
+  if (value.length < 30 || value[0] !== 1) throw new Error("unsupported_health_ciphertext");
+  const iv = value.subarray(1, 13);
+  const tag = value.subarray(13, 29);
+  const ciphertext = value.subarray(29);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  return JSON.parse(plain) as unknown;
+}
+
+function serializeHealthRow(row: HealthRow, key: Buffer): Record<string, unknown> {
+  return {
+    id: row.id,
+    student_id: row.student_id,
+    legal_name: row.legal_name ?? null,
+    blood_group: decryptHealthValue(row.blood_group_ciphertext, key),
+    allergy_data: decryptHealthValue(row.allergy_data_ciphertext, key),
+    medical_history: decryptHealthValue(row.medical_history_ciphertext, key),
+    medication_data: decryptHealthValue(row.medication_data_ciphertext, key),
+    emergency_instructions: decryptHealthValue(row.emergency_instructions_ciphertext, key),
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+async function handleStudentHealthProfiles(
+  req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">,
+  userId: string, organizationId: string, url: URL
+): Promise<void> {
+  const tenant = await loadTenantContext(pool, userId, organizationId);
+  if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return; }
+  const write = req.method !== "GET";
+  const requiredPermission = write ? "academic.students.health.write" : "academic.students.health.read";
+  if (!tenant.permissions.includes(requiredPermission)) {
+    reply(res, 403, { error: "permission_required", permission: requiredPermission }); return;
+  }
+  const crypto = getStudentHealthKey();
+  if (!crypto) {
+    reply(res, 503, { error: "student_health_encryption_not_configured", required: "STUDENT_HEALTH_ENCRYPTION_KEY (base64-encoded 32-byte key)" }); return;
+  }
+  const keyVersion = crypto.version;
+  if (req.method === "GET") {
+    const studentId = url.searchParams.get("studentId");
+    if (studentId && !UUID.test(studentId)) { reply(res, 400, { error: "valid_student_id_required" }); return; }
+    const result = await pool.query<HealthRow>(
+      `SELECT hp.id, hp.student_id, hp.blood_group_ciphertext, hp.allergy_data_ciphertext,
+        hp.medical_history_ciphertext, hp.medication_data_ciphertext,
+        hp.emergency_instructions_ciphertext, hp.encryption_key_version,
+        hp.created_at, hp.updated_at, sp.legal_name
+       FROM academic.student_health_profiles hp
+       JOIN academic.student_profiles sp ON sp.organization_id=hp.organization_id AND sp.id=hp.student_id
+       WHERE hp.organization_id=$1::uuid AND ($2::uuid IS NULL OR hp.student_id=$2::uuid)
+       ORDER BY sp.legal_name LIMIT 200`,
+      [organizationId, studentId]
+    );
+    try {
+      for (const row of result.rows) {
+        if (row.encryption_key_version !== keyVersion) throw new Error("student_health_key_version_mismatch");
+      }
+      reply(res, 200, { data: result.rows.map(row => serializeHealthRow(row, crypto.key)) });
+    } catch {
+      reply(res, 503, { error: "student_health_decryption_failed_check_key_version" });
+    }
+    return;
+  }
+  if (req.method !== "POST" && req.method !== "PATCH") {
+    res.setHeader("allow", "GET, POST, PATCH"); reply(res, 405, { error: "method_not_allowed" }); return;
+  }
+  const body = await readJson(req);
+  if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return; }
+  const allowed = new Set(["studentId", "bloodGroup", "allergyData", "medicalHistory", "medicationData", "emergencyInstructions"]);
+  if (Object.keys(body).some(key => !allowed.has(key))) { reply(res, 422, { error: "unsupported_health_field" }); return; }
+  const bloodGroups = new Set(["A+","A-","B+","B-","AB+","AB-","O+","O-","unknown"]);
+  if (body.bloodGroup !== undefined && body.bloodGroup !== null && body.bloodGroup !== "" && !bloodGroups.has(String(body.bloodGroup))) {
+    reply(res, 422, { error: "invalid_blood_group" }); return;
+  }
+  const recordId = url.searchParams.get("id");
+  let studentId = typeof body.studentId === "string" ? body.studentId : "";
+  if (req.method === "PATCH") {
+    if (!recordId || !UUID.test(recordId)) { reply(res, 400, { error: "valid_record_id_required" }); return; }
+    const existing = await pool.query<{ student_id: string; encryption_key_version: string }>(
+      "SELECT student_id, encryption_key_version FROM academic.student_health_profiles WHERE organization_id=$1::uuid AND id=$2::uuid",
+      [organizationId, recordId]
+    );
+    if (!existing.rows.length) { reply(res, 404, { error: "record_not_found" }); return; }
+    if (existing.rows[0]!.encryption_key_version !== keyVersion) { reply(res, 503, { error: "student_health_key_version_mismatch" }); return; }
+    studentId = studentId || existing.rows[0]!.student_id;
+  }
+  if (!UUID.test(studentId)) { reply(res, 422, { error: "valid_student_id_required" }); return; }
+  const columns: Array<[string,string]> = [
+    ["bloodGroup","blood_group_ciphertext"],["allergyData","allergy_data_ciphertext"],
+    ["medicalHistory","medical_history_ciphertext"],["medicationData","medication_data_ciphertext"],
+    ["emergencyInstructions","emergency_instructions_ciphertext"]
+  ];
+  const submitted = columns.filter(([key]) => Object.prototype.hasOwnProperty.call(body, key));
+  if (req.method === "PATCH" && submitted.length === 0) { reply(res, 400, { error: "no_mutable_fields" }); return; }
+  const values = submitted.map(([key]) => encryptHealthValue(body[key], crypto.key));
+  await pool.query("SAVEPOINT student_health_write");
+  try {
+    let result;
+    if (req.method === "POST") {
+      const allColumns = columns;
+      const encrypted = allColumns.map(([key]) => encryptHealthValue(body[key], crypto.key));
+      result = await pool.query<HealthRow>(
+        `INSERT INTO academic.student_health_profiles
+          (organization_id, student_id, blood_group_ciphertext, allergy_data_ciphertext,
+           medical_history_ciphertext, medication_data_ciphertext, emergency_instructions_ciphertext, encryption_key_version)
+         VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (organization_id, student_id) DO UPDATE SET
+           blood_group_ciphertext=EXCLUDED.blood_group_ciphertext,
+           allergy_data_ciphertext=EXCLUDED.allergy_data_ciphertext,
+           medical_history_ciphertext=EXCLUDED.medical_history_ciphertext,
+           medication_data_ciphertext=EXCLUDED.medication_data_ciphertext,
+           emergency_instructions_ciphertext=EXCLUDED.emergency_instructions_ciphertext,
+           encryption_key_version=EXCLUDED.encryption_key_version, updated_at=now()
+         RETURNING id, student_id, blood_group_ciphertext, allergy_data_ciphertext, medical_history_ciphertext,
+           medication_data_ciphertext, emergency_instructions_ciphertext, encryption_key_version, created_at, updated_at`,
+        [organizationId, studentId, ...encrypted, keyVersion]
+      );
+    } else {
+      const sets = submitted.map(([, column], index) => `${column}=${index+1}`);
+      sets.push(`encryption_key_version=${submitted.length+1}`, "updated_at=now()");
+      result = await pool.query<HealthRow>(
+        `UPDATE academic.student_health_profiles SET ${sets.join(",")}
+         WHERE organization_id=${submitted.length+2}::uuid AND id=${submitted.length+3}::uuid
+         RETURNING id, student_id, blood_group_ciphertext, allergy_data_ciphertext, medical_history_ciphertext,
+           medication_data_ciphertext, emergency_instructions_ciphertext, encryption_key_version, created_at, updated_at`,
+        [...values, keyVersion, organizationId, recordId]
+      );
+    }
+    const row = result.rows[0];
+    if (!row) { await pool.query("ROLLBACK TO SAVEPOINT student_health_write"); await pool.query("RELEASE SAVEPOINT student_health_write"); reply(res,404,{error:"record_not_found"}); return; }
+    await pool.query(
+      "INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)",
+      [organizationId,userId,"student.health_profile.write","academic.student_health_profiles",row.id,JSON.stringify({ fields: submitted.map(([key]) => key), encryptionKeyVersion: keyVersion })]
+    );
+    await pool.query("RELEASE SAVEPOINT student_health_write");
+    reply(res, req.method === "POST" ? 201 : 200, { data: serializeHealthRow(row, crypto.key) });
+  } catch (reason) {
+    await pool.query("ROLLBACK TO SAVEPOINT student_health_write").catch(() => undefined);
+    await pool.query("RELEASE SAVEPOINT student_health_write").catch(() => undefined);
+    const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as {code:unknown}).code) : "";
+    reply(res, code === "23503" ? 422 : code === "23505" ? 409 : 500, { error: code === "23503" ? "related_record_not_found_in_tenant" : code === "23505" ? "duplicate_record" : "student_health_write_failed" });
+  }
+}
+
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
+  if (url.pathname === "/v1/modules/student-health-profiles") {
+    await handleStudentHealthProfiles(req, res, pool, userId, organizationId, url);
+    return true;
+  }
   const returnMatch = url.pathname.match(/^\/v1\/modules\/library-loans\/([0-9a-f-]{36})\/return$/i);
   if (returnMatch) {
     if (req.method !== "POST") { res.setHeader("allow", "POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
