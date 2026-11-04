@@ -123,7 +123,7 @@ export async function handlePlatformRequest(
     if (validation) { reply(res, 422, { error: validation }); return true; }
     try {
       const scoped = await withPlatformScope(pool, userId, false, async (client) => {
-        const result = await client.query(
+        const result = await client.query<{ id: string; status: string; createdAt: string }>(
           `INSERT INTO platform.activation_requests
             (requested_by, contact_email, contact_name, organization_name, organization_slug,
              organization_type, campus_code, campus_name)
@@ -238,6 +238,7 @@ export async function handlePlatformRequest(
       if (!body || typeof body.note !== "string" || body.note.trim().length < 3 || body.note.length > 1000) {
         reply(res, 422, { error: "review_note_required" }); return true;
       }
+      const reviewNote = body.note.trim();
       try {
         const scoped = await withPlatformScope(pool, userId, true, async (client) => {
           const result = await client.query(
@@ -246,10 +247,10 @@ export async function handlePlatformRequest(
                  review_note = $3, updated_at = now()
              WHERE id = $1::uuid AND status = 'pending'
              RETURNING id, status`,
-            [requestId, userId, body.note.trim()],
+            [requestId, userId, reviewNote],
           );
           if (!result.rows[0]) return null;
-          await auditPlatform(client, userId, "activation.rejected", "activation_request", requestId, { note: body.note.trim() });
+          await auditPlatform(client, userId, "activation.rejected", "activation_request", requestId, { note: reviewNote });
           return result.rows[0];
         });
         if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
