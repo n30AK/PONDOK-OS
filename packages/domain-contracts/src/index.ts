@@ -40,3 +40,6 @@ export function hasPermission(
 
 export { assertValidModuleManifest, validateModuleManifest } from "./module-manifest.js";
 export type { ModuleManifestV1, ModuleCategory, ModuleDataClassification } from "./module-manifest.js";
+
+export { transitionModuleRequest } from "./module-approval.js";
+export type { ModuleRequestStatus, ModuleRequestAction, ModuleRequestActor, ModuleRequestRecord, ModuleRequestTransition } from "./module-approval.js";
