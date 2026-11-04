@@ -291,8 +291,9 @@ async function handleStudentHealthProfiles(
       [organizationId, recordId]
     );
     if (!existing.rows.length) { reply(res, 404, { error: "record_not_found" }); return; }
+    if (studentId && studentId !== existing.rows[0]!.student_id) { reply(res, 422, { error: "student_id_immutable" }); return; }
     if (existing.rows[0]!.encryption_key_version !== keyVersion) { reply(res, 503, { error: "student_health_key_version_mismatch" }); return; }
-    studentId = studentId || existing.rows[0]!.student_id;
+    studentId = existing.rows[0]!.student_id;
   }
   if (!UUID.test(studentId)) { reply(res, 422, { error: "valid_student_id_required" }); return; }
   const columns: Array<[string,string]> = [
