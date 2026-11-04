@@ -351,6 +351,19 @@ export function createApiServer(dependencies: ApiDependencies = {}) {
   });
 }
 
+function secureDatabaseConnectionString(value: string): string {
+  const url = new URL(value);
+  // Neon currently treats these modes as verify-full, but pg v9 will adopt
+  // weaker libpq semantics. Pin certificate and hostname verification now.
+  if (url.hostname.toLowerCase().endsWith(".neon.tech")) {
+    const mode = url.searchParams.get("sslmode")?.toLowerCase();
+    if (!mode || ["prefer", "require", "verify-ca"].includes(mode)) {
+      url.searchParams.set("sslmode", "verify-full");
+    }
+  }
+  return url.toString();
+}
+
 function start(): void {
   const port = Number.parseInt(process.env.PORT ?? "3001", 10);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -370,7 +383,7 @@ function start(): void {
   let pool: Pool | undefined;
   if (databaseUrl) {
     pool = new Pool({
-      connectionString: databaseUrl,
+      connectionString: secureDatabaseConnectionString(databaseUrl),
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
