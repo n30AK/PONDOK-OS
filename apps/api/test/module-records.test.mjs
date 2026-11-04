@@ -33,7 +33,7 @@ test("validates relationship identifiers and rejects client-supplied unsupported
 
 test("validates contact email and consent state without accepting unrecognized fields", () => {
   assert.equal(validateModuleRecordInput("contacts", {
-    contactType: "guardian", displayName: "Wali Santri", email: "wali@example.org", consentStatus: "granted"
+    contactType: "guardian", displayName: "Wali Santri", email: "wali@example.org", consentStatus: "unknown"
   }), null);
   assert.equal(validateModuleRecordInput("contacts", {
     contactType: "guardian", displayName: "Wali Santri", email: "not-an-email", consentStatus: "unknown"
