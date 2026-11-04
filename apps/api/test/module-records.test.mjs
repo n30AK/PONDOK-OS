@@ -82,6 +82,62 @@ test("public content remains draft until a separate publication workflow exists"
   }), "invalid_pageStatus");
 });
 
+
+test("validates newly exposed class, guardian and HR records against schema rules", () => {
+  assert.equal(validateModuleRecordInput("academic-class-subjects", {
+    classGroupId: uuid, subjectId: uuid, weeklyPeriods: 4
+  }), null);
+  assert.equal(validateModuleRecordInput("academic-class-subjects", {
+    classGroupId: uuid, subjectId: uuid, weeklyPeriods: 0
+  }), "invalid_weeklyPeriods");
+  assert.equal(validateModuleRecordInput("guardians", { displayName: "Wali Santri" }), null);
+  assert.equal(validateModuleRecordInput("student-guardians", {
+    studentId: uuid, guardianId: uuid, relationshipCode: "ibu", isPrimary: true
+  }), null);
+  assert.equal(validateModuleRecordInput("hr-contracts", {
+    employeeId: uuid, contractType: "fixed_term", startsOn: "2026-07-01",
+    endsOn: "2026-06-30", baseSalary: 2500000, status: "draft"
+  }), "invalid_date_range");
+  assert.equal(validateModuleRecordInput("hr-contracts", {
+    employeeId: uuid, contractType: "consultant", startsOn: "2026-07-01", baseSalary: 2500000
+  }), "invalid_contractType");
+});
+
+test("payroll creation is restricted to draft preparation and valid periods", () => {
+  assert.equal(validateModuleRecordInput("hr-payroll-periods", {
+    periodCode: "2026-11", startsOn: "2026-11-01", endsOn: "2026-11-30",
+    payDate: "2026-11-30", status: "open"
+  }), null);
+  assert.equal(validateModuleRecordInput("hr-payroll-periods", {
+    periodCode: "2026-11", startsOn: "2026-11-30", endsOn: "2026-11-01",
+    payDate: "2026-11-30"
+  }), "invalid_date_range");
+  assert.equal(validateModuleRecordInput("hr-payroll-runs", {
+    payrollPeriodId: uuid, runNumber: "PAY-2026-11", runType: "regular", status: "draft"
+  }), null);
+  assert.equal(validateModuleRecordInput("hr-payroll-runs", {
+    payrollPeriodId: uuid, runNumber: "PAY-2026-11", status: "approved"
+  }), "invalid_status");
+});
+
+test("validates procurement detail lines and append-only asset event categories", () => {
+  assert.equal(validateModuleRecordInput("purchase-request-lines", {
+    requestId: uuid, description: "Kertas A4", quantity: 10, estimatedUnitCost: 65000
+  }), null);
+  assert.equal(validateModuleRecordInput("purchase-order-lines", {
+    purchaseOrderId: uuid, description: "Kertas A4", quantity: 10, unitCost: 65000
+  }), null);
+  assert.equal(validateModuleRecordInput("purchase-order-lines", {
+    purchaseOrderId: uuid, description: "Kertas A4", quantity: 0, unitCost: 65000
+  }), "invalid_quantity");
+  assert.equal(validateModuleRecordInput("asset-events", {
+    assetId: uuid, eventType: "maintenance", eventData: { action: "servis" }
+  }), null);
+  assert.equal(validateModuleRecordInput("asset-events", {
+    assetId: uuid, eventType: "delete"
+  }), "invalid_eventType");
+});
+
 test("unknown module resources fail closed", () => {
   assert.equal(validateModuleRecordInput("unknown", {}), "module_resource_not_found");
 });
