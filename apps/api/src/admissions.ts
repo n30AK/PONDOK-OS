@@ -153,7 +153,7 @@ export async function handleAdmissionsRequest(
   }
 
   if (path === "/v1/admissions/applications" && req.method === "POST") {
-    if (!tenant.permissions.includes("admissions.applications.read")) { reply(res, 403, { error: "permission_required", permission: "admissions.applications.read" }); return true; }
+    if (!tenant.permissions.includes("admissions.applications.review")) { reply(res, 403, { error: "permission_required", permission: "admissions.applications.review" }); return true; }
     const body = await readJson(req);
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const error = validateApplicationInput(body);
