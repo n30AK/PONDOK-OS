@@ -151,3 +151,27 @@ test("partial updates accept only known fields without requiring the full create
 test("unknown module resources fail closed", () => {
   assert.equal(validateModuleRecordInput("unknown", {}), "module_resource_not_found");
 });
+
+
+test("validates complete student master, educator profiles and temporal organization assignments", () => {
+  assert.equal(validateModuleRecordInput("student-details", {
+    campusId: uuid, studentNumber: "SAN-0001", legalName: "Ahmad Fulan",
+    birthPlace: "Bandung", birthDate: "2010-01-10", genderCode: "male",
+    citizenshipCode: "ID", nationalStudentNumber: "0098765432",
+    currentAddress: { city: "Bandung", postalCode: "40111" },
+    permanentAddress: { city: "Garut" }, status: "active"
+  }), null);
+  assert.equal(validateModuleRecordInput("student-details", {
+    campusId: uuid, studentNumber: "SAN-0001", legalName: "Ahmad", currentAddress: "Bandung"
+  }), "invalid_currentAddress");
+  assert.equal(validateModuleRecordInput("instructor-profiles", {
+    employeeId: uuid, educatorType: "ustadz", teachingExperienceYears: 12.5, isActive: true
+  }), null);
+  assert.equal(validateModuleRecordInput("instructor-profiles", {
+    employeeId: uuid, educatorType: "headmaster"
+  }), "invalid_educatorType");
+  assert.equal(validateModuleRecordInput("employee-assignments", {
+    employeeId: uuid, departmentId: uuid, positionId: uuid, assignmentType: "acting",
+    startsOn: "2026-07-01", isPrimary: false
+  }), null);
+});
