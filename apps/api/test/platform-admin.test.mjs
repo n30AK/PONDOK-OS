@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handlePlatformRequest, validateActivationRequest } from "../dist/platform-admin.js";
+import { handleRequest } from "../dist/main.js";
 
 const userId = "123e4567-e89b-42d3-a456-426614174000";
 const requestId = "223e4567-e89b-42d3-a456-426614174000";
@@ -93,4 +94,12 @@ test("approval creates a high-entropy token and returns it once after commit", a
   assert.equal(Buffer.isBuffer(insert.values[0]), true);
   assert.equal(insert.values[0].length, 32);
   assert.notEqual(insert.values[0].toString("utf8"), body.data.activationToken);
+});
+
+test("legacy public bootstrap endpoint is disabled by the centralized distribution model", async () => {
+  const req = { method: "POST", url: "/v1/bootstrap/organization", headers: {} };
+  const res = response();
+  await handleRequest(req, res);
+  assert.equal(res.status, 410);
+  assert.equal(JSON.parse(res.body).error, "legacy_bootstrap_disabled_use_central_activation");
 });
