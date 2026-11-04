@@ -11,6 +11,7 @@ import { handleInventoryRequest } from "./inventory.js";
 import { handleHrRequest } from "./hr.js";
 import { handleModuleRecordsRequest } from "./module-records.js";
 import { handleFirstOrganizationBootstrap } from "./first-organization-bootstrap.js";
+import { handlePlatformRequest } from "./platform-admin.js";
 import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
@@ -64,7 +65,7 @@ export async function handleRequest(
     return;
   }
 
-  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/admissions/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/bootstrap/");
+  const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/admissions/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/bootstrap/") || pathname.startsWith("/v1/platform/");
   const allowedMethods = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/modules/")
     ? ["GET", "HEAD", "POST", "PATCH"]
     : writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
@@ -91,6 +92,28 @@ export async function handleRequest(
       sendJson(response, 503, { status: "not_ready", dependency: "database_unavailable" });
     }
     return;
+  }
+
+  if (pathname.startsWith("/v1/platform/")) {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" });
+      return;
+    }
+    try {
+      if (await handlePlatformRequest(request, response, dependencies.pool, identity.userId)) return;
+    } catch {
+      sendJson(response, 500, { error: "platform_service_unavailable" });
+      return;
+    }
   }
 
   if (pathname === "/v1/tenant/organizations") {
