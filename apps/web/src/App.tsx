@@ -83,7 +83,7 @@ export default function App() {
     setBusy(true); setError(""); setNotice("");
     try {
       const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
-      setTenant(context); setOrganizationId(orgId);
+      setTenant(context);
       setCampusId(localStorage.getItem(`pondok.campusId.${orgId}`) ?? "");
       localStorage.setItem("pondok.organizationId", orgId);
       setScreen("overview"); setNotice("Workspace pesantren berhasil dibuka.");
