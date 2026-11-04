@@ -10,7 +10,7 @@ import { handleFinanceRequest } from "./finance.js";
 import { handleInventoryRequest } from "./inventory.js";
 import { handleHrRequest } from "./hr.js";
 import { handleModuleRecordsRequest } from "./module-records.js";
-import { handlePlatformRequest } from "./platform-admin.js";
+import { handlePlatformRequest, listUserOrganizations } from "./platform-admin.js";
 import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
@@ -140,21 +140,8 @@ export async function handleRequest(
       return;
     }
     try {
-      const result = await dependencies.pool.query<{
-        organization_id: string; organization_name: string; organization_slug: string;
-      }>(
-        `SELECT o.id AS organization_id, o.name AS organization_name, o.slug AS organization_slug
-         FROM core.organization_memberships om
-         JOIN core.organizations o ON o.id = om.organization_id
-         WHERE om.user_id = $1::uuid
-           AND om.membership_status = 'active'
-           AND o.status = 'active'
-         ORDER BY o.name ASC`,
-        [identity.userId],
-      );
-      sendJson(response, 200, { data: result.rows.map((row) => ({
-        id: row.organization_id, name: row.organization_name, slug: row.organization_slug,
-      })) });
+      const organizations = await listUserOrganizations(dependencies.pool, identity.userId);
+      sendJson(response, 200, { data: organizations });
     } catch {
       sendJson(response, 500, { error: "organization_list_unavailable" });
     }
