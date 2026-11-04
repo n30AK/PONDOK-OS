@@ -107,7 +107,7 @@ export default function App() {
         if (!active) return;
         setOrganizations(available);
         if (available.length === 1) {
-          const orgId = available[0].id;
+          const orgId = available[0]!.id;
           const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
           if (!active) return;
           setTenant(context);
