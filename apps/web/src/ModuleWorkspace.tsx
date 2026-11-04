@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { getAccessToken } from "./auth";
+import { MASTER_DATA_CATALOG, getModuleGuidance } from "./module-catalog";
 
 type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string };
 type Field = {
@@ -13,6 +14,7 @@ type Resource = {
 type Row = Record<string, unknown>;
 type Lookup = { id: string; label: string };
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const MASTER_DATA_KEYS = new Set(MASTER_DATA_CATALOG.flatMap((item) => item.existingResources));
 
 const F = (key:string,label:string,type:Field["type"]="text",required=false,extra:Partial<Field>={}):Field=>({key,label,type,required,...extra});
 const REL = (key:string,label:string,source:string,labelKey:string,required=true):Field=>F(key,label,"relation",required,{source,labelKey});
@@ -174,11 +176,11 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) 
  if(available.length===0)return <div className="table-card"><h2>Modul belum dapat diakses</h2><p className="muted">Akun ini belum memiliki izin untuk membaca modul operasional. Hubungi administrator institusi.</p></div>;
  return <section className="operations-panel">
   <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI</div><h2>Ruang kerja modul</h2><p>Form kontekstual, validasi API, pembatasan akses, dan jejak aktivitas untuk data baru.</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
-  <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=available.find(r=>r.group===g);if(next)setResourceKey(next.key);}}>{g}</button>)}</div>
-  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>setResourceKey(e.target.value)}>{available.filter(r=>r.group===group).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
+  <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=g==="Master Data"?available.find(r=>MASTER_DATA_KEYS.has(r.key)):available.find(r=>r.group===g);if(next)setResourceKey(next.key);}}>{g}</button>)}</div>
+  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>setResourceKey(e.target.value)}>{resourcesInGroup.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
   {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
   {showForm&&resource&&canWrite&&<form className="student-form operations-form" onSubmit={submit}>
-   <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren. Kolom yang wajib ditandai dengan *. Data sensitif dibatasi sesuai hak akses."}</p></div>
+   <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{guidance?.purpose??(editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren.")}</p>{guidance&&<><p><strong>Alur data:</strong> {guidance.lifecycle}</p><p><strong>Klasifikasi:</strong> {guidance.classification.toUpperCase()} · <strong>Acuan:</strong> {guidance.regulatoryRefs.join(", ")}</p><ul className="field-hint">{guidance.formNotes.map(note=><li key={note}>{note}</li>)}</ul>{guidance.operationalGaps.length>0&&<p className="field-hint"><strong>Pengembangan lanjutan:</strong> {guidance.operationalGaps.join("; ")}.</p>}</>}</div>
    <div className="form-grid">{resource.fields.map(field=><label key={field.key}>{field.label}{field.required?" *":""}
     {field.type==="relation"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih {field.label.toLowerCase()}</option>{(lookups[field.source??""]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select>
     :field.type==="select"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih</option>{(field.options??[]).map(o=><option key={o} value={o}>{o.replaceAll("_"," ")}</option>)}</select>
