@@ -4,7 +4,7 @@ import { getAccessToken } from "./auth";
 type Area = "finance" | "inventory" | "hr";
 type Row = Record<string, unknown>;
 type AreaData = Partial<Record<Area, Record<string, Row[]>>>;
-type Props = { organizationId: string };
+type Props = { organizationId: string; initialArea?: Area };
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
@@ -33,8 +33,9 @@ function display(value: unknown): string {
   return String(value);
 }
 
-export default function Operations({ organizationId }: Props) {
-  const [area, setArea] = useState<Area>("finance");
+export default function Operations({ organizationId, initialArea = "finance" }: Props) {
+  const [area, setArea] = useState<Area>(initialArea);
+  useEffect(() => { setArea(initialArea); setShowForm(false); setForm({}); }, [initialArea]);
   const [data, setData] = useState<AreaData>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
