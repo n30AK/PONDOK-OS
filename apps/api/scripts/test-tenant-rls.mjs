@@ -178,15 +178,15 @@ try {
     [platformTenant],
   );
   await client.query(
-    "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1,$2,'active'),($1,$3,'active')",
-    [platformTenant, platformMember, unrelatedMember],
-  );
-  await client.query(
     "INSERT INTO platform.super_admins (user_id,email,display_name,status) VALUES ($1,'rls-admin@example.invalid','RLS CI Admin','active')",
     [adminId],
   );
   await client.query("SELECT set_config('app.user_id',$1,true)", [adminId]);
   await client.query("SET LOCAL ROLE pondok_platform_runtime");
+  await client.query(
+    "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1,$2,'active'),($1,$3,'active')",
+    [platformTenant, platformMember, unrelatedMember],
+  );
   const adminVisibleMemberships = await client.query("SELECT id FROM core.organization_memberships");
   assert.equal(adminVisibleMemberships.rowCount, 2, "platform Super Admin can read membership registry");
   await client.query("ROLLBACK");
