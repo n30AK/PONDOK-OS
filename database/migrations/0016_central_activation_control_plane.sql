@@ -91,7 +91,7 @@ SET search_path = pg_catalog, platform
 AS $function$
   SELECT EXISTS (
     SELECT 1 FROM platform.super_admins sa
-    WHERE sa.user_id = nullif(current_setting('app.platform_user_id', true), '')::uuid
+    WHERE sa.user_id = nullif(current_setting('app.user_id', true), '')::uuid
       AND sa.status = 'active'
   )
 $function$;
