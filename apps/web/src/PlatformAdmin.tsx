@@ -231,6 +231,7 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
       <h3>Inisialisasi lembaga pertama</h3>
       <p className="muted">Bootstrap satu kali untuk Development. Setelah lembaga pertama dibuat, formulir ini otomatis dinonaktifkan. Akun Super Admin ini juga menjadi Pemilik Institusi pertama.</p>
       <form className="platform-form" onSubmit={bootstrapFirstTenant}>
+        <label>Nama penanggung jawab<input value={contactName} onChange={(event) => setContactName(event.target.value)} required minLength={2} maxLength={120}/></label>
         <label>Nama resmi lembaga<input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} onBlur={() => setOrganizationSlug(value => value || organizationName.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""))} required minLength={3} maxLength={180}/></label>
         <label>Slug lembaga<input value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"-"))} required maxLength={80}/></label>
         <label>Jenis lembaga<select value={organizationType} onChange={(event) => setOrganizationType(event.target.value)}><option value="pesantren">Pesantren</option><option value="madrasah">Madrasah</option><option value="sekolah">Sekolah</option><option value="yayasan">Yayasan</option><option value="other">Lainnya</option></select></label>
