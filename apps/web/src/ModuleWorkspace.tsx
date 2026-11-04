@@ -120,6 +120,14 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
   finally{setBusy(false);}
  };
  const visibleRows=rows.slice(0,100);
+ const displayCell=(column:string,value:unknown)=>{
+  const field=resource?.fields.find(item=>item.type==="relation"&&item.key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`)===column);
+  if(field&&typeof value==="string"){
+   const option=(lookups[field.source??""]??[]).find(item=>item.id===value);
+   if(option)return option.label;
+  }
+  return toLabel(value);
+ };
  if(available.length===0)return <div className="table-card"><h2>Modul belum dapat diakses</h2><p className="muted">Akun ini belum memiliki izin untuk membaca modul operasional. Hubungi administrator institusi.</p></div>;
  return <section className="operations-panel">
   <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI</div><h2>Ruang kerja modul</h2><p>Form kontekstual, validasi API, pembatasan akses, dan jejak aktivitas untuk data baru.</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
@@ -138,7 +146,7 @@ function ModuleWorkspace({organizationId,permissions}:Props) {
    </label>)}</div>
    <div className="form-actions"><button type="button" className="outline-button" onClick={()=>setShowForm(false)}>Batal</button><button className="primary" disabled={busy}>{busy?"Menyimpan…":"Simpan data"}</button></div>
   </form>}
-  {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{toLabel(row[key])}</td>)}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
+  {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
   <p className="operations-footnote">PONDOK OS tidak menggantikan EMIS/SIMTREN atau sistem resmi Kementerian Agama. Nomor izin, NSP, status legal, dan dokumen persetujuan harus diverifikasi melalui kanal instansi berwenang.</p>
  </section>;
 }
