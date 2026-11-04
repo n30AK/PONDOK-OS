@@ -195,7 +195,7 @@ export default function PlatformAdmin({ isSuperAdmin }: { isSuperAdmin: boolean 
           <button type="button" className="outline-button" onClick={() => void sendVerificationCode()} disabled={busy || !contactEmail}>Kirim kode verifikasi</button>
         </div>
         <div className="platform-redeem">
-          <input inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\\D/g, "").slice(0, 8))} minLength={6} maxLength={8} required placeholder="Kode verifikasi email"/>
+          <input inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 8))} minLength={6} maxLength={8} required placeholder="Kode verifikasi email"/>
           <button type="button" className="primary" onClick={() => void verifyAccountEmail()} disabled={busy || verificationCode.length < 6}>Verifikasi email</button>
         </div>
       </div>}
