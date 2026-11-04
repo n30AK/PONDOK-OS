@@ -50,7 +50,7 @@ Pada 4 Oktober 2026 Kemenag menyampaikan proses pemutakhiran data santri berbasi
 - **Berkas:** jenis dokumen, nomor referensi internal, tanggal unggah, pemeriksa, hasil verifikasi; berkas anak dibatasi.
 - **Seleksi:** jadwal, komponen seleksi, hasil, pewawancara/penguji, catatan yang relevan, keputusan dan alasan.
 - **Daftar ulang:** keputusan diterima, konfirmasi, tanggal, pembayaran yang terhubung ke invoice, status registrasi.
-- **Status:** fondasi API tenant-scoped tersedia pada branch pengembangan: periode, draft pendaftar, submit dalam jendela aktif, dan keputusan seleksi. Antarmuka operator, unggah/verifikasi dokumen, konversi diterima menjadi data santri, dan uji alur ujung-ke-ujung masih harus diselesaikan sebelum dinyatakan operasional.
+- **Status:** API tenant-scoped dan workspace operator tersedia pada `main` untuk periode, draft pendaftar, submit, dan keputusan seleksi. PR pengembangan menambahkan konversi pendaftar diterima menjadi profil santri berstatus `applicant`; unggah/verifikasi dokumen, penjadwalan tes, daftar ulang, pembayaran, dan uji alur ujung-ke-ujung masih harus diselesaikan sebelum dinyatakan operasional.
 
 ### C. Data Induk Santri
 - **Inti:** nomor induk, nama sesuai dokumen, nama panggilan, tempat/tanggal lahir, jenis kelamin, agama, kewarganegaraan, kampus.
