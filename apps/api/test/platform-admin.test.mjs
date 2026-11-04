@@ -132,3 +132,49 @@ test("non-admin cannot read the tenant registry", async () => {
   assert.equal(JSON.parse(res.body).error, "platform_super_admin_required");
   assert.ok(!calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
 });
+
+
+test("first tenant bootstrap is super-admin-only, verified-user-bound and atomic", async () => {
+  const calls = [];
+  const { pool } = poolWithClient(async (sql, values) => {
+    calls.push({ sql, values });
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT count(*)::int AS total")) return { rows: [{ total: 0 }] };
+    if (sql.startsWith("SELECT id FROM core.roles")) return { rows: [{ id: requestId }] };
+    if (sql.startsWith("INSERT INTO core.organizations")) return { rows: [{ id: "323e4567-e89b-42d3-a456-426614174000" }] };
+    if (sql.startsWith("INSERT INTO core.organization_memberships")) return { rows: [{ id: "423e4567-e89b-42d3-a456-426614174000" }] };
+    if (sql.startsWith("INSERT INTO core.campuses")) return { rows: [{ id: "523e4567-e89b-42d3-a456-426614174000" }] };
+    return { rows: [] };
+  }, async (sql) => {
+    if (sql.includes('FROM neon_auth."user"')) return { rows: [{ email: "admin@example.org" }] };
+    throw new Error("unexpected owner query: " + sql);
+  });
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/admin/bootstrap-first-tenant", "POST", {
+    contactName: "Administrator", organizationName: "Pondok Contoh", organizationSlug: "pondok-contoh",
+    organizationType: "pesantren", campusCode: "UTAMA", campusName: "Kampus Utama"
+  }), res, pool, userId);
+  assert.equal(res.status, 201);
+  const data = JSON.parse(res.body).data;
+  assert.equal(data.organizationId, "323e4567-e89b-42d3-a456-426614174000");
+  assert.ok(calls.some(call => call.sql.startsWith("SELECT pg_advisory_xact_lock")));
+  assert.ok(calls.some(call => call.sql.startsWith("INSERT INTO core.membership_roles")));
+  assert.ok(calls.some(call => call.sql.startsWith("INSERT INTO audit.audit_events")));
+  assert.ok(calls.some(call => call.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some(call => call.sql === "COMMIT"));
+});
+
+test("first tenant bootstrap is one-time and refuses when any organization already exists", async () => {
+  const { pool } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT count(*)::int AS total")) return { rows: [{ total: 1 }] };
+    return { rows: [] };
+  }, async () => ({ rows: [{ email: "admin@example.org" }] }));
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/admin/bootstrap-first-tenant", "POST", {
+    contactName: "Administrator", organizationName: "Pondok Contoh", organizationSlug: "pondok-contoh",
+    organizationType: "pesantren", campusCode: "UTAMA", campusName: "Kampus Utama"
+  }), res, pool, userId);
+  assert.equal(res.status, 409);
+  assert.equal(JSON.parse(res.body).error, "first_tenant_already_exists");
+});
