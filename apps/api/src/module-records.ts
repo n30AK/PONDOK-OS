@@ -354,7 +354,7 @@ async function handleStudentHealthProfiles(
   }
 }
 
-export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
+async function handleModuleRecordsRequestInternal(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname === "/v1/modules/student-health-profiles") {
     await handleStudentHealthProfiles(req, res, pool, userId, organizationId, url);
@@ -452,4 +452,56 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     reply(res,code==="23505"?409:code==="23503"?422:code==="23514"?422:500,{error:code==="23505"?"duplicate_record":code==="23503"?"related_record_not_found_in_tenant":code==="23514"?"record_constraint_rejected":"module_record_create_failed"});
   }
   return true;
+}
+
+
+/**
+ * All mutating module requests share one checked-out PostgreSQL connection.
+ * The module handlers use SAVEPOINTs to keep domain writes and audit events
+ * together; a Pool.query call per statement would run each statement on an
+ * arbitrary connection and make those savepoints invalid.
+ */
+export async function handleModuleRecordsRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pool: Pool,
+  userId: string,
+  organizationId: string,
+): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (!url.pathname.startsWith("/v1/modules/")) return false;
+
+  if (req.method === "GET" || (req.method !== "POST" && req.method !== "PATCH")) {
+    return handleModuleRecordsRequestInternal(req, res, pool, userId, organizationId);
+  }
+
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query("BEGIN");
+    transactionOpen = true;
+
+    const handled = await handleModuleRecordsRequestInternal(
+      req,
+      res,
+      client,
+      userId,
+      organizationId,
+    );
+
+    if (!handled || res.statusCode >= 400) {
+      await client.query("ROLLBACK");
+    } else {
+      await client.query("COMMIT");
+    }
+    transactionOpen = false;
+    return handled;
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
