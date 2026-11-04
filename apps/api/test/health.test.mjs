@@ -68,7 +68,7 @@ test("academic routes advertise POST while rejecting unsupported methods", async
   assert.ok(address && typeof address === "object");
   const response = await fetch(`http://127.0.0.1:${address.port}/v1/academic/students`, { method: "PUT" });
   assert.equal(response.status, 405);
-  assert.equal(response.headers.get("allow"), "GET, HEAD, POST");
+  assert.equal(response.headers.get("allow"), "GET, HEAD, POST, PATCH");
 });
 
 test("readiness is distinct from liveness and requires database connectivity", async (context) => {

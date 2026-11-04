@@ -62,6 +62,19 @@ export function validateStudentProfileData(value: unknown): string | null {
   return null;
 }
 
+export function validateStudentUpdateInput(value: Json): string | null {
+  const allowed = new Set(["campusId", "studentNumber", "legalName", "preferredName", "birthDate", "genderCode", "profileData"]);
+  if (Object.keys(value).length === 0) return "empty_student_update";
+  if (Object.keys(value).some((key) => !allowed.has(key))) return "unsupported_student_update_field";
+  if (value.campusId !== undefined && (typeof value.campusId !== "string" || !UUID.test(value.campusId))) return "invalid_campus_id";
+  if (value.studentNumber !== undefined && (typeof value.studentNumber !== "string" || value.studentNumber.trim().length < 1 || value.studentNumber.trim().length > 64)) return "invalid_student_number";
+  if (value.legalName !== undefined && (typeof value.legalName !== "string" || value.legalName.trim().length < 2 || value.legalName.trim().length > 160)) return "invalid_legal_name";
+  if (value.preferredName !== undefined && value.preferredName !== null && (typeof value.preferredName !== "string" || value.preferredName.length > 160)) return "invalid_preferred_name";
+  if (value.birthDate !== undefined && value.birthDate !== null && (typeof value.birthDate !== "string" || !isValidIsoDate(value.birthDate))) return "invalid_birth_date";
+  if (value.genderCode !== undefined && value.genderCode !== null && !["male", "female", "unspecified"].includes(String(value.genderCode))) return "invalid_gender_code";
+  return validateStudentProfileData(value.profileData);
+}
+
 export function validateStudentInput(value: Json): string | null {
   if (typeof value.campusId !== "string" || !UUID.test(value.campusId)) return "invalid_campus_id";
   if (typeof value.studentNumber !== "string" || value.studentNumber.trim().length < 1 || value.studentNumber.trim().length > 64) return "invalid_student_number";
@@ -75,8 +88,10 @@ export function validateStudentInput(value: Json): string | null {
 export async function handleAcademicRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname !== "/v1/academic/students") return false;
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("allow", "GET, POST"); reply(res, 405, { error: "method_not_allowed" }); return true;
+  const studentMatch = url.pathname.match(/^\/v1\/academic\/students\/([0-9a-f-]{36})$/i);
+  const isStudentUpdate = Boolean(studentMatch && req.method === "PATCH");
+  if (req.method !== "GET" && req.method !== "POST" && !isStudentUpdate) {
+    res.setHeader("allow", "GET, POST, PATCH"); reply(res, 405, { error: "method_not_allowed" }); return true;
   }
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
@@ -107,6 +122,56 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
        ORDER BY sp.created_at DESC LIMIT $${values.length}`, values,
     );
     reply(res, 200, { data: result.rows, pagination: { limit, returned: result.rows.length } }); return true;
+  }
+
+  if (isStudentUpdate) {
+    if (!tenant.permissions.includes("academic.students.update")) {
+      reply(res, 403, { error: "permission_required", permission: "academic.students.update" }); return true;
+    }
+    const studentId = studentMatch?.[1];
+    if (!studentId || !UUID.test(studentId)) { reply(res, 400, { error: "invalid_student_id" }); return true; }
+    const body = await readJson(req);
+    if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
+    const validationError = validateStudentUpdateInput(body);
+    if (validationError) { reply(res, 422, { error: validationError }); return true; }
+    const values: unknown[] = [organizationId, studentId];
+    const set: string[] = [];
+    const fields: Array<[string, string, boolean]> = [
+      ["campusId", "campus_id", false], ["studentNumber", "student_number", false],
+      ["legalName", "legal_name", false], ["preferredName", "preferred_name", true],
+      ["birthDate", "birth_date", true], ["genderCode", "gender_code", true]
+    ];
+    for (const [key, column, nullable] of fields) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        values.push(body[key] === null ? null : (typeof body[key] === "string" && ["studentNumber", "legalName"].includes(key) ? (body[key] as string).trim() : body[key]));
+        const cast = key === "campusId" ? "::uuid" : key === "birthDate" ? "::date" : "";
+        set.push(`${column} = ${values.length}${cast}`);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "profileData")) {
+      values.push(JSON.stringify(body.profileData));
+      set.push(`profile_data = profile_data || ${values.length}::jsonb`);
+    }
+    set.push("updated_at = now()");
+    try {
+      const result = await pool.query(
+        `UPDATE academic.student_profiles SET ${set.join(", ")}
+         WHERE organization_id = $1::uuid AND id = $2::uuid
+         RETURNING id, campus_id AS "campusId", student_number AS "studentNumber",
+                   legal_name AS "legalName", preferred_name AS "preferredName",
+                   birth_date AS "birthDate", gender_code AS "genderCode",
+                   profile_data AS "profileData", status, created_at AS "createdAt", updated_at AS "updatedAt"`,
+        values,
+      );
+      if (!result.rows[0]) { reply(res, 404, { error: "student_not_found" }); return true; }
+      reply(res, 200, { data: result.rows[0] });
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error ? String((error as { code: unknown }).code) : "";
+      if (code === "23505") reply(res, 409, { error: "student_number_already_exists" });
+      else if (code === "23503") reply(res, 422, { error: "campus_not_found_in_organization" });
+      else reply(res, 500, { error: "student_update_failed" });
+    }
+    return true;
   }
 
   if (!tenant.permissions.includes("academic.students.create")) {
