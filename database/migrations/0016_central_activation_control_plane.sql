@@ -181,9 +181,6 @@ CREATE POLICY platform_audit_actor_or_admin ON platform.audit_events
     OR platform.is_active_super_admin()
   );
 
-GRANT SELECT, INSERT ON platform.activation_requests TO pondok_runtime;
-GRANT SELECT ON platform.tenant_licenses, platform.audit_events TO pondok_runtime;
-
 -- Deliberately no initial super-admin is inserted here. The first company
 -- administrator must be granted through the controlled Development runbook
 -- after verifying the intended Neon Auth user UUID out of band.
