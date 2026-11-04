@@ -3,10 +3,10 @@ import { createRemoteJWKSet } from "jose";
 import { PassThrough } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Pool } from "pg";
-import { handleRequest, type ApiDependencies } from "./main.js";
+import { handleRequest, secureDatabaseConnectionString, type ApiDependencies } from "./main.js";
 
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
+  ? new Pool({ connectionString: secureDatabaseConnectionString(process.env.DATABASE_URL), max: 5 })
   : undefined;
 if (pool) attachDatabasePool(pool);
 
