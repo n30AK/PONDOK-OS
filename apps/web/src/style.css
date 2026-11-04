@@ -26,3 +26,11 @@
 .ppdb-conversion-form{display:grid;grid-template-columns:1fr;gap:8px;min-width:210px;max-width:260px;margin-top:9px;padding:10px;background:#f7faf7;border:1px solid var(--line);border-radius:9px}.ppdb-conversion-form label{display:flex;flex-direction:column;gap:5px;font-size:9px;font-weight:700;color:#63736a}.ppdb-conversion-form input{width:100%;min-width:0;border:1px solid #dfe7e1;border-radius:7px;padding:8px;font:10px "DM Sans",sans-serif;color:#33483d}.ppdb-conversion-form .ppdb-row-actions{justify-content:flex-end}.ppdb-conversion-form .primary,.ppdb-conversion-form .outline-button{padding:7px 9px;font-size:9px}
 
 .org-choice-list{display:grid;gap:10px;margin-top:22px;max-width:520px}.org-choice{display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;padding:16px 18px;border:1px solid #dce7df;border-radius:12px;background:#fff;color:#203d34;text-align:left;transition:.18s}.org-choice:hover{border-color:#548b79;box-shadow:0 8px 24px #183e3010;transform:translateY(-1px)}.org-choice span,.org-choice strong,.org-choice small{display:block}.org-choice strong{font-size:14px}.org-choice small{margin-top:4px;color:#77847f;font-size:11px}.org-choice b{font-size:12px;color:#205a4e;white-space:nowrap}@media(max-width:760px){.org-choice{padding:14px}}
+
+.module-group-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px}
+.module-group-tabs .operation-tab{white-space:nowrap}
+.module-workspace .student-form textarea,.student-form textarea{width:100%;min-height:84px;border:1px solid #dfe7e1;border-radius:8px;background:#fff;padding:10px 12px;color:#33483d;font:11px/1.6 "DM Sans",sans-serif;resize:vertical}
+.student-form textarea:focus{outline:none;border-color:#548b79;box-shadow:0 0 0 3px #548b7918}
+.student-form input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);align-self:flex-start}
+.field-hint{font-size:9px;line-height:1.5;color:#87938c;font-weight:400}
+@media(max-width:760px){.module-group-tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:12px}.module-group-tabs .operation-tab{flex:0 0 auto}}

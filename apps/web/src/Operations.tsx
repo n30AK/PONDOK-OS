@@ -78,7 +78,30 @@ export default function Operations({ organizationId }: Props) {
     try {
       let path = "";
       let payload: Row = {};
-      if (area === "finance" && form.kind === "account") {
+      if (area === "finance" && form.kind === "journal") {
+        path = "/v1/finance/journals";
+        const amount = Number(form.amount);
+        if (form.debitAccountId === form.creditAccountId) throw new Error("Akun debit dan kredit harus berbeda.");
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error("Nominal jurnal harus lebih besar dari nol.");
+        payload = {
+          fiscalPeriodId: form.fiscalPeriodId, entryNumber: form.entryNumber,
+          entryDate: form.entryDate, description: form.description,
+          lines: [
+            { accountId: form.debitAccountId, debit: amount, credit: 0, description: form.description },
+            { accountId: form.creditAccountId, debit: 0, credit: amount, description: form.description }
+          ]
+        };
+      } else if (area === "inventory" && form.kind === "movement") {
+        path = "/v1/inventory/movements";
+        payload = {
+          itemId: form.itemId, movementType: form.movementType || "receipt", quantity: Number(form.quantity),
+          unitCost: form.unitCost ? Number(form.unitCost) : null,
+          warehouseId: form.warehouseId || undefined,
+          fromWarehouseId: form.fromWarehouseId || undefined,
+          toWarehouseId: form.toWarehouseId || undefined,
+          notes: form.notes || null
+        };
+      } else if (area === "finance" && form.kind === "account") {
         path = "/v1/finance/accounts";
         payload = { accountCode: form.code, accountName: form.name, accountType: form.type };
       } else if (area === "finance" && form.kind === "period") {
@@ -107,8 +130,8 @@ export default function Operations({ organizationId }: Props) {
   };
 
   const forms: Record<Area, { value: string; label: string }[]> = {
-    finance: [{ value: "account", label: "Tambah akun" }, { value: "period", label: "Buat periode buku" }],
-    inventory: [{ value: "item", label: "Tambah barang" }, { value: "warehouse", label: "Tambah gudang" }],
+    finance: [{ value: "account", label: "Tambah akun" }, { value: "period", label: "Buat periode buku" }, { value: "journal", label: "Buat jurnal seimbang" }],
+    inventory: [{ value: "item", label: "Tambah barang" }, { value: "warehouse", label: "Tambah gudang" }, { value: "movement", label: "Catat mutasi stok" }],
     hr: [{ value: "employee", label: "Tambah pegawai" }, { value: "payroll-period", label: "Buat periode payroll" }]
   };
   const selectedForm = forms[area].find((item) => item.value === form.kind)?.value ?? forms[area][0]?.value;
@@ -131,9 +154,11 @@ export default function Operations({ organizationId }: Props) {
       <button className="primary" onClick={() => { setForm((previous) => ({ ...previous, kind: selectedForm ?? "" })); setShowForm((value) => !value); }}>{showForm ? "Tutup formulir" : "+ Tambah data"}</button>
     </div>
     {showForm && <form className="student-form operations-form" onSubmit={submit}>
-      <div className="form-context"><strong>{area === "finance" && form.kind === "account" ? "Master bagan akun" : area === "finance" ? "Periode pembukuan" : area === "inventory" && form.kind === "item" ? "Master barang persediaan" : area === "inventory" ? "Lokasi penyimpanan" : form.kind === "employee" ? "Data induk pegawai" : "Periode penggajian"}</strong><p>{area === "finance" && form.kind === "account" ? "Gunakan kode akun yang konsisten dengan struktur laporan keuangan pesantren." : area === "finance" ? "Tanggal awal dan akhir menentukan transaksi yang boleh dicatat pada periode ini." : area === "inventory" && form.kind === "item" ? "Satuan dan batas minimum dipakai untuk pengendalian persediaan." : area === "inventory" ? "Gudang harus dikaitkan dengan kampus yang benar bila lokasi bersifat spesifik." : form.kind === "employee" ? "Nomor pegawai adalah identitas internal; jangan gunakan NIK sebagai nomor pegawai." : "Periode payroll menentukan rentang kerja dan tanggal pembayaran."}</p></div><div className="form-grid">
+      <div className="form-context"><strong>{area === "finance" && form.kind === "account" ? "Master bagan akun" : area === "finance" && form.kind === "journal" ? "Jurnal umum berpasangan" : area === "finance" ? "Periode pembukuan" : area === "inventory" && form.kind === "item" ? "Master barang persediaan" : area === "inventory" && form.kind === "movement" ? "Penerimaan, pengeluaran, atau transfer stok" : area === "inventory" ? "Lokasi penyimpanan" : form.kind === "employee" ? "Data induk pegawai" : "Periode penggajian"}</strong><p>{area === "finance" && form.kind === "account" ? "Gunakan kode akun yang konsisten dengan struktur laporan keuangan pesantren." : area === "finance" && form.kind === "journal" ? "Jurnal draft wajib seimbang; lampirkan bukti transaksi melalui prosedur arsip lembaga sebelum posting." : area === "finance" ? "Tanggal awal dan akhir menentukan transaksi yang boleh dicatat pada periode ini." : area === "inventory" && form.kind === "item" ? "Satuan dan batas minimum dipakai untuk pengendalian persediaan." : area === "inventory" && form.kind === "movement" ? "Mutasi tersimpan sebagai ledger. Transfer mencatat keluar dan masuk sebagai satu grup." : area === "inventory" ? "Gudang harus dikaitkan dengan kampus yang benar bila lokasi bersifat spesifik." : form.kind === "employee" ? "Nomor pegawai adalah identitas internal; jangan gunakan NIK sebagai nomor pegawai." : "Periode payroll menentukan rentang kerja dan tanggal pembayaran."}</p></div><div className="form-grid">
         <label>{area === "finance" && form.kind === "account" ? "Kode akun" : area === "finance" ? "Kode periode buku" : area === "inventory" && form.kind === "item" ? "Kode barang" : area === "inventory" ? "Kode gudang" : form.kind === "employee" ? "Nomor pegawai" : "Kode periode payroll"}<input value={form.code ?? ""} onChange={(event) => update("code", event.target.value)} required maxLength={64} /></label>
         {form.kind !== "payroll-period" && <label>{area === "finance" && form.kind === "account" ? "Nama akun" : area === "finance" ? "Nama periode buku" : area === "inventory" && form.kind === "item" ? "Nama barang" : area === "inventory" ? "Nama gudang" : "Nama lengkap pegawai"}<input value={form.name ?? ""} onChange={(event) => update("name", event.target.value)} required maxLength={180} /></label>}
+        {area === "finance" && form.kind === "journal" && <><label>Periode buku<select value={form.fiscalPeriodId ?? ""} onChange={(event) => update("fiscalPeriodId", event.target.value)} required><option value="">Pilih periode terbuka</option>{(data.finance?.["/v1/finance/periods"] ?? []).filter((row) => row.status === "open").map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.name)} ({String(row.code)})</option>)}</select></label><label>Nomor jurnal<input value={form.entryNumber ?? ""} onChange={(event) => update("entryNumber", event.target.value)} required maxLength={64} /></label><label>Tanggal jurnal<input type="date" value={form.entryDate ?? ""} onChange={(event) => update("entryDate", event.target.value)} required /></label><label className="wide-field">Keterangan<input value={form.description ?? ""} onChange={(event) => update("description", event.target.value)} required maxLength={500} /></label><label>Akun debit<select value={form.debitAccountId ?? ""} onChange={(event) => update("debitAccountId", event.target.value)} required><option value="">Pilih akun debit</option>{(data.finance?.["/v1/finance/accounts"] ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.accountCode)} — {String(row.accountName)}</option>)}</select></label><label>Akun kredit<select value={form.creditAccountId ?? ""} onChange={(event) => update("creditAccountId", event.target.value)} required><option value="">Pilih akun kredit</option>{(data.finance?.["/v1/finance/accounts"] ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.accountCode)} — {String(row.accountName)}</option>)}</select></label><label>Nominal debit = kredit (IDR)<input type="number" min="0.01" step="0.01" value={form.amount ?? ""} onChange={(event) => update("amount", event.target.value)} required /></label><p className="field-hint">Form ini membuat jurnal draft dua baris dengan debit dan kredit sama. Posting final tetap memerlukan hak finance.journals.post dan pemeriksaan bukti transaksi.</p></>}
+        {area === "inventory" && form.kind === "movement" && <><label>Jenis mutasi<select value={form.movementType ?? "receipt"} onChange={(event) => update("movementType", event.target.value)}><option value="receipt">Penerimaan</option><option value="issue">Pengeluaran</option><option value="transfer">Transfer antar gudang</option></select></label><label>Barang<select value={form.itemId ?? ""} onChange={(event) => update("itemId", event.target.value)} required><option value="">Pilih barang</option>{(data.inventory?.["/v1/inventory/items"] ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.itemCode)} — {String(row.itemName)}</option>)}</select></label>{form.movementType === "transfer" ? <><label>Gudang asal<select value={form.fromWarehouseId ?? ""} onChange={(event) => update("fromWarehouseId", event.target.value)} required><option value="">Pilih gudang asal</option>{(data.inventory?.["/v1/inventory/warehouses"] ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.warehouseCode)} — {String(row.warehouseName)}</option>)}</select></label><label>Gudang tujuan<select value={form.toWarehouseId ?? ""} onChange={(event) => update("toWarehouseId", event.target.value)} required><option value="">Pilih gudang tujuan</option>{(data.inventory?.["/v1/inventory/warehouses"] ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.warehouseCode)} — {String(row.warehouseName)}</option>)}</select></label></> : <label>Gudang<select value={form.warehouseId ?? ""} onChange={(event) => update("warehouseId", event.target.value)} required><option value="">Pilih gudang</option>{(data.inventory?.["/v1/inventory/warehouses"] ?? []).map((row) => <option key={String(row.id)} value={String(row.id)}>{String(row.warehouseCode)} — {String(row.warehouseName)}</option>)}</select></label>}<label>Jumlah<input type="number" min="0.001" step="0.001" value={form.quantity ?? ""} onChange={(event) => update("quantity", event.target.value)} required /></label><label>Harga satuan (opsional)<input type="number" min="0" step="0.01" value={form.unitCost ?? ""} onChange={(event) => update("unitCost", event.target.value)} /></label><label className="wide-field">Catatan / referensi<input value={form.notes ?? ""} onChange={(event) => update("notes", event.target.value)} maxLength={500} /></label></>}
         {area === "finance" && form.kind === "account" && <label>Jenis akun<select value={form.type ?? "asset"} onChange={(event) => update("type", event.target.value)}><option value="asset">Aset</option><option value="liability">Liabilitas</option><option value="equity">Ekuitas</option><option value="revenue">Pendapatan</option><option value="expense">Beban</option></select></label>}
         {area === "finance" && form.kind === "period" && <><label>Tanggal mulai<input type="date" value={form.startsOn ?? ""} onChange={(event) => update("startsOn", event.target.value)} required /></label><label>Tanggal selesai<input type="date" value={form.endsOn ?? ""} onChange={(event) => update("endsOn", event.target.value)} required /></label></>}
         {area === "inventory" && form.kind === "warehouse" && <label>ID kampus (opsional)<input value={form.campusId ?? ""} onChange={(event) => update("campusId", event.target.value)} placeholder="UUID kampus" /></label>}
@@ -155,6 +180,6 @@ export default function Operations({ organizationId }: Props) {
         </article>;
       })}
     </div>
-    <p className="operations-footnote">Tindakan posting jurnal, persetujuan/pembayaran payroll, dan mutasi stok memerlukan hak akses khusus dan masih dilakukan melalui endpoint operasional; formulir di atas hanya membuat data dasar.</p>
+    <p className="operations-footnote">Posting jurnal memerlukan persetujuan terpisah. Mutasi stok dicatat pada ledger. Modul payroll saat ini belum memiliki mesin perhitungan PPh 21, BPJS, THR, lembur, dan aturan ketenagakerjaan yang tervalidasi; jangan gunakan untuk penggajian resmi sebelum komponen dan formula ditinjau ahli payroll serta aturan terbaru.</p>
   </section>;
 }
