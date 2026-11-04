@@ -1,55 +1,51 @@
-# First institution installation
+# First institution activation (centralized SaaS)
 
-This runbook initializes the first institution on a **development or staging branch**. Do not use it to initialize production before the production readiness checklist has been approved.
+PONDOK OS uses a centralized company approval model. New institutions must not create their own tenant through the legacy bootstrap form.
 
-## 1. Prepare the environment
+## Development rollout prerequisites
 
-1. Provision a Neon development or staging branch and enable Neon Managed Auth on that same branch.
-2. Configure the web trusted origin in Neon Auth.
-3. Configure the API with the matching branch's `DATABASE_URL`, `NEON_AUTH_BASE_URL`, and `NEON_AUTH_JWKS_URL`. Never mix URLs from different branches.
-4. Deploy/start the API build that includes transaction-scoped tenant context and the RLS-compatible first-organization bootstrap. The API must be running before migration 0013 is activated.
-5. Apply the repository migrations using the explicit migration runner. On the current PONDOK OS development branch, migrations 0013 and 0014 are applied and verified. Migration 0013 enforces RLS on 59 tenant-owned tables; migration 0014 creates the restricted `pondok_runtime` role.
-6. Confirm the migration ledger includes 0013 and 0014, verify the expected RLS flags and restricted runtime role, and verify the deployed API readiness endpoint before allowing tenant setup.
+1. Confirm the Neon Development branch is selected: `br-proud-paper-b312lfxi`.
+2. Confirm the Development Neon Auth and API URLs belong to the same branch.
+3. Review migration `0016_central_activation_control_plane.sql`.
+4. Obtain separate approval before applying migration 0016 to Development. This runbook does not authorize applying it.
+5. Sign in to the Development Neon Auth account intended to operate as the company Super Administrator.
+6. Verify the account's UUID, email verification status and unbanned status using the Development Auth database.
 
-Migrations are not run automatically when the API container starts. Do not activate migration 0013 on a branch still serving an older API build that does not set transaction-local tenant context.
+## Provision the first company Super Administrator
 
-## 2. Generate a one-time setup credential
+The first Super Administrator is not self-service. After migration 0016 is approved and applied to Development, use the controlled SQL grant in [Central activation architecture](../architecture/central-activation-control-plane.md).
 
-Run this locally from the repository root:
+The SQL must target the Development branch and verify the intended `neon_auth."user"` row. Never grant Super Admin based only on a submitted email, a tenant membership, or a browser parameter. Production must remain untouched.
 
-```bash
-node scripts/create-bootstrap-token.mjs
-```
+## Institution registration and approval
 
-The script prints a random 256-bit token and its SHA-256 digest. It does not write either value to disk.
+1. The institution contact creates or signs in to their Neon Auth account.
+2. The applicant verifies their email address with Neon Auth.
+3. From the authenticated workspace entry page, the applicant submits the institution activation request. The contact email must match the verified, unbanned Neon Auth account.
+4. The API stores the request as `pending`; it does not create an organization, membership, campus, or tenant access.
+5. A company Super Administrator reviews the request in Central Command and approves or rejects it.
+6. On approval, the API creates a 256-bit random activation token, stores only its SHA-256 hash, binds it to the requesting user, and sets a 24-hour expiry. The raw token is revealed once to the approving operator.
+7. The company sends the token to the verified contact through an approved channel.
+8. The applicant signs in with the same account and redeems the token.
+9. The API atomically creates the organization, owner membership, main campus, owner role assignment, and audit events. The token is consumed in the same transaction.
+10. Verify that the owner opens the workspace and that a different user cannot access the tenant.
 
-- Configure only the digest as `PONDOK_BOOTSTRAP_TOKEN_SHA256` in the API environment.
-- Restart/redeploy the API after setting the variable.
-- Keep the raw token temporarily in a password manager or secure clipboard. Do not commit it or send it in chat.
+## Security and acceptance checks
 
-## 3. Initialize the institution owner
+- [ ] Non-admin receives 403 from all company approval endpoints.
+- [ ] Applicant can see only their own activation requests.
+- [ ] Contact email must match a verified, unbanned Neon Auth account.
+- [ ] Raw token is never stored or logged.
+- [ ] Token is user-bound, expires after 24 hours and cannot be reused.
+- [ ] Token issuance is restricted to active Super Administrators.
+- [ ] Tenant creation is atomic; partial organization/membership/campus writes roll back.
+- [ ] Platform operations run under `pondok_platform_runtime` (NOLOGIN/NOBYPASSRLS).
+- [ ] Campus, membership-role and tenant audit writes remain subject to tenant FORCE RLS.
+- [ ] Two-tenant isolation and role-permission acceptance tests pass.
+- [ ] Backup/restore and operational UAT are completed before production onboarding.
 
-1. Open the PONDOK OS web workspace.
-2. Choose **Penyiapan pertama kali**.
-3. Register the first administrator using the email/password form. If the administrator account was already created during an earlier failed attempt, switch the form to **Gunakan akun yang ada** and sign in instead.
-4. Enter the institution name, unique slug, main campus code/name, and raw one-time token.
-5. Submit once. The API verifies the Neon JWT and token digest, serializes initialization with a PostgreSQL advisory transaction lock, creates the organization and active owner membership, sets transaction-local tenant context, switches to `pondok_runtime`, and then creates the campus, owner role assignment and audit event atomically. This order is required by FORCE RLS and migration 0014's restricted privileges.
-6. Save the returned organization ID in the institution's secure administrative record.
+## Legacy bootstrap
 
-The endpoint refuses initialization if any organization already exists. A failed attempt may leave an unassigned Neon Auth user if sign-up succeeded but the bootstrap token or database step failed. Correct the configuration and sign in with the same account before retrying; do not create additional administrator identities unnecessarily.
+`POST /v1/bootstrap/organization` is disabled and returns HTTP 410 in the centralized distribution architecture. The old `PONDOK_BOOTSTRAP_TOKEN_SHA256` mechanism must not be used for institution onboarding. Remove its Development Function environment value only after the new API build is deployed and its route-disable behavior is verified.
 
-The operator CLI bootstrap follows the same membership-before-campus/audit sequence and can be used for a controlled first-install workflow.
-
-## 4. Remove the bootstrap credential
-
-Immediately after successful initialization:
-
-1. Remove `PONDOK_BOOTSTRAP_TOKEN_SHA256` from the API environment.
-2. Restart/redeploy the API.
-3. Confirm a second bootstrap attempt is rejected.
-4. Confirm the first administrator can sign in and open the new organization.
-5. Confirm an unrelated user receives 403 when requesting the organization context.
-
-## 5. Acceptance boundary
-
-This procedure creates the first owner and tenant. It does not constitute full production acceptance. Before real student, guardian, employee or financial data is imported, complete the production readiness gate, verify tenant isolation with two separate organizations, configure backup/restore, and complete institution workflow testing.
+No instruction in this runbook authorizes a Production database migration, Super Admin grant, Function deployment, or credential change.
