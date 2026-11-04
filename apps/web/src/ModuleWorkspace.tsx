@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { getAccessToken } from "./auth";
 
-type Props = { organizationId: string; permissions: string[] };
+type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string };
 type Field = {
   key: string; label: string; type?: "text" | "date" | "datetime-local" | "number" | "textarea" | "select" | "checkbox" | "relation" | "array" | "json";
   required?: boolean; options?: string[]; source?: string; valueKey?: string; labelKey?: string; hint?: string; max?: number; step?: string;
@@ -81,11 +81,13 @@ function toFormValue(field:Field,row:Row):string|boolean{
  return String(value);
 }
 
-function ModuleWorkspace({organizationId,permissions}:Props) {
+function ModuleWorkspace({organizationId,permissions,initialResourceKey}:Props) {
  const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
  const groups=useMemo(()=>Array.from(new Set(available.map(r=>r.group))),[available]);
- const [group,setGroup]=useState(groups[0]??"");
- const [resourceKey,setResourceKey]=useState(available[0]?.key??"");
+ const initialResource=available.find(r=>r.key===initialResourceKey)??available[0];
+ const [group,setGroup]=useState(initialResource?.group??groups[0]??"");
+ const [resourceKey,setResourceKey]=useState(initialResource?.key??"");
+ useEffect(()=>{const target=available.find(r=>r.key===initialResourceKey)??available[0];if(target){setGroup(target.group);setResourceKey(target.key);}},[initialResourceKey,available]);
  const [rows,setRows]=useState<Row[]>([]);
  const [lookups,setLookups]=useState<Record<string,Lookup[]>>({});
  const [form,setForm]=useState<Record<string,string|boolean>>({});
