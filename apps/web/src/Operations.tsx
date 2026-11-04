@@ -81,6 +81,7 @@ export default function Operations({ organizationId }: Props) {
       if (area === "finance" && form.kind === "journal") {
         path = "/v1/finance/journals";
         const amount = Number(form.amount);
+        if (form.debitAccountId === form.creditAccountId) throw new Error("Akun debit dan kredit harus berbeda.");
         if (!Number.isFinite(amount) || amount <= 0) throw new Error("Nominal jurnal harus lebih besar dari nol.");
         payload = {
           fiscalPeriodId: form.fiscalPeriodId, entryNumber: form.entryNumber,
@@ -93,7 +94,7 @@ export default function Operations({ organizationId }: Props) {
       } else if (area === "inventory" && form.kind === "movement") {
         path = "/v1/inventory/movements";
         payload = {
-          itemId: form.itemId, movementType: form.movementType, quantity: Number(form.quantity),
+          itemId: form.itemId, movementType: form.movementType || "receipt", quantity: Number(form.quantity),
           unitCost: form.unitCost ? Number(form.unitCost) : null,
           warehouseId: form.warehouseId || undefined,
           fromWarehouseId: form.fromWarehouseId || undefined,
@@ -179,6 +180,6 @@ export default function Operations({ organizationId }: Props) {
         </article>;
       })}
     </div>
-    <p className="operations-footnote">Tindakan posting jurnal, persetujuan/pembayaran payroll, dan mutasi stok memerlukan hak akses khusus dan masih dilakukan melalui endpoint operasional; formulir di atas hanya membuat data dasar.</p>
+    <p className="operations-footnote">Posting jurnal memerlukan persetujuan terpisah. Mutasi stok dicatat pada ledger. Modul payroll saat ini belum memiliki mesin perhitungan PPh 21, BPJS, THR, lembur, dan aturan ketenagakerjaan yang tervalidasi; jangan gunakan untuk penggajian resmi sebelum komponen dan formula ditinjau ahli payroll serta aturan terbaru.</p>
   </section>;
 }
