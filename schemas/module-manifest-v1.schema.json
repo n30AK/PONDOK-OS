@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pondokos.id/schemas/module-manifest-v1.json",
+  "title": "PONDOK OS Module Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifestVersion", "moduleId", "version", "displayName", "category", "menu", "permissions", "data", "forms", "dependencies"],
+  "properties": {
+    "manifestVersion": { "const": 1 },
+    "moduleId": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*){2,}$", "maxLength": 160 },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$" },
+    "displayName": { "type": "string", "minLength": 2, "maxLength": 100 },
+    "publisher": { "type": "string", "minLength": 2, "maxLength": 100 },
+    "category": { "enum": ["education", "boarding", "business", "finance", "governance", "community", "platform", "integration"] },
+    "dependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*){2,}$" } },
+    "menu": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "label", "route", "permission"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+          "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "route": { "type": "string", "pattern": "^/workspace/[a-z0-9/-]+$" },
+          "icon": { "type": "string", "maxLength": 40 },
+          "permission": { "type": "string", "pattern": "^[a-z][a-z0-9._-]+$" },
+          "parentId": { "type": "string" }
+        }
+      }
+    },
+    "permissions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]+$" } },
+    "data": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaNamespace", "tenantScoped", "classification"],
+      "properties": {
+        "schemaNamespace": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,30}$" },
+        "tenantScoped": { "const": true },
+        "classification": { "enum": ["public", "internal", "confidential", "restricted"] },
+        "migrationSet": { "type": "string", "maxLength": 160 }
+      }
+    },
+    "forms": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "schemaVersion", "fields"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+          "schemaVersion": { "type": "integer", "minimum": 1 },
+          "fields": {
+            "type": "array", "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["name", "type", "classification"],
+              "properties": {
+                "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$" },
+                "type": { "enum": ["string", "integer", "number", "boolean", "date", "datetime", "enum", "uuid", "json"] },
+                "required": { "type": "boolean" },
+                "maxLength": { "type": "integer", "minimum": 1, "maximum": 100000 },
+                "classification": { "enum": ["public", "internal", "confidential", "restricted"] },
+                "retentionPolicy": { "type": "string", "maxLength": 120 },
+                "sourceOfTruth": { "type": "string", "maxLength": 120 },
+                "enumValues": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workflows": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "events": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "publishes": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "subscribes": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "integrations": { "type": "array", "items": { "type": "string" } },
+    "healthChecks": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+  }
+}
