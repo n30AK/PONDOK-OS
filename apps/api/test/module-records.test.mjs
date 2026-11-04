@@ -36,8 +36,11 @@ test("validates contact email and consent state without accepting unrecognized f
     contactType: "guardian", displayName: "Wali Santri", email: "wali@example.org", consentStatus: "granted"
   }), null);
   assert.equal(validateModuleRecordInput("contacts", {
-    contactType: "guardian", displayName: "Wali Santri", email: "not-an-email", consentStatus: "granted"
+    contactType: "guardian", displayName: "Wali Santri", email: "not-an-email", consentStatus: "unknown"
   }), "invalid_email");
+  assert.equal(validateModuleRecordInput("contacts", {
+    contactType: "guardian", displayName: "Wali Santri", consentStatus: "granted"
+  }), "invalid_consentStatus");
 });
 
 test("validates catalog arrays and numeric asset values", () => {
