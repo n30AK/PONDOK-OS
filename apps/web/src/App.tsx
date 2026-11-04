@@ -4,6 +4,7 @@ import Operations from "./Operations";
 import Admissions from "./Admissions";
 
 type Tenant = { organizationId: string; membershipId: string; roles: string[]; permissions: string[] };
+type OrganizationChoice = { id: string; name: string; slug: string };
 type Student = {
   id: string; campusId: string; studentNumber: string; legalName: string;
   preferredName?: string | null; birthDate?: string | null; genderCode?: string | null;
@@ -45,6 +46,7 @@ async function apiRequest<T>(path: string, organizationId: string, init: Request
 export default function App() {
   const [user, setUser] = useState<PondokUser | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [organizations, setOrganizations] = useState<OrganizationChoice[]>([]);
   const [organizationId, setOrganizationId] = useState(() => localStorage.getItem("pondok.organizationId") ?? "");
   const [screen, setScreen] = useState<Screen>("overview");
   const [email, setEmail] = useState("");
@@ -77,6 +79,50 @@ export default function App() {
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Gagal memulihkan sesi."); });
     return () => { active = false; };
   }, []);
+
+  const chooseOrganization = async (orgId: string) => {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
+      setTenant(context); setOrganizationId(orgId);
+      setCampusId(localStorage.getItem(`pondok.campusId.${orgId}`) ?? "");
+      localStorage.setItem("pondok.organizationId", orgId);
+      setScreen("overview"); setNotice("Workspace pesantren berhasil dibuka.");
+    } catch (reason) {
+      setTenant(null);
+      setError(reason instanceof Error ? reason.message : "Tidak dapat membuka workspace pesantren.");
+    } finally { setBusy(false); }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void (async () => {
+      setBusy(true); setError(""); setNotice("");
+      try {
+        const token = await getAccessToken();
+        const response = await fetch(`${API_BASE}/v1/tenant/organizations`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error ?? "Gagal memuat daftar pesantren.");
+        const available = Array.isArray(body.data) ? body.data as OrganizationChoice[] : [];
+        if (!active) return;
+        setOrganizations(available);
+        if (available.length === 1) {
+          const orgId = available[0].id;
+          const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
+          if (!active) return;
+          setTenant(context); setOrganizationId(orgId);
+          setCampusId(localStorage.getItem(`pondok.campusId.${orgId}`) ?? "");
+          localStorage.setItem("pondok.organizationId", orgId);
+          setNotice("Workspace pesantren berhasil dibuka.");
+        } else if (available.length > 1) setNotice("Pilih pesantren untuk melanjutkan ke workspace.");
+        else setNotice("Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat organisasi.");
+      } finally { if (active) setBusy(false); }
+    })();
+    return () => { active = false; };
+  }, [user]);
 
   const loadStudents = useCallback(async (orgId: string) => {
     const result = await apiRequest<{ data: Student[] }>("/v1/academic/students?limit=100", orgId);
@@ -278,10 +324,17 @@ export default function App() {
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
         {!tenant ? <section className="welcome-card">
-          <div className="welcome-copy"><div className="eyebrow">IDENTITAS ORGANISASI</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1><p>Masukkan ID organisasi pesantren untuk memuat hak akses dan ruang kerja yang sesuai.</p>
-            <form className="org-form" onSubmit={openWorkspace}><label>ID Organisasi<input value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} placeholder="UUID organisasi" required /></label><button className="primary" disabled={busy}>{busy ? "Memeriksa…" : "Buka workspace →"}</button></form>
+          <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1>
+            {busy ? <p>Memuat daftar pesantren dan hak akses Anda…</p> : organizations.length > 1 ? <>
+              <p>Akun Anda terhubung ke beberapa pesantren. Pilih pesantren untuk membuka ruang kerja.</p>
+              <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
+            </> : organizations.length === 0 ? <>
+              <p>Akun ini belum terhubung ke organisasi pesantren.</p>
+              <div className="alert warning">Untuk keamanan, minta administrator pesantren mengundang atau mengaktifkan akun Anda. Setelah terhubung, workspace akan terbuka otomatis. Anda tidak perlu mengetahui ID organisasi.</div>
+            </> : <p>Menyiapkan workspace pesantren Anda…</p>}
+            {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
-        </section> : <>
+        </section>
           <div className="page-heading"><div><div className="eyebrow">PONDOK OS / {tenant.organizationId.slice(0, 8).toUpperCase()}</div><h1>{screen === "students" ? "Data Santri" : screen === "modules" ? "Modul Sistem" : screen === "operations" ? "Ruang Kerja Operasional" : screen === "admissions" ? "Manajemen PPDB" : "Ringkasan Pesantren"}</h1><p>{screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Kapabilitas sistem yang tersedia dan dalam tahap pengembangan." : screen === "operations" ? "Keuangan, inventaris, SDM dan payroll." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
           {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Modul aktif</span><b>▦</b></div><strong>10</strong><small>Fondasi domain tersedia bertahap</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan</span><b>◇</b></div><strong>Aktif</strong><small>JWT dan membership diverifikasi API</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div><button className="text-button" onClick={() => setScreen("modules")}>Lihat semua modul →</button></div><div className="module-grid">{modules.slice(0,6).map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? void showStudents() : item.key === "admissions" ? setScreen("admissions") : setScreen("modules")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
           {screen === "modules" && <section className="module-grid all-modules">{modules.map((item) => <button key={item.key} className="module-card" onClick={() => ["finance", "inventory", "hr"].includes(item.key) ? setScreen("operations") : item.key === "academic" ? void showStudents() : item.key === "admissions" ? setScreen("admissions") : setNotice("Alur modul ini masih dalam tahap pengembangan.")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small></button>)}</section>}
