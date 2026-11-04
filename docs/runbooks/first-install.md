@@ -17,6 +17,12 @@ The first Super Administrator is not self-service. After migration 0016 is appro
 
 The SQL must target the Development branch and verify the intended `neon_auth."user"` row. Never grant Super Admin based only on a submitted email, a tenant membership, or a browser parameter. Production must remain untouched.
 
+## One-time first tenant bootstrap
+
+When Development has exactly one verified, active Super Administrator and no organization exists, the Super Administrator may use the **Inisialisasi lembaga pertama** form in Central Command. The API rechecks the administrator authority, verified/unbanned Auth account, and zero-organization condition inside a transaction protected by an advisory lock. It atomically creates the first organization, owner membership, main campus, owner role assignment and tenant/platform audit events. The Super Administrator becomes the first Pemilik Institusi. The endpoint returns HTTP 409 after any organization already exists and cannot be used as a general tenant-creation endpoint.
+
+This bootstrap is only for the first Development tenant. Subsequent institutions must use the normal applicant → approval → one-time activation-token workflow.
+
 ## Institution registration and approval
 
 1. The institution contact creates or signs in to their Neon Auth account.
