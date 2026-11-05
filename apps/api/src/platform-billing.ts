@@ -103,7 +103,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
      const row=found.rows[0];if(!row||row.account_name!==a.name||row.account_type!==a.type||row.normal_balance!==a.balance)throw new Error("default_chart_account_conflict");
      created.push({id:row.id,accountCode:a.code,accountName:a.name});
     }
-    await audit(c,userId,"accounting.default_chart.initialized","chart_of_accounts",created[0].id,{accountCount:created.length});
+    const first=created[0];if(!first)throw new Error("default_chart_empty");
+    await audit(c,userId,"accounting.default_chart.initialized","chart_of_accounts",first.id,{accountCount:created.length});
     return{items:created};
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
