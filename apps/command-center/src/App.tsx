@@ -276,6 +276,7 @@ export default function App() {
 
 type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; createdAt:string };
 type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; createdAt:string };
+type CrmContact = {id:string;customerId:string;fullName:string;positionTitle?:string|null;email?:string|null;phone?:string|null;isPrimary:boolean};
 
 type CatalogProduct={id:string;productCode:string;productName:string;description?:string|null;productType:string;basePrice:string|number;currency:string;billingInterval?:string|null;isActive:boolean;createdAt:string};
 function ProductCatalogWorkspace(){
@@ -317,7 +318,7 @@ function CRMWorkspace(){
         request<{items:CrmLead[]}>("/v1/platform/erp/leads?limit=50"),
         request<{items:CrmCustomer[]}>("/v1/platform/erp/customers?limit=50")
       ]);
-      setLeads(leadResult.items??[]);setCustomers(customerResult.items??[]);
+      setLeads(leadResult.items??[]);setCustomers(customerResult.items??[]);\n      if(!selectedCustomerId&&customerResult.items?.[0])setSelectedCustomerId(customerResult.items[0].id);
     }catch(e){setError(e instanceof Error?e.message:"Data CRM gagal dimuat.");}
     finally{setBusy(false);}
   },[]);
@@ -335,6 +336,20 @@ function CRMWorkspace(){
       setLead({organizationName:"",contactName:"",email:"",phone:"",source:"manual",stage:"new",estimatedValue:"",notes:""});
       setNotice("Prospek berhasil disimpan.");await load();
     }catch(e){setError(e instanceof Error?e.message:"Prospek gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+
+  async function createContact(event:FormEvent){
+    event.preventDefault();if(!selectedCustomerId)return;setSaving(true);setError("");setNotice("");
+    try{
+      await request<CrmContact>(`/v1/platform/erp/customers/${selectedCustomerId}/contacts`,{method:"POST",body:JSON.stringify({
+        fullName:contactForm.fullName,positionTitle:contactForm.positionTitle||null,
+        email:contactForm.email||null,phone:contactForm.phone||null,isPrimary:contactForm.isPrimary
+      })});
+      setContactForm({fullName:"",positionTitle:"",email:"",phone:"",isPrimary:false});
+      const result=await request<{items:CrmContact[]}>(`/v1/platform/erp/customers/${selectedCustomerId}/contacts`);
+      setContacts(result.items??[]);setNotice("Kontak pelanggan berhasil disimpan.");
+    }catch(e){setError(e instanceof Error?e.message:"Kontak gagal disimpan.");}
     finally{setSaving(false);}
   }
   async function createCustomer(event:FormEvent){
@@ -390,7 +405,20 @@ function CRMWorkspace(){
     </section>
     <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><span className="pill neutral">{label(x.stage)}</span></td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
     <section className="panel"><PanelTitle title="Daftar pelanggan" subtitle="Data aktual dari platform.customers"/>{busy?<div className="empty">Memuat data…</div>:visibleCustomers.length===0?<Empty text="Belum ada pelanggan yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama legal</th><th>Nama tampilan</th><th>Jenis</th><th>Status</th><th>Dibuat</th></tr></thead><tbody>{visibleCustomers.map(x=><tr key={x.id}><td>{x.customerCode}</td><td>{x.legalName}</td><td><b>{x.displayName}</b><small>{x.billingEmail||"—"}</small></td><td>{label(x.entityType)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
-    <p className="muted">Catatan: modul ini merupakan tahap awal CRM. Kontak multipihak, aktivitas sales, Customer 360, penawaran, kontrak, subscription, dan billing akan disambungkan pada tahap berikutnya.</p>
+
+    <section className="panel"><PanelTitle title="Kontak & Customer 360" subtitle="Kontak resmi pelanggan, penanggung jawab, dan kanal komunikasi."/>
+      <div className="crm-contact-toolbar"><label>Pilih pelanggan<select value={selectedCustomerId} onChange={e=>setSelectedCustomerId(e.target.value)}><option value="">Pilih pelanggan</option>{customers.map(x=><option key={x.id} value={x.id}>{x.displayName} · {x.customerCode}</option>)}</select></label></div>
+      {selectedCustomerId&&<form className="crm-contact-form" onSubmit={createContact}>
+        <label>Nama kontak<input required minLength={2} maxLength={160} value={contactForm.fullName} onChange={e=>setContactForm({...contactForm,fullName:e.target.value})}/></label>
+        <label>Jabatan<input maxLength={120} value={contactForm.positionTitle} onChange={e=>setContactForm({...contactForm,positionTitle:e.target.value})}/></label>
+        <label>Email<input type="email" value={contactForm.email} onChange={e=>setContactForm({...contactForm,email:e.target.value})}/></label>
+        <label>Telepon<input value={contactForm.phone} onChange={e=>setContactForm({...contactForm,phone:e.target.value})}/></label>
+        <label className="crm-primary-check"><input type="checkbox" checked={contactForm.isPrimary} onChange={e=>setContactForm({...contactForm,isPrimary:e.target.checked})}/>Kontak utama</label>
+        <button className="primary" disabled={saving}>Tambah kontak</button>
+      </form>}
+      {!selectedCustomerId?<Empty text="Tambahkan pelanggan terlebih dahulu untuk mengelola kontak."/>:contacts.length===0?<Empty text="Belum ada kontak untuk pelanggan ini."/>:<div className="table-wrap"><table><thead><tr><th>Nama</th><th>Jabatan</th><th>Email</th><th>Telepon</th><th>Jenis</th></tr></thead><tbody>{contacts.map(x=><tr key={x.id}><td><b>{x.fullName}</b></td><td>{x.positionTitle||"—"}</td><td>{x.email||"—"}</td><td>{x.phone||"—"}</td><td>{x.isPrimary?<span className="pill success">Utama</span>:<span className="pill neutral">Kontak</span>}</td></tr>)}</tbody></table></div>}
+    </section>
+    <p className="muted">Tahap berikutnya: aktivitas sales, histori komunikasi, penawaran, kontrak, subscription, dan billing.</p>
   </div>;
 }
 
