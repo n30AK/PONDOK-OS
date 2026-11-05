@@ -185,17 +185,69 @@ export async function handleRequest(
     }
 
     try {
-      const context = await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => loadTenantContext(tenantPool, identity.userId, organizationId));
-      if (!context) {
+      const scoped = await withTenantScope(dependencies.pool, identity.userId, organizationId, async (tenantPool) => {
+        const context = await loadTenantContext(tenantPool, identity.userId, organizationId);
+        if (!context) return null;
+        // Prove that this request is executing under the restricted tenant role,
+        // with the expected transaction-local tenant and a complete RLS policy set.
+        const security = await tenantPool.query<{
+          runtime_role: string;
+          scoped_organization_id: string | null;
+          active_membership: boolean;
+          membership_rls: boolean;
+          protected_table_count: number;
+          tenant_table_count: number;
+        }>(
+          `SELECT current_user::text AS runtime_role,
+                  current_setting('app.organization_id', true) AS scoped_organization_id,
+                  core.has_active_tenant_membership($1::uuid) AS active_membership,
+                  (SELECT c.relrowsecurity AND c.relforcerowsecurity
+                     FROM pg_class c WHERE c.oid='core.organization_memberships'::regclass) AS membership_rls,
+                  (SELECT count(*)::int
+                     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                    WHERE n.nspname IN ('academic','admissions','assets','audit','boarding','cms','config','core','crm','finance','hr','inventory','library','procurement','sync')
+                      AND c.relkind='r'
+                      AND NOT (n.nspname='core' AND c.relname='organization_memberships')
+                      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='organization_id' AND a.attnum>0 AND NOT a.attisdropped)
+                      AND c.relrowsecurity AND c.relforcerowsecurity
+                      AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid AND p.polname='tenant_isolation')) AS protected_table_count,
+                  (SELECT count(*)::int
+                     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                    WHERE n.nspname IN ('academic','admissions','assets','audit','boarding','cms','config','core','crm','finance','hr','inventory','library','procurement','sync')
+                      AND c.relkind='r'
+                      AND NOT (n.nspname='core' AND c.relname='organization_memberships')
+                      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='organization_id' AND a.attnum>0 AND NOT a.attisdropped)) AS tenant_table_count`,
+          [organizationId],
+        );
+        return { context, security: security.rows[0] };
+      });
+      if (!scoped) {
         sendJson(response, 403, { error: "active_membership_required" });
         return;
       }
+      const security = scoped.security;
+      if (!security || security.runtime_role !== "pondok_runtime"
+        || security.scoped_organization_id !== organizationId
+        || security.active_membership !== true
+        || security.membership_rls !== true
+        || Number(security.tenant_table_count) < 1
+        || Number(security.protected_table_count) !== Number(security.tenant_table_count)) {
+        sendJson(response, 503, { error: "tenant_security_context_unavailable" });
+        return;
+      }
+      const context = scoped.context;
       sendJson(response, 200, {
         userId: identity.userId,
         organizationId: context.organizationId,
         membershipId: context.membershipId,
         roles: context.roles,
         permissions: context.permissions,
+        security: {
+          status: "protected",
+          runtimeRole: security.runtime_role,
+          protectedTables: Number(security.protected_table_count),
+          tenantTables: Number(security.tenant_table_count),
+        },
       });
     } catch {
       sendJson(response, 500, { error: "tenant_context_unavailable" });
