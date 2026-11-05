@@ -5,7 +5,7 @@ type Json=Record<string,unknown>;
 type Client={query<T=unknown>(sql:string,values?:unknown[]):Promise<{rows:T[]}>;release():void};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BILLING=["one_time","recurring","included","complimentary","trial"] as const;
-const ACTIONS=["add","activate","upgrade","downgrade","renew","suspend","resume","remove"] as const;
+const ACTIONS=["add","activate"] as const;
 const MODULES=[
  ["executive_dashboard","Executive Dashboard","KPI eksekutif, pendapatan, pelanggan, arus kas, risiko, dan laporan.", "foundation"],
  ["crm_sales","CRM & Sales","Prospek, pipeline, kontak, aktivitas sales, penawaran, dan Customer 360.","foundation"],
@@ -136,7 +136,7 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
   const billingMode=(body.billingMode??"one_time") as typeof BILLING[number],action=(body.action??"add") as typeof ACTIONS[number];
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
-    const existing=await c.query<{id:string;customer_id:string;installation_id:string;module_id:string;action:string}>("SELECT id,customer_id,installation_id,module_id,action FROM platform.module_orders WHERE idempotency_key=$1",[key]);
+    const existing=await c.query<{id:string;order_number:string;customer_id:string;installation_id:string;module_id:string;contract_id:string;action:string;billing_mode:string}>("SELECT id,order_number,customer_id,installation_id,module_id,contract_id,action,billing_mode FROM platform.module_orders WHERE idempotency_key=$1",[key]);
     if(existing.rows[0]){
      const x=existing.rows[0];if(x.customer_id!==body.customerId||x.installation_id!==body.installationId||x.module_id!==body.moduleId||x.action!==action)return{conflict:true as const,item:null};
      return{conflict:false as const,item:{id:x.id,replayed:true}};
@@ -154,16 +154,16 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
     const gross=Number((BigInt(qty)*BigInt(price)+500n)/1000n);
     if(billingMode!=="included"&&billingMode!=="complimentary"&&billingMode!=="trial"&&gross<=0)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:true as const,item:null};
     if(discount>gross||gross-discount+tax>1_000_000_000_000)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:true as const,item:null};
-    if(billingMode==="recurring"||billingMode==="trial"){
+    if(billingMode!=="one_time"){
      if(!Number.isInteger(qty/1000)||!body.billingPeriodStart||!body.billingPeriodEnd)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:false as const,invalidPeriod:true as const,item:null};
     }
     const orderNumber=numberId("MO"),billable=["one_time","recurring"].includes(billingMode),billingStatus=billable?"pending_approval":"not_billable";
-    const result=await c.query<{id:string}>(`INSERT INTO platform.module_orders(order_number,idempotency_key,customer_id,installation_id,module_id,contract_id,action,requested_version,billing_mode,quantity,unit_price,discount_amount,tax_amount,currency,billing_period_start,billing_period_end,billing_status,activation_status,requested_by,notes) VALUES($1,$2,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7,$8,$9,$10::numeric,$11::numeric,$12::numeric,$13::numeric,$14,$15::date,$16::date,$17,'pending_approval',$18::uuid,$19) RETURNING id`,[orderNumber,key,body.customerId,body.installationId,body.moduleId,body.contractId,action,body.requestedVersion??null,billingMode,(qty/1000).toFixed(3),money(price),money(discount),money(tax),body.currency??product.rows[0].currency,body.billingPeriodStart??null,body.billingPeriodEnd??null,billingStatus,userId,body.notes??null]);
+    const result=await c.query<{id:string}>(`INSERT INTO platform.module_orders(order_number,idempotency_key,customer_id,installation_id,module_id,contract_id,action,requested_version,billing_mode,quantity,unit_price,discount_amount,tax_amount,currency,billing_period_start,billing_period_end,billing_status,activation_status,requested_by,notes) VALUES($1,$2,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7,$8,$9,$10::numeric,$11::numeric,$12::numeric,$13::numeric,$14,$15::date,$16::date,$17,'pending_approval',$18::uuid,$19) RETURNING id`,[orderNumber,key,body.customerId,body.installationId,body.moduleId,body.contractId,action,body.requestedVersion??null,billingMode,(qty/1000).toFixed(3),money(price),money(discount),money(tax),product.rows[0].currency,body.billingPeriodStart??null,body.billingPeriodEnd??null,billingStatus,userId,body.notes??null]);
     const order=result.rows[0];if(!order)throw new Error("module_order_insert_failed");
     const approval=await c.query<{id:string}>(`INSERT INTO platform.approval_requests(request_type,resource_type,resource_id,status,requested_by) VALUES('other','module_order',$1::uuid,'pending',$2::uuid) RETURNING id`,[order.id,userId]);
     await c.query("UPDATE platform.module_orders SET approval_request_id=$2::uuid WHERE id=$1::uuid",[order.id,approval.rows[0]?.id]);
     const ref={id:order.id,customer_id:String(body.customerId),installation_id:String(body.installationId),module_id:String(body.moduleId)};
-    await lifecycle(c,userId?{...ref}:ref,"requested",userId,{billingMode,action});
+    await lifecycle(c,ref,"requested",userId,{billingMode,action});
     await audit(c,userId,"module_order.requested","module_order",order.id,{orderNumber,moduleKey:module.rows[0].module_key,billingMode,action});
     return{conflict:false as const,item:{id:order.id,orderNumber,replayed:false}};
    });
