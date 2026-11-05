@@ -70,6 +70,10 @@ jobs:
         run: node apps/api/scripts/test-central-command-ledger.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify procurement and inventory foundation
+        run: node apps/api/scripts/test-procurement-inventory-foundation.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
       - name: Build all deployable workspaces
