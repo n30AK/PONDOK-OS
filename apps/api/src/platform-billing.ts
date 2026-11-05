@@ -228,6 +228,14 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const newPaid=Math.round(Number(invoice.rows[0].amount_paid)*100)+amount,grand=Math.round(Number(invoice.rows[0].grand_total)*100),newStatus=newPaid>=grand?"paid":"partially_paid";
     await c.query("UPDATE platform.payments SET status='verified',verified_by=$2::uuid,verified_at=now(),journal_entry_id=$3::uuid WHERE id=$1::uuid",[paymentId,userId,journalId]);
     await c.query("UPDATE platform.invoices SET amount_paid=$2::numeric,status=$3,updated_at=now() WHERE id=$1::uuid",[p.invoice_id,money(newPaid),newStatus]);
+    if(newStatus==="paid"){
+     const orders=await c.query<{id:string;customer_id:string;installation_id:string;module_id:string}>("SELECT id,customer_id,installation_id,module_id FROM platform.module_orders WHERE invoice_id=$1::uuid FOR UPDATE",[p.invoice_id]);
+     for(const order of orders.rows){
+      await c.query("UPDATE platform.module_orders SET billing_status='paid',updated_at=now() WHERE id=$1::uuid",[order.id]);
+      await c.query("INSERT INTO platform.module_lifecycle_events(order_id,customer_id,installation_id,module_id,event_type,actor_type,actor_reference,event_payload_redacted) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,'payment_confirmed','staff',$5,$6::jsonb)",[order.id,order.customer_id,order.installation_id,order.module_id,userId,JSON.stringify({paymentId})]);
+      await audit(c,userId,"module_order.payment_confirmed","module_order",order.id,{paymentId,invoiceId:p.invoice_id});
+     }
+    }
     await audit(c,userId,"billing.payment.verified","payment",paymentId!,{invoiceId:p.invoice_id,journalEntryId:journalId,amount:money(amount)});
     return{notFound:false as const,invalidState:false as const,selfApproval:false as const,missingAccounts:false as const,journalId,newStatus};
    });
