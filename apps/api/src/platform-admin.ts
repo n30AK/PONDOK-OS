@@ -616,6 +616,28 @@ export async function handlePlatformRequest(
     return true;
   }
 
+  if (path === "/v1/platform/admin/audit-events" && req.method === "GET") {
+    const limitValue = Number(url.searchParams.get("limit") ?? "100");
+    const limit = Number.isInteger(limitValue) ? Math.min(200, Math.max(1, limitValue)) : 100;
+    try {
+      const scoped = await withPlatformScope(pool, userId, true, (client) =>
+        client.query(
+          `SELECT id, actor_user_id AS "actorUserId", action,
+                  resource_type AS "resourceType", resource_id AS "resourceId",
+                  metadata, occurred_at AS "occurredAt"
+           FROM platform.audit_events
+           ORDER BY occurred_at DESC
+           LIMIT $1`,
+          [limit],
+        ));
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      reply(res, 200, { data: scoped.value?.rows ?? [] });
+    } catch {
+      reply(res, 503, { error: "platform_audit_unavailable" });
+    }
+    return true;
+  }
+
   if (path.startsWith("/v1/platform/admin/")) {
     if (path === "/v1/platform/admin/activation-requests" && req.method === "GET") {
       const status = url.searchParams.get("status");

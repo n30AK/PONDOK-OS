@@ -178,3 +178,30 @@ test("first tenant bootstrap is one-time and refuses when any organization alrea
   assert.equal(res.status, 409);
   assert.equal(JSON.parse(res.body).error, "first_tenant_already_exists");
 });
+
+
+test("platform audit feed is Super Admin-only, bounded, and read-only", async () => {
+  const { pool, calls } = poolWithClient(async (sql, values) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT id, actor_user_id")) return { rows: [{ id: requestId, actorUserId: userId, action: "activation.approved", resourceType: "activation_request", resourceId: requestId, metadata: {}, occurredAt: new Date().toISOString() }] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/admin/audit-events?limit=500"), res, pool, userId);
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse(res.body).data[0].action, "activation.approved");
+  const query = calls.find((call) => call.sql.startsWith("SELECT id, actor_user_id"));
+  assert.ok(query);
+  assert.deepEqual(query.values, [200], "audit feed limit is capped at 200");
+  assert.ok(calls.findIndex((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime") > calls.findIndex((call) => call.sql.startsWith("SELECT EXISTS")));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
+});
+
+test("non-admin cannot read platform audit feed", async () => {
+  const { pool, calls } = poolWithClient(async () => ({ rows: [] }));
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/admin/audit-events"), res, pool, userId);
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "platform_super_admin_required");
+  assert.ok(!calls.some((call) => call.sql.startsWith("SELECT id, actor_user_id")));
+});
