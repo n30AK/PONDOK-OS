@@ -32,8 +32,26 @@ async function token(): Promise<string> {
   return candidate;
 }
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const access = await token();
-  const response = await fetch(`${API}${path}`, { ...init, headers: { "content-type": "application/json", authorization: `Bearer ${access}`, ...init.headers }, cache: "no-store" });
+  const send = (access: string) => fetch(API + path, {
+    ...init,
+    headers: { "content-type": "application/json", authorization: `Bearer ${access}`, ...init.headers },
+    cache: "no-store",
+  });
+  let response = await send(await token());
+  // Managed Auth JWTs are short-lived. If a restored tab holds an expired
+  // access token, ask Auth for a fresh token and retry exactly once.
+  if (response.status === 401 && AUTH_URL) {
+    const refreshed = await fetch(AUTH_URL.replace(/\\/$/, "") + "/token", {
+      credentials: "include", cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+    if (refreshed.ok) {
+      const payload = await refreshed.json().catch(() => ({})) as Record<string, unknown>;
+      const nested = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
+      const freshToken = [payload.token, payload.access_token, nested.token, nested.access_token].find(jwt);
+      if (freshToken) response = await send(freshToken);
+    }
+  }
   const body = await response.json().catch(() => ({})) as { data?: T; error?: string; message?: string };
   if (!response.ok) throw new Error(body.error ?? body.message ?? `Permintaan gagal (HTTP ${response.status})`);
   return body.data as T;
