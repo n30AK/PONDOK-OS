@@ -7,7 +7,7 @@ type Activation = { id: string; contactEmail: string; contactName: string; organ
 type ModuleRequest = { id: string; organizationId: string; organizationName?: string; moduleId: string; moduleVersion: string; status: string; createdAt: string; updatedAt: string };
 type Publisher = { userId: string; status?: string; createdAt?: string; revokedAt?: string | null };
 type AuditEvent = { id: string; actorUserId: string; action: string; resourceType: string; resourceId?: string | null; metadata: Record<string, unknown>; occurredAt: string };
-type Section = "overview" | "institutions" | "activation" | "modules" | "publishers" | "security" | "regulations";
+type Section = "overview" | "institutions" | "activation" | "modules" | "publishers" | "security" | "regulations" | "crm" | "catalog" | "contracts" | "billing" | "accounting" | "support" | "fleet" | "backup" | "warranty" | "reports" | "agents";
 type RegulationCategory = "pesantren" | "pendidikan" | "perlindungan" | "kesehatan" | "usaha" | "tata_kelola";
 type Regulation = { id: string; title: string; number: string; authority: string; category: RegulationCategory; summary: string; status: string; url: string; modules: string };
 const regulationCategories: { id: RegulationCategory | "all"; name: string }[] = [
@@ -32,7 +32,22 @@ const regulations: Regulation[] = [
   { id: "uu-25-1992", title: "Perkoperasian", number: "UU Nomor 25 Tahun 1992", authority: "Pemerintah Pusat", category: "usaha", summary: "Kerangka hukum koperasi; telah diubah antara lain melalui UU 6/2023 dan UU 4/2023.", status: "Berlaku · perhatikan perubahan", url: "https://peraturan.bpk.go.id/Details/46650/uu-no-25-tahun-1992", modules: "Koperasi, simpan pinjam sesuai izin, anggota, RAT, pembukuan" },
   { id: "uu-43-2009", title: "Kearsipan", number: "UU Nomor 43 Tahun 2009", authority: "Pemerintah Pusat", category: "tata_kelola", summary: "Pengelolaan arsip yang autentik, utuh, terpercaya, termasuk retensi dan perlindungan arsip.", status: "Berlaku", url: "https://peraturan.bpk.go.id/Details/38788/uu-no-43-tahun-2009", modules: "Surat, dokumen, keputusan, arsip santri, arsip keuangan" },
 ];
-const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
+type EnterpriseArea = Exclude<Section, "overview" | "institutions" | "activation" | "modules" | "publishers" | "security" | "regulations">;
+const enterpriseAreas: Record<EnterpriseArea, { title: string; description: string; status: string; tables: string[]; next: string }> = {
+  crm: { title: "CRM & Customer Success", description: "Siklus prospek, pelanggan, kontak, komunikasi, onboarding, dan retensi pelanggan PONDOK OS.", status: "Fondasi ERP tersedia · API dan workspace belum dihubungkan", tables: ["crm_leads", "customers", "customer_contacts"], next: "API CRM, pipeline prospek, aktivitas sales, customer onboarding, dan histori komunikasi." },
+  catalog: { title: "Product & Module Catalog", description: "Katalog produk, paket layanan, modul, versi, harga, entitlement, dan marketplace modul.", status: "Fondasi katalog tersedia · provisioning belum dihubungkan", tables: ["product_catalog", "module_catalog", "module_entitlements"], next: "Editor katalog, versi dan harga, dependency modul, kompatibilitas, serta approval publikasi." },
+  contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "Fondasi kontrak tersedia · workflow belum dihubungkan", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Pembuatan penawaran, persetujuan kontrak, siklus renewal, dan entitlement per instalasi." },
+  billing: { title: "Billing, Invoice & Pembayaran", description: "Tagihan modul, biaya implementasi dan maintenance, invoice, penerimaan pembayaran, piutang, dan rekonsiliasi.", status: "Fondasi invoice dan pembayaran tersedia · transaksi UI belum dihubungkan", tables: ["invoices", "invoice_lines", "payments", "maintenance_agreements", "maintenance_service_events"], next: "API pembuatan invoice idempotent, penerbitan dokumen, pencatatan pembayaran, aging piutang, dan credit note." },
+  accounting: { title: "Accounting & General Ledger", description: "Chart of accounts, jurnal umum, buku besar, neraca saldo, rekonsiliasi, tutup buku, dan audit trail.", status: "Fondasi double-entry tersedia · posting transaksi dan laporan belum dihubungkan", tables: ["chart_of_accounts", "journal_entries", "journal_lines"], next: "API posting invoice/pembayaran ke jurnal seimbang, reversal, periode akuntansi, dan laporan keuangan." },
+  support: { title: "Customer Support, Incident & SLA", description: "Tiket dukungan, klasifikasi dampak, eskalasi, insiden, SLA, root cause, dan komunikasi penyelesaian.", status: "Fondasi support dan incident tersedia · helpdesk belum dihubungkan", tables: ["support_cases", "installation_incidents"], next: "API tiket, antrean agen, SLA timer, eskalasi, notifikasi, dan portal dukungan klien." },
+  fleet: { title: "Client Fleet & Observability", description: "Daftar instalasi klien, heartbeat, log teredaksi, pemeriksaan kesehatan, versi aplikasi, dan insiden.", status: "Fondasi observability tersedia · konektor klien belum terpasang", tables: ["installations", "installation_log_events", "installation_health_checks"], next: "Enrollment instalasi, kredensial perangkat, ingest log, heartbeat, health scheduler, dan dashboard fleet." },
+  backup: { title: "Backup, Disaster Recovery & Continuity", description: "Kebijakan backup, retensi, checksum, enkripsi, bukti restore, RPO/RTO, dan latihan pemulihan.", status: "Fondasi kebijakan dan bukti backup tersedia · executor klien belum terpasang", tables: ["backup_policies", "backup_runs", "client_assurance_reports"], next: "Agent backup lokal, target penyimpanan milik klien, verifikasi checksum, restore drill, dan alert kegagalan." },
+  warranty: { title: "Warranty, Repair & Maintenance", description: "Masa garansi, cakupan dan pengecualian, klaim, riwayat perbaikan, jam kerja, biaya, dan invoice layanan.", status: "Fondasi garansi dan timeline perbaikan tersedia · workflow belum dihubungkan", tables: ["warranty_agreements", "warranty_claims", "warranty_claim_events", "client_repair_logs", "client_repair_events"], next: "API klaim garansi, work order, assignment teknisi, bukti perbaikan, persetujuan biaya, dan SLA." },
+  reports: { title: "Management, Client & Assurance Reports", description: "Laporan kesehatan tiap klien, keamanan, ketersediaan, backup, SLA, pekerjaan maintenance, pendapatan, dan risiko.", status: "Fondasi laporan assurance tersedia · generator dan distribusi belum dihubungkan", tables: ["client_assurance_reports", "report_exports"], next: "Generator laporan periodik, PDF/CSV, approval, delivery log, dan pemisahan data klien vs stakeholder." },
+  agents: { title: "AI Agent Operations & Automation", description: "Orkestrasi agent, pemantauan, diagnosis, rekomendasi, tugas terstruktur, approval, dan audit otomatisasi.", status: "Fondasi pencatatan agent tersedia · runtime agent belum aktif", tables: ["agent_runs", "security_findings", "remote_jobs", "approval_requests"], next: "Runtime agent deterministik lebih dahulu, policy engine, signed task manifest, approval berjenjang, dan audit eksekusi." },
+};
+\nconst API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const AUTH_URL = import.meta.env.VITE_NEON_AUTH_URL?.trim();
 const auth = AUTH_URL ? createAuthClient(AUTH_URL) : null;
 
@@ -199,7 +214,19 @@ export default function App() {
   const nav: { id: Section; name: string; icon: string }[] = [
     { id: "overview", name: "Ringkasan", icon: "◫" }, { id: "institutions", name: "Registry lembaga", icon: "▦" },
     { id: "activation", name: "Aktivasi & persetujuan", icon: "◎" }, { id: "modules", name: "Ekosistem modul", icon: "◇" },
-    { id: "publishers", name: "Publisher & integrasi", icon: "⌘" }, { id: "security", name: "Keamanan & audit", icon: "⬡" }, { id: "regulations", name: "Regulasi & kepatuhan", icon: "§" },
+    { id: "publishers", name: "Publisher & integrasi", icon: "⌘" },
+    { id: "crm", name: "CRM & Customer Success", icon: "◎" },
+    { id: "catalog", name: "Produk & katalog modul", icon: "◇" },
+    { id: "contracts", name: "Kontrak & subscription", icon: "▤" },
+    { id: "billing", name: "Billing, invoice & pembayaran", icon: "＄" },
+    { id: "accounting", name: "Accounting & general ledger", icon: "◈" },
+    { id: "support", name: "Customer support & SLA", icon: "◷" },
+    { id: "fleet", name: "Fleet & observability", icon: "⌘" },
+    { id: "backup", name: "Backup & disaster recovery", icon: "⬡" },
+    { id: "warranty", name: "Garansi & perbaikan", icon: "✓" },
+    { id: "reports", name: "Laporan & assurance", icon: "▥" },
+    { id: "agents", name: "AI agent operations", icon: "✳" },
+    { id: "security", name: "Keamanan & audit", icon: "⬡" }, { id: "regulations", name: "Regulasi & kepatuhan", icon: "§" },
   ];
   return <div className="app-shell">
     <aside className="sidebar"><div className="side-brand"><div className="brand-mark">P<span>·</span></div><div><b>PONDOK OS</b><small>CENTRAL COMMAND</small></div></div><div className="environment"><i /> DEVELOPMENT CONTROL PLANE</div><nav>{nav.map((item) => <button key={item.id} className={section === item.id ? "nav-item active" : "nav-item"} onClick={() => setSection(item.id)}><span>{item.icon}</span>{item.name}{item.id === "activation" && pending > 0 && <em>{pending}</em>}</button>)}</nav><div className="side-bottom"><div className="user-chip"><div className="avatar">{(user.name || user.email || "S").slice(0,1).toUpperCase()}</div><div><b>{user.name || "Super Administrator"}</b><small>{user.email}</small></div></div><button className="logout" onClick={() => void signOut()}>↗ Keluar aman</button></div></aside>
@@ -222,6 +249,18 @@ export default function App() {
         </section>
         <section className="panel"><PanelTitle title="Sumber hukum resmi" subtitle="Prioritaskan dokumen primer, bukan ringkasan pihak ketiga"/><div className="source-list"><a href="https://jdih.kemenag.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kementerian Agama</b><span>Peraturan Menteri Agama, Keputusan Menteri Agama, dan keputusan/produk hukum Kemenag.</span></a><a href="https://peraturan.bpk.go.id/" target="_blank" rel="noreferrer"><b>Database Peraturan BPK</b><span>Metadata, status, relasi perubahan/pencabutan, dan dokumen peraturan.</span></a><a href="https://peraturan.go.id/" target="_blank" rel="noreferrer"><b>Portal Peraturan Perundang-undangan</b><span>Penelusuran peraturan nasional dan metadata pengundangan.</span></a><a href="https://jdih.kemendikdasmen.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kemendikdasmen</b><span>Standar dan regulasi pendidikan dasar dan menengah.</span></a></div><p className="muted">Keputusan Menteri Agama (KMA), Keputusan Direktur Jenderal, surat edaran, dan petunjuk teknis akan dimasukkan per nomor dan tahun setelah naskah serta status keberlakuannya diverifikasi pada JDIH penerbit. Tidak ada nomor keputusan yang ditebak.</p></section>
       </>}
+      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && (() => {
+        const area = enterpriseAreas[section as EnterpriseArea];
+        return <section className="panel enterprise-workspace">
+          <PanelTitle title={area.title} subtitle={area.description}/>
+          <div className="enterprise-status"><b>STATUS IMPLEMENTASI</b><span>{area.status}</span></div>
+          <h3>Fondasi data terkait</h3>
+          <div className="enterprise-table-list">{area.tables.map((table) => <code key={table}>{table}</code>)}</div>
+          <h3>Ruang lingkup workspace</h3>
+          <p className="muted">{area.next}</p>
+          <div className="enterprise-notice"><b>Transparansi implementasi</b><p>Halaman ini menampilkan peta modul dan status fondasi yang benar-benar ada. Data transaksi belum ditampilkan karena API workspace ini belum tersedia. Tidak ada data contoh, angka, invoice, atau status operasional yang direkayasa.</p></div>
+        </section>;
+      })()}
       <footer>© PONDOK OS · Central Command <span>Control plane terpisah · Development</span></footer></div>
     </main>
   </div>;
