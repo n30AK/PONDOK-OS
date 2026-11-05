@@ -160,8 +160,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
    if(scoped.value?.notFound){reply(res,404,{error:"invoice_not_found"});return true;}
    if(scoped.value?.invalidState){reply(res,409,{error:"invoice_not_issuable_or_invalid_total"});return true;}
-   if("missingAccounts"in (scoped.value??{})&&scoped.value?.missingAccounts){reply(res,409,{error:"default_chart_accounts_required"});return true;}
-   reply(res,200,{data:{id:invoiceId,status:"issued",journalEntryId:scoped.value?.journalId}});
+   if(scoped.value && "missingAccounts" in scoped.value && scoped.value.missingAccounts){reply(res,409,{error:"default_chart_accounts_required"});return true;}
+   const posted=scoped.value && "journalId" in scoped.value ? scoped.value.journalId : null;\n   reply(res,200,{data:{id:invoiceId,status:"issued",journalEntryId:posted}});
   }catch(e){reply(res,500,{error:"invoice_issue_failed"});}
   return true;
  }
@@ -226,7 +226,7 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
    if(scoped.value?.selfApproval){reply(res,403,{error:"payment_creator_cannot_verify_own_payment"});return true;}
    if(scoped.value?.invalidState){reply(res,409,{error:"payment_not_verifiable_or_invoice_balance_invalid"});return true;}
    if(scoped.value?.missingAccounts){reply(res,409,{error:"default_chart_accounts_required"});return true;}
-   reply(res,200,{data:{id:paymentId,status:paymentVerb==="verify"?(scoped.value?.newStatus??"verified"):"rejected",journalEntryId:scoped.value?.journalId??null}});
+   const posted=scoped.value && "journalId" in scoped.value ? scoped.value.journalId : null;\n   const newStatus=scoped.value && "newStatus" in scoped.value ? scoped.value.newStatus : undefined;\n   reply(res,200,{data:{id:paymentId,status:paymentVerb==="verify"?(newStatus??"verified"):"rejected",journalEntryId:posted}});
   }catch(e){reply(res,500,{error:"payment_transition_failed"});}
   return true;
  }
