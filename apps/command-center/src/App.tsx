@@ -256,7 +256,8 @@ export default function App() {
         <section className="panel"><PanelTitle title="Sumber hukum resmi" subtitle="Prioritaskan dokumen primer, bukan ringkasan pihak ketiga"/><div className="source-list"><a href="https://jdih.kemenag.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kementerian Agama</b><span>Peraturan Menteri Agama, Keputusan Menteri Agama, dan keputusan/produk hukum Kemenag.</span></a><a href="https://peraturan.bpk.go.id/" target="_blank" rel="noreferrer"><b>Database Peraturan BPK</b><span>Metadata, status, relasi perubahan/pencabutan, dan dokumen peraturan.</span></a><a href="https://peraturan.go.id/" target="_blank" rel="noreferrer"><b>Portal Peraturan Perundang-undangan</b><span>Penelusuran peraturan nasional dan metadata pengundangan.</span></a><a href="https://jdih.kemendikdasmen.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kemendikdasmen</b><span>Standar dan regulasi pendidikan dasar dan menengah.</span></a></div><p className="muted">Keputusan Menteri Agama (KMA), Keputusan Direktur Jenderal, surat edaran, dan petunjuk teknis akan dimasukkan per nomor dan tahun setelah naskah serta status keberlakuannya diverifikasi pada JDIH penerbit. Tidak ada nomor keputusan yang ditebak.</p></section>
       </>}
       {section === "crm" && <CRMWorkspace/>}
-      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && (() => {
+      {section === "catalog" && <ProductCatalogWorkspace/>}
+      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && section !== "catalog" && (() => {
         const area = enterpriseAreas[section as EnterpriseArea];
         return <section className="panel enterprise-workspace">
           <PanelTitle title={area.title} subtitle={area.description}/>
@@ -275,6 +276,30 @@ export default function App() {
 
 type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; createdAt:string };
 type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; createdAt:string };
+
+type CatalogProduct={id:string;productCode:string;productName:string;description?:string|null;productType:string;basePrice:string|number;currency:string;billingInterval?:string|null;isActive:boolean;createdAt:string};
+function ProductCatalogWorkspace(){
+ const [items,setItems]=useState<CatalogProduct[]>([]),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const [form,setForm]=useState({productName:"",description:"",productType:"subscription",basePrice:"0",currency:"IDR",billingInterval:"monthly"});
+ const load=useCallback(async()=>{setBusy(true);setError("");try{const result=await request<{items:CatalogProduct[]}>("/v1/platform/erp/catalog");setItems(result.items??[]);}catch(e){setError(e instanceof Error?e.message:"Katalog produk gagal dimuat.");}finally{setBusy(false);}},[]);
+ useEffect(()=>{void load();},[load]);
+ async function create(event:FormEvent){event.preventDefault();setSaving(true);setError("");setNotice("");try{await request<CatalogProduct>("/v1/platform/erp/catalog",{method:"POST",body:JSON.stringify({...form,basePrice:Number(form.basePrice),billingInterval:form.billingInterval||null})});setForm({productName:"",description:"",productType:"subscription",basePrice:"0",currency:"IDR",billingInterval:"monthly"});setNotice("Produk berhasil ditambahkan.");await load();}catch(e){setError(e instanceof Error?e.message:"Produk gagal disimpan.");}finally{setSaving(false);}}
+ return <div className="crm-workspace"><section className="panel"><PanelTitle title="Product & Module Catalog" subtitle="Katalog produk dan paket layanan Central Command. Harga baru berlaku untuk penawaran berikutnya; snapshot harga transaksi tidak diubah."/>
+ {error&&<div className="alert warning">{error}</div>}{notice&&<div className="alert">{notice}</div>}
+ <form className="panel crm-form catalog-form" onSubmit={create}>
+  <h3>Tambah produk / layanan</h3>
+  <label>Nama produk<input required minLength={2} maxLength={180} value={form.productName} onChange={e=>setForm({...form,productName:e.target.value})}/></label>
+  <label>Jenis produk<select value={form.productType} onChange={e=>setForm({...form,productType:e.target.value})}><option value="subscription">Langganan</option><option value="one_time">Sekali bayar</option><option value="service">Jasa</option><option value="module">Modul</option></select></label>
+  <label>Harga dasar (IDR)<input type="number" min="0" step="0.01" required value={form.basePrice} onChange={e=>setForm({...form,basePrice:e.target.value})}/></label>
+  <label>Periode tagihan<select value={form.billingInterval} onChange={e=>setForm({...form,billingInterval:e.target.value})}><option value="monthly">Bulanan</option><option value="quarterly">Triwulan</option><option value="yearly">Tahunan</option><option value="one_time">Sekali</option></select></label>
+  <label>Deskripsi<input maxLength={5000} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label>
+  <button className="primary" disabled={saving}>{saving?"Menyimpan…":"Simpan produk"}</button>
+ </form>
+ </section><section className="panel"><div className="toolbar"><span>{items.length} produk terdaftar</span><button className="secondary" onClick={()=>void load()} disabled={busy}>{busy?"Memuat…":"Muat ulang"}</button></div>
+ {busy?<div className="empty">Memuat katalog…</div>:items.length===0?<Empty text="Katalog belum memiliki produk."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Produk</th><th>Jenis</th><th>Harga dasar</th><th>Periode</th><th>Status</th></tr></thead><tbody>{items.map(x=><tr key={x.id}><td>{x.productCode}</td><td><b>{x.productName}</b><small>{x.description||"—"}</small></td><td>{label(x.productType)}</td><td>{new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(Number(x.basePrice))}</td><td>{x.billingInterval?label(x.billingInterval):"—"}</td><td><span className={`pill ${x.isActive?"success":"neutral"}`}>{x.isActive?"Aktif":"Nonaktif"}</span></td></tr>)}</tbody></table></div>}
+ </section><p className="muted">Produk katalog belum otomatis ditagihkan. Penjualan modul harus melewati penawaran, persetujuan, kontrak/pesanan, invoice, pembayaran, dan posting akuntansi sesuai hak pelanggan.</p></div>;
+}
+
 function CRMWorkspace(){
   const [leads,setLeads]=useState<CrmLead[]>([]);
   const [customers,setCustomers]=useState<CrmCustomer[]>([]);
