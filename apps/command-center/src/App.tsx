@@ -298,7 +298,7 @@ function CommercialWorkspace(){
     request<{items:CatalogProduct[]}>("/v1/platform/erp/catalog?activeOnly=true")
    ]);
    setQuotes(q.items??[]);setContracts(k.items??[]);setCustomers(c.items??[]);setProducts(p.items??[]);
-   if(!quoteForm.customerId&&c.items?.[0])setQuoteForm(x=>({...x,customerId:c.items![0].id}));
+   const firstCustomer=c.items?.[0];\n   if(!quoteForm.customerId&&firstCustomer)setQuoteForm(x=>({...x,customerId:firstCustomer.id}));
    if(!contractForm.quoteId){const approved=(q.items??[]).find(x=>["approved","accepted"].includes(x.status));if(approved)setContractForm(x=>({...x,quoteId:approved.id}));}
   }catch(e){setError(e instanceof Error?e.message:"Data penawaran dan kontrak gagal dimuat.");}
   finally{setBusy(false);}
