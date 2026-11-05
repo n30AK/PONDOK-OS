@@ -110,28 +110,50 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
   const [datasets, setDatasets] = useState<OperationalDataset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
+  const [query, setQuery] = useState("");
+  const [refreshedAt, setRefreshedAt] = useState("");
+  const load = useCallback(async () => {
     setLoading(true); setError("");
-    void request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean }>("/v1/platform/erp/operations/" + domain)
-      .then((result) => { if (active) setDatasets(result.datasets ?? []); })
-      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    try {
+      const result = await request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean }>("/v1/platform/erp/operations/" + domain);
+      setDatasets(result.datasets ?? []);
+      setRefreshedAt(new Date().toLocaleString("id-ID"));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional.");
+    } finally { setLoading(false); }
   }, [domain]);
+  useEffect(() => { void load(); }, [load]);
   const display = (value: unknown) => value === null || value === undefined || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  const visibleRows = (rows: Array<Record<string, unknown>>) => rows.filter((row) => !query.trim() || Object.values(row).some((value) => display(value).toLowerCase().includes(query.trim().toLowerCase())));
+  const exportCsv = (dataset: OperationalDataset) => {
+    const rows = visibleRows(dataset.rows);
+    const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
+    const cell = (value: unknown) => {
+      let text = display(value);
+      if (/^[=+@\\-\\t\\r]/.test(text)) text = "'" + text;
+      return '"' + text.replaceAll('"', '""') + '"';
+    };
+    const csv = "\uFEFF" + [columns.map(cell).join(","), ...rows.map((row) => columns.map((column) => cell(row[column])).join(","))].join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `pondok-command-center-${domain}-${dataset.key}-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+  };
   return <section className="enterprise-workspace">
-    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Read-only · data berasal dari database platform. Perubahan transaksi belum diaktifkan pada layar ini.</span></div>
+    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Data aktual dari database platform. Workspace ini saat ini read-only; tombol ekspor hanya mengunduh data yang telah diizinkan API.</span></div>
+    <div className="toolbar"><input aria-label="Cari data domain" placeholder="Cari pada seluruh tabel domain ini…" value={query} onChange={(event) => setQuery(event.target.value)}/><div className="inline-actions"><span className="muted">{refreshedAt ? "Diperbarui " + refreshedAt : ""}</span><button className="secondary" onClick={() => void load()} disabled={loading}>{loading ? "Memuat…" : "↻ Muat ulang"}</button></div></div>
     {loading && <div className="panel"><p className="muted">Memuat dataset operasional…</p></div>}
-    {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? ((domain === "procurement" || domain === "inventory") ? "Migration 0024 sudah diuji pada branch Neon sementara. Data Procurement dan Inventory akan tampil setelah migration disetujui dan diterapkan ke Development." : "Migration 0025 sedang disiapkan dan diuji. Data HRD, Internal Operations, dan Document Center akan tampil setelah migration disetujui dan diterapkan ke Development.") : error}</div></div>}
+    {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? ((domain === "procurement" || domain === "inventory") ? "Migration 0024 sudah diuji pada branch Neon sementara, tetapi belum diterapkan. Aktivasi database menunggu persetujuan eksplisit." : "Migration 0025 belum diterapkan. HRD, Internal Operations, dan Document Center tidak akan menampilkan data sebelum migrasi disetujui dan diterapkan.") : error}</div></div>}
     {!loading && !error && datasets.map((dataset) => {
+      const rows = visibleRows(dataset.rows);
       const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
       return <section className="panel" key={dataset.key}>
-        <PanelTitle title={dataset.title} subtitle={dataset.returned + " record · maksimum 100 terbaru"}/>
-        {dataset.rows.length === 0 ? <Empty text="Belum ada data operasional yang tercatat."/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{dataset.rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
+        <div className="panel-title"><div><h2>{dataset.title}</h2><p>{rows.length} dari {dataset.returned} record · maksimum 100 terbaru</p></div>{dataset.rows.length > 0 && <button className="secondary" onClick={() => exportCsv(dataset)}>Ekspor CSV</button>}</div>
+        {rows.length === 0 ? <Empty text={query ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada data operasional yang tercatat."}/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
       </section>;
     })}
-    {!loading && !error && <p className="muted">Tampilan ini hanya membaca data. Tidak ada job remote, persetujuan, perubahan garansi, atau tindakan pemulihan yang dijalankan otomatis.</p>}
+    {!loading && !error && <p className="muted">Tidak ada tindakan berisiko otomatis. Perubahan transaksi, persetujuan, klaim garansi, remote job, dan pemulihan hanya boleh diaktifkan setelah API, otorisasi, audit, dan persetujuan yang sesuai tersedia.</p>}
   </section>;
 }
 export default function App() {
