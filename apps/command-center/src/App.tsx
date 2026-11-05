@@ -38,8 +38,8 @@ const enterpriseAreas: Record<EnterpriseArea, { title: string; description: stri
   crm: { title: "CRM & Customer Success", description: "Siklus prospek, pelanggan, kontak, komunikasi, onboarding, dan retensi pelanggan PONDOK OS.", status: "Fondasi ERP tersedia · API dan workspace belum dihubungkan", tables: ["crm_leads", "customers", "customer_contacts"], next: "API CRM, pipeline prospek, aktivitas sales, customer onboarding, dan histori komunikasi." },
   catalog: { title: "Product & Module Catalog", description: "Katalog produk, paket layanan, modul, versi, harga, entitlement, dan marketplace modul.", status: "Fondasi katalog tersedia · provisioning belum dihubungkan", tables: ["product_catalog", "module_catalog", "module_entitlements"], next: "Editor katalog, versi dan harga, dependency modul, kompatibilitas, serta approval publikasi." },
   contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "API penawaran dan persetujuan kontrak terhubung · subscription dan billing lanjutan menyusul", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Subscription, renewal automation, perubahan paket, dan entitlement per instalasi." },
-  billing: { title: "Billing, Invoice & Pembayaran", description: "Tagihan modul, biaya implementasi dan maintenance, invoice, penerimaan pembayaran, piutang, dan rekonsiliasi.", status: "Fondasi invoice dan pembayaran tersedia · transaksi UI belum dihubungkan", tables: ["invoices", "invoice_lines", "payments", "maintenance_agreements", "maintenance_service_events"], next: "API pembuatan invoice idempotent, penerbitan dokumen, pencatatan pembayaran, aging piutang, dan credit note." },
-  accounting: { title: "Accounting & General Ledger", description: "Chart of accounts, jurnal umum, buku besar, neraca saldo, rekonsiliasi, tutup buku, dan audit trail.", status: "Fondasi double-entry tersedia · posting transaksi dan laporan belum dihubungkan", tables: ["chart_of_accounts", "journal_entries", "journal_lines"], next: "API posting invoice/pembayaran ke jurnal seimbang, reversal, periode akuntansi, dan laporan keuangan." },
+  billing: { title: "Billing, Invoice & Pembayaran", description: "Tagihan modul, biaya implementasi dan maintenance, invoice, penerimaan pembayaran, piutang, dan rekonsiliasi.", status: "API invoice, pembayaran, dan posting jurnal tersedia · credit note dan rekonsiliasi menyusul", tables: ["invoices", "invoice_lines", "payments", "maintenance_agreements", "maintenance_service_events"], next: "Invoice PDF, credit note, refund, aging piutang, recurring billing, dan rekonsiliasi bank." },
+  accounting: { title: "Accounting & General Ledger", description: "Chart of accounts, jurnal umum, buku besar, neraca saldo, rekonsiliasi, tutup buku, dan audit trail.", status: "Chart of Accounts dan posting double-entry invoice/pembayaran terhubung · laporan keuangan menyusul", tables: ["chart_of_accounts", "journal_entries", "journal_lines"], next: "Reversal, trial balance, general ledger drilldown, bank reconciliation, period close, P&L, balance sheet, dan cash flow." },
   support: { title: "Customer Support, Incident & SLA", description: "Tiket dukungan, klasifikasi dampak, eskalasi, insiden, SLA, root cause, dan komunikasi penyelesaian.", status: "Fondasi support dan incident tersedia · helpdesk belum dihubungkan", tables: ["support_cases", "installation_incidents"], next: "API tiket, antrean agen, SLA timer, eskalasi, notifikasi, dan portal dukungan klien." },
   fleet: { title: "Client Fleet & Observability", description: "Daftar instalasi klien, heartbeat, log teredaksi, pemeriksaan kesehatan, versi aplikasi, dan insiden.", status: "Fondasi observability tersedia · konektor klien belum terpasang", tables: ["installations", "installation_log_events", "installation_health_checks"], next: "Enrollment instalasi, kredensial perangkat, ingest log, heartbeat, health scheduler, dan dashboard fleet." },
   backup: { title: "Backup, Disaster Recovery & Continuity", description: "Kebijakan backup, retensi, checksum, enkripsi, bukti restore, RPO/RTO, dan latihan pemulihan.", status: "Fondasi kebijakan dan bukti backup tersedia · executor klien belum terpasang", tables: ["backup_policies", "backup_runs", "client_assurance_reports"], next: "Agent backup lokal, target penyimpanan milik klien, verifikasi checksum, restore drill, dan alert kegagalan." },
@@ -258,7 +258,9 @@ export default function App() {
       {section === "crm" && <CRMWorkspace/>}
       {section === "catalog" && <ProductCatalogWorkspace/>}
       {section === "contracts" && <CommercialWorkspace/>}
-      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && section !== "catalog" && section !== "contracts" && (() => {
+      {section === "billing" && <BillingWorkspace/>}
+      {section === "accounting" && <AccountingWorkspace/>}
+      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && section !== "catalog" && section !== "contracts" && section !== "billing" && section !== "accounting" && (() => {
         const area = enterpriseAreas[section as EnterpriseArea];
         return <section className="panel enterprise-workspace">
           <PanelTitle title={area.title} subtitle={area.description}/>
@@ -283,6 +285,79 @@ type CatalogProduct={id:string;productCode:string;productName:string;description
 
 type CommercialQuote={id:string;quoteNumber:string;customerId:string;customerName:string;status:string;currency:string;subtotal:string|number;discountTotal:string|number;taxTotal:string|number;grandTotal:string|number;validUntil?:string|null;createdAt:string};
 type CommercialContract={id:string;contractNumber:string;customerId:string;customerName:string;quoteId:string;status:string;startsOn?:string|null;endsOn?:string|null;renewalMode:string;createdAt:string};
+
+type BillingInvoice={id:string;invoiceNumber:string;customerId:string;customerName:string;contractId:string;status:string;currency:string;issuedOn?:string|null;dueOn?:string|null;grandTotal:string|number;amountPaid:string|number;journalEntryId?:string|null};
+type BillingPayment={id:string;paymentReference:string;customerId:string;customerName:string;invoiceId:string;invoiceNumber?:string|null;amount:string|number;paymentMethod:string;status:string;paidAt?:string|null;journalEntryId?:string|null};
+type LedgerAccount={id:string;accountCode:string;accountName:string;accountType:string;normalBalance:string;isControlAccount:boolean;isActive:boolean};
+type JournalEntry={id:string;entryNumber:string;entryDate:string;description:string;sourceType:string;status:string;totalDebit:string|number;totalCredit:string|number;lineCount:number};
+function BillingWorkspace(){
+ const [invoices,setInvoices]=useState<BillingInvoice[]>([]),[payments,setPayments]=useState<BillingPayment[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]);
+ const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const [invoiceForm,setInvoiceForm]=useState({contractId:"",dueOn:""}),[paymentForm,setPaymentForm]=useState({invoiceId:"",amount:"",paymentMethod:"bank_transfer",externalReference:""});
+ const load=useCallback(async()=>{setBusy(true);setError("");try{
+  const [i,p,k]=await Promise.all([request<{items:BillingInvoice[]}>("/v1/platform/erp/invoices"),request<{items:BillingPayment[]}>("/v1/platform/erp/payments"),request<{items:CommercialContract[]}>("/v1/platform/erp/contracts")]);
+  setInvoices(i.items??[]);setPayments(p.items??[]);setContracts(k.items??[]);
+  const active=(k.items??[]).find(x=>x.status==="active");if(!invoiceForm.contractId&&active)setInvoiceForm(x=>({...x,contractId:active.id}));
+  const payable=(i.items??[]).find(x=>["issued","partially_paid","overdue"].includes(x.status)&&Number(x.grandTotal)>Number(x.amountPaid));if(!paymentForm.invoiceId&&payable)setPaymentForm(x=>({...x,invoiceId:payable.id}));
+ }catch(e){setError(e instanceof Error?e.message:"Data billing gagal dimuat.");}finally{setBusy(false);}},[invoiceForm.contractId,paymentForm.invoiceId]);
+ useEffect(()=>{void load();},[load]);
+ async function createInvoice(event:FormEvent){event.preventDefault();setSaving(true);setError("");setNotice("");try{await request<BillingInvoice>("/v1/platform/erp/invoices",{method:"POST",body:JSON.stringify(invoiceForm)});setNotice("Draft invoice berhasil dibuat dari kontrak aktif dan snapshot penawaran.");await load();}catch(e){setError(e instanceof Error?e.message:"Invoice gagal dibuat.");}finally{setSaving(false);}}
+ async function issueInvoice(id:string){setSaving(true);setError("");setNotice("");try{await request<{id:string;status:string}>(`/v1/platform/erp/invoices/${id}/issue`,{method:"PATCH"});setNotice("Invoice diterbitkan dan jurnal piutang/pendapatan diposting.");await load();}catch(e){setError(e instanceof Error?e.message:"Invoice gagal diterbitkan. Pastikan Chart of Accounts sudah diinisialisasi.");}finally{setSaving(false);}}
+ async function createPayment(event:FormEvent){event.preventDefault();setSaving(true);setError("");setNotice("");try{await request<BillingPayment>("/v1/platform/erp/payments",{method:"POST",body:JSON.stringify({...paymentForm,amount:Number(paymentForm.amount)})});setNotice("Pembayaran tercatat sebagai pending dan menunggu verifikasi.");await load();}catch(e){setError(e instanceof Error?e.message:"Pembayaran gagal dicatat.");}finally{setSaving(false);}}
+ async function paymentAction(id:string,action:"verify"|"reject"){setSaving(true);setError("");setNotice("");try{await request<{id:string;status:string}>(`/v1/platform/erp/payments/${id}/${action}`,{method:"PATCH"});setNotice(action==="verify"?"Pembayaran diverifikasi dan jurnal penerimaan diposting.":"Pembayaran ditolak.");await load();}catch(e){setError(e instanceof Error?e.message:"Verifikasi pembayaran gagal. Pemohon tidak boleh memverifikasi pembayaran sendiri.");}finally{setSaving(false);}}
+ const money=(v:string|number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(Number(v));
+ return <div className="crm-workspace"><section className="panel"><PanelTitle title="Billing, Invoice & Pembayaran" subtitle="Tagihan dibuat dari kontrak aktif. Pembayaran berstatus pending sampai diverifikasi oleh petugas lain."/>
+  {error&&<div className="alert warning">{error}</div>}{notice&&<div className="alert">{notice}</div>}
+  <div className="stat-grid crm-stats">
+   <div className="stat-card"><div className="stat-top"><span>Invoice</span><i>▤</i></div><strong>{invoices.length}</strong><small>Total invoice</small></div>
+   <div className="stat-card"><div className="stat-top"><span>Piutang terbuka</span><i>Rp</i></div><strong>{money(invoices.filter(x=>["issued","partially_paid","overdue"].includes(x.status)).reduce((s,x)=>s+Number(x.grandTotal)-Number(x.amountPaid),0))}</strong><small>Sisa tagihan</small></div>
+   <div className="stat-card"><div className="stat-top"><span>Pembayaran pending</span><i>⌛</i></div><strong>{payments.filter(x=>x.status==="pending").length}</strong><small>Menunggu verifikasi</small></div>
+   <div className="stat-card"><div className="stat-top"><span>Pembayaran terverifikasi</span><i>✓</i></div><strong>{payments.filter(x=>x.status==="verified").length}</strong><small>Jurnal penerimaan</small></div>
+  </div>
+  <div className="crm-forms">
+   <form className="panel crm-form" onSubmit={createInvoice}><h3>Buat invoice</h3>
+    <label>Kontrak aktif<select required value={invoiceForm.contractId} onChange={e=>setInvoiceForm({...invoiceForm,contractId:e.target.value})}><option value="">Pilih kontrak</option>{contracts.filter(x=>x.status==="active").map(x=><option key={x.id} value={x.id}>{x.contractNumber} · {x.customerName}</option>)}</select></label>
+    <label>Jatuh tempo<input type="date" required value={invoiceForm.dueOn} onChange={e=>setInvoiceForm({...invoiceForm,dueOn:e.target.value})}/></label>
+    <p className="muted">Baris invoice disalin dari snapshot penawaran yang mendasari kontrak.</p>
+    <button className="primary" disabled={saving||!contracts.some(x=>x.status==="active")}>Buat draft invoice</button>
+   </form>
+   <form className="panel crm-form" onSubmit={createPayment}><h3>Catat pembayaran</h3>
+    <label>Invoice<select required value={paymentForm.invoiceId} onChange={e=>setPaymentForm({...paymentForm,invoiceId:e.target.value})}><option value="">Pilih invoice</option>{invoices.filter(x=>["issued","partially_paid","overdue"].includes(x.status)&&Number(x.grandTotal)>Number(x.amountPaid)).map(x=><option key={x.id} value={x.id}>{x.invoiceNumber} · {x.customerName} · sisa {money(Number(x.grandTotal)-Number(x.amountPaid))}</option>)}</select></label>
+    <label>Jumlah diterima (IDR)<input type="number" min="0.01" step="0.01" required value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm,amount:e.target.value})}/></label>
+    <label>Metode<select value={paymentForm.paymentMethod} onChange={e=>setPaymentForm({...paymentForm,paymentMethod:e.target.value})}><option value="bank_transfer">Transfer bank</option><option value="cash">Tunai</option><option value="payment_gateway">Payment gateway</option><option value="other">Lainnya</option></select></label>
+    <label>Referensi eksternal<input maxLength={180} value={paymentForm.externalReference} onChange={e=>setPaymentForm({...paymentForm,externalReference:e.target.value})}/></label>
+    <button className="primary" disabled={saving||!invoices.some(x=>["issued","partially_paid","overdue"].includes(x.status))}>Catat pending</button>
+   </form>
+  </div>
+ </section>
+ <section className="panel"><PanelTitle title="Daftar invoice" subtitle="Invoice draft belum menjadi piutang sampai diterbitkan dan diposting ke buku besar."/>
+  {busy?<div className="empty">Memuat…</div>:invoices.length===0?<Empty text="Belum ada invoice."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Nilai</th><th>Dibayar</th><th>Jatuh tempo</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{invoices.map(x=><tr key={x.id}><td>{x.invoiceNumber}</td><td>{x.customerName}</td><td>{money(x.grandTotal)}</td><td>{money(x.amountPaid)}</td><td>{x.dueOn?date(x.dueOn):"—"}</td><td><span className="pill neutral">{label(x.status)}</span></td><td>{x.status==="draft"?<button className="primary" disabled={saving} onClick={()=>void issueInvoice(x.id)}>Terbitkan & posting</button>:"—"}</td></tr>)}</tbody></table></div>}
+ </section>
+ <section className="panel"><PanelTitle title="Penerimaan pembayaran" subtitle="Verifikasi oleh Super Admin yang berbeda dari pencatat pembayaran."/>
+  {payments.length===0?<Empty text="Belum ada pembayaran."/>:<div className="table-wrap"><table><thead><tr><th>Referensi</th><th>Invoice</th><th>Pelanggan</th><th>Jumlah</th><th>Metode</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{payments.map(x=><tr key={x.id}><td>{x.paymentReference}</td><td>{x.invoiceNumber||"—"}</td><td>{x.customerName}</td><td>{money(x.amount)}</td><td>{label(x.paymentMethod)}</td><td><span className="pill neutral">{label(x.status)}</span></td><td>{x.status==="pending"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void paymentAction(x.id,"verify")}>Verifikasi</button><button className="secondary" disabled={saving} onClick={()=>void paymentAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
+ </section><p className="muted">Penerbitan invoice dan verifikasi pembayaran membukukan jurnal double-entry secara atomik. Credit note, refund, rekonsiliasi bank, dan recurring billing belum termasuk tahap ini.</p>
+ </div>;
+}
+function AccountingWorkspace(){
+ const [accounts,setAccounts]=useState<LedgerAccount[]>([]),[journals,setJournals]=useState<JournalEntry[]>([]),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const load=useCallback(async()=>{setBusy(true);setError("");try{const [a,j]=await Promise.all([request<{items:LedgerAccount[]}>("/v1/platform/erp/accounts"),request<{items:JournalEntry[]}>("/v1/platform/erp/journals")]);setAccounts(a.items??[]);setJournals(j.items??[]);}catch(e){setError(e instanceof Error?e.message:"Buku besar gagal dimuat.");}finally{setBusy(false);}},[]);
+ useEffect(()=>{void load();},[load]);
+ async function initialize(){setSaving(true);setError("");setNotice("");try{await request<{items:LedgerAccount[]}>("/v1/platform/erp/accounts/initialize-defaults",{method:"POST"});setNotice("Chart of Accounts standar awal berhasil disiapkan.");await load();}catch(e){setError(e instanceof Error?e.message:"Chart of Accounts gagal disiapkan. Periksa konflik kode akun.");}finally{setSaving(false);}}
+ const money=(v:string|number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(Number(v));
+ return <div className="crm-workspace"><section className="panel"><PanelTitle title="Accounting & General Ledger" subtitle="Jurnal double-entry bersifat immutable; koreksi harus menggunakan jurnal reversal."/>
+  {error&&<div className="alert warning">{error}</div>}{notice&&<div className="alert">{notice}</div>}
+  <div className="toolbar"><span>{accounts.length} akun · {journals.length} jurnal</span><button className="secondary" disabled={busy} onClick={()=>void load()}>Muat ulang</button></div>
+  {accounts.length===0&&<div className="alert warning">Chart of Accounts belum disiapkan. Inisialisasi akun standar sebelum menerbitkan invoice.</div>}
+  <button className="primary" disabled={saving||accounts.length>0} onClick={()=>void initialize()}>{saving?"Menyiapkan…":"Inisialisasi Chart of Accounts standar"}</button>
+ </section>
+ <section className="panel"><PanelTitle title="Chart of Accounts" subtitle="Akun kontrol piutang, kas, bank, pajak, dan pendapatan."/>
+  {accounts.length===0?<Empty text="Belum ada akun."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama akun</th><th>Jenis</th><th>Saldo normal</th><th>Kontrol</th><th>Status</th></tr></thead><tbody>{accounts.map(x=><tr key={x.id}><td>{x.accountCode}</td><td>{x.accountName}</td><td>{label(x.accountType)}</td><td>{label(x.normalBalance)}</td><td>{x.isControlAccount?"Ya":"Tidak"}</td><td>{x.isActive?"Aktif":"Nonaktif"}</td></tr>)}</tbody></table></div>}
+ </section>
+ <section className="panel"><PanelTitle title="Jurnal umum" subtitle="Jurnal invoice dan penerimaan pembayaran dengan total debit dan kredit seimbang."/>
+  {busy?<div className="empty">Memuat…</div>:journals.length===0?<Empty text="Belum ada jurnal yang diposting."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Tanggal</th><th>Sumber</th><th>Deskripsi</th><th>Debit</th><th>Kredit</th><th>Baris</th></tr></thead><tbody>{journals.map(x=><tr key={x.id}><td>{x.entryNumber}</td><td>{date(x.entryDate)}</td><td>{label(x.sourceType)}</td><td>{x.description}</td><td>{money(x.totalDebit)}</td><td>{money(x.totalCredit)}</td><td>{x.lineCount}</td></tr>)}</tbody></table></div>}
+ </section></div>;
+}
+
 function CommercialWorkspace(){
  const [quotes,setQuotes]=useState<CommercialQuote[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]),[customers,setCustomers]=useState<CrmCustomer[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
  const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
