@@ -255,7 +255,8 @@ export default function App() {
         </section>
         <section className="panel"><PanelTitle title="Sumber hukum resmi" subtitle="Prioritaskan dokumen primer, bukan ringkasan pihak ketiga"/><div className="source-list"><a href="https://jdih.kemenag.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kementerian Agama</b><span>Peraturan Menteri Agama, Keputusan Menteri Agama, dan keputusan/produk hukum Kemenag.</span></a><a href="https://peraturan.bpk.go.id/" target="_blank" rel="noreferrer"><b>Database Peraturan BPK</b><span>Metadata, status, relasi perubahan/pencabutan, dan dokumen peraturan.</span></a><a href="https://peraturan.go.id/" target="_blank" rel="noreferrer"><b>Portal Peraturan Perundang-undangan</b><span>Penelusuran peraturan nasional dan metadata pengundangan.</span></a><a href="https://jdih.kemendikdasmen.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kemendikdasmen</b><span>Standar dan regulasi pendidikan dasar dan menengah.</span></a></div><p className="muted">Keputusan Menteri Agama (KMA), Keputusan Direktur Jenderal, surat edaran, dan petunjuk teknis akan dimasukkan per nomor dan tahun setelah naskah serta status keberlakuannya diverifikasi pada JDIH penerbit. Tidak ada nomor keputusan yang ditebak.</p></section>
       </>}
-      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && (() => {
+      {section === "crm" && <CRMWorkspace/>}
+      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && (() => {
         const area = enterpriseAreas[section as EnterpriseArea];
         return <section className="panel enterprise-workspace">
           <PanelTitle title={area.title} subtitle={area.description}/>
@@ -271,6 +272,103 @@ export default function App() {
     </main>
   </div>;
 }
+
+type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; createdAt:string };
+type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; createdAt:string };
+function CRMWorkspace(){
+  const [leads,setLeads]=useState<CrmLead[]>([]);
+  const [customers,setCustomers]=useState<CrmCustomer[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+  const [query,setQuery]=useState("");
+  const [lead,setLead]=useState({organizationName:"",contactName:"",email:"",phone:"",source:"manual",stage:"new",estimatedValue:"",notes:""});
+  const [customer,setCustomer]=useState({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:""});
+  const load=useCallback(async()=>{
+    setBusy(true);setError("");
+    try{
+      const [leadResult,customerResult]=await Promise.all([
+        request<{items:CrmLead[]}>("/v1/platform/erp/leads?limit=50"),
+        request<{items:CrmCustomer[]}>("/v1/platform/erp/customers?limit=50")
+      ]);
+      setLeads(leadResult.items??[]);setCustomers(customerResult.items??[]);
+    }catch(e){setError(e instanceof Error?e.message:"Data CRM gagal dimuat.");}
+    finally{setBusy(false);}
+  },[]);
+  useEffect(()=>{void load();},[load]);
+  async function createLead(event:FormEvent){
+    event.preventDefault();setSaving(true);setError("");setNotice("");
+    try{
+      await request<CrmLead>("/v1/platform/erp/leads",{method:"POST",body:JSON.stringify({
+        organizationName:lead.organizationName,contactName:lead.contactName,
+        ...(lead.email?{email:lead.email}:{}),...(lead.phone?{phone:lead.phone}:{}),
+        source:lead.source,stage:lead.stage,
+        ...(lead.estimatedValue?{estimatedValue:Number(lead.estimatedValue)}:{}),
+        ...(lead.notes?{notes:lead.notes}:{})
+      })});
+      setLead({organizationName:"",contactName:"",email:"",phone:"",source:"manual",stage:"new",estimatedValue:"",notes:""});
+      setNotice("Prospek berhasil disimpan.");await load();
+    }catch(e){setError(e instanceof Error?e.message:"Prospek gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+  async function createCustomer(event:FormEvent){
+    event.preventDefault();setSaving(true);setError("");setNotice("");
+    try{
+      await request<CrmCustomer>("/v1/platform/erp/customers",{method:"POST",body:JSON.stringify({
+        legalName:customer.legalName,displayName:customer.displayName,entityType:customer.entityType,
+        ...(customer.billingEmail?{billingEmail:customer.billingEmail}:{}),
+        ...(customer.billingPhone?{billingPhone:customer.billingPhone}:{})
+      })});
+      setCustomer({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:""});
+      setNotice("Data pelanggan berhasil disimpan.");await load();
+    }catch(e){setError(e instanceof Error?e.message:"Pelanggan gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+  const visibleLeads=leads.filter(x=>`${x.organizationName} ${x.contactName} ${x.email??""} ${x.leadNumber}`.toLowerCase().includes(query.toLowerCase()));
+  const visibleCustomers=customers.filter(x=>`${x.legalName} ${x.displayName} ${x.customerCode}`.toLowerCase().includes(query.toLowerCase()));
+  return <div className="crm-workspace">
+    <section className="panel">
+      <PanelTitle title="CRM & Customer Management" subtitle="Data prospek dan pelanggan tersimpan pada Neon Development melalui API Super Admin."/>
+      {error&&<div className="alert warning">{error}</div>}{notice&&<div className="alert">{notice}</div>}
+      <div className="stat-grid crm-stats">
+        <div className="stat-card"><div className="stat-top"><span>Total prospek</span><i>◎</i></div><strong>{leads.length}</strong><small>Prospek tersimpan</small></div>
+        <div className="stat-card"><div className="stat-top"><span>Total pelanggan</span><i>◈</i></div><strong>{customers.length}</strong><small>Data pelanggan tersimpan</small></div>
+        <div className="stat-card"><div className="stat-top"><span>Prospek aktif</span><i>↗</i></div><strong>{leads.filter(x=>!["won","lost"].includes(x.stage)).length}</strong><small>Belum ditutup</small></div>
+        <div className="stat-card"><div className="stat-top"><span>Pelanggan aktif</span><i>✓</i></div><strong>{customers.filter(x=>x.status==="active").length}</strong><small>Status aktif</small></div>
+      </div>
+      <div className="crm-forms">
+        <form className="panel crm-form" onSubmit={createLead}>
+          <h3>Tambah prospek</h3>
+          <label>Nama lembaga / organisasi<input required minLength={2} maxLength={180} value={lead.organizationName} onChange={e=>setLead({...lead,organizationName:e.target.value})}/></label>
+          <label>Nama kontak<input required minLength={2} maxLength={160} value={lead.contactName} onChange={e=>setLead({...lead,contactName:e.target.value})}/></label>
+          <label>Email<input type="email" value={lead.email} onChange={e=>setLead({...lead,email:e.target.value})}/></label>
+          <label>Telepon<input value={lead.phone} onChange={e=>setLead({...lead,phone:e.target.value})}/></label>
+          <label>Sumber prospek<select value={lead.source} onChange={e=>setLead({...lead,source:e.target.value})}><option value="manual">Manual</option><option value="referral">Referensi</option><option value="website">Website</option><option value="event">Acara</option><option value="campaign">Kampanye</option></select></label>
+          <label>Tahap pipeline<select value={lead.stage} onChange={e=>setLead({...lead,stage:e.target.value})}>{["new","qualified","discovery","demo","proposal","negotiation","won","lost","dormant"].map(x=><option key={x} value={x}>{label(x)}</option>)}</select></label>
+          <label>Estimasi nilai (IDR)<input type="number" min="0" step="1000" value={lead.estimatedValue} onChange={e=>setLead({...lead,estimatedValue:e.target.value})}/></label>
+          <label>Catatan<textarea maxLength={5000} value={lead.notes} onChange={e=>setLead({...lead,notes:e.target.value})}/></label>
+          <button className="primary" disabled={saving}>Simpan prospek</button>
+        </form>
+        <form className="panel crm-form" onSubmit={createCustomer}>
+          <h3>Tambah pelanggan</h3>
+          <label>Nama legal yayasan / badan<input required minLength={2} maxLength={220} value={customer.legalName} onChange={e=>setCustomer({...customer,legalName:e.target.value})}/></label>
+          <label>Nama tampilan lembaga<input required minLength={2} maxLength={180} value={customer.displayName} onChange={e=>setCustomer({...customer,displayName:e.target.value})}/></label>
+          <label>Jenis entitas<select value={customer.entityType} onChange={e=>setCustomer({...customer,entityType:e.target.value})}><option value="institution">Lembaga</option><option value="foundation">Yayasan</option><option value="company">Perusahaan</option><option value="government">Pemerintah</option><option value="individual">Perorangan</option><option value="other">Lainnya</option></select></label>
+          <label>Email penagihan<input type="email" value={customer.billingEmail} onChange={e=>setCustomer({...customer,billingEmail:e.target.value})}/></label>
+          <label>Telepon penagihan<input value={customer.billingPhone} onChange={e=>setCustomer({...customer,billingPhone:e.target.value})}/></label>
+          <p className="muted">Pelanggan baru dibuat sebagai prospek. Aktivasi layanan, kontrak, lisensi, dan penagihan tetap melalui persetujuan serta alur komersial tersendiri.</p>
+          <button className="primary" disabled={saving}>Simpan pelanggan</button>
+        </form>
+      </div>
+      <div className="toolbar crm-toolbar"><input placeholder="Cari prospek atau pelanggan…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="secondary" onClick={()=>void load()} disabled={busy}>{busy?"Memuat…":"Muat ulang"}</button></div>
+    </section>
+    <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><span className="pill neutral">{label(x.stage)}</span></td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
+    <section className="panel"><PanelTitle title="Daftar pelanggan" subtitle="Data aktual dari platform.customers"/>{busy?<div className="empty">Memuat data…</div>:visibleCustomers.length===0?<Empty text="Belum ada pelanggan yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama legal</th><th>Nama tampilan</th><th>Jenis</th><th>Status</th><th>Dibuat</th></tr></thead><tbody>{visibleCustomers.map(x=><tr key={x.id}><td>{x.customerCode}</td><td>{x.legalName}</td><td><b>{x.displayName}</b><small>{x.billingEmail||"—"}</small></td><td>{label(x.entityType)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
+    <p className="muted">Catatan: modul ini merupakan tahap awal CRM. Kontak multipihak, aktivitas sales, Customer 360, penawaran, kontrak, subscription, dan billing akan disambungkan pada tahap berikutnya.</p>
+  </div>;
+}
+
 function Stat({title,value,detail,icon}:{title:string;value:number;detail:string;icon:string}){return <div className="stat-card"><div className="stat-top"><span>{title}</span><i>{icon}</i></div><strong>{value}</strong><small>{detail}</small></div>}
 function PanelTitle({title,subtitle}:{title:string;subtitle:string}){return <div className="panel-title"><div><h2>{title}</h2><p>{subtitle}</p></div></div>}
 function Empty({text}:{text:string}){return <div className="empty">{text}</div>}
