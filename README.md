@@ -4,6 +4,12 @@ Integrated operating system for pesantren and Islamic boarding schools.
 
 PONDOK OS is being developed as a configurable modular platform for academic management, student affairs, boarding, finance, accounting, inventory, procurement, assets, HR/payroll, library, PPDB, CMS, CRM, and institution operations. The commercial Control Center is designed as a separate security plane from institution-owned records.
 
+## Product boundary and client support
+
+- **PONDOK OS** is the institution-facing workspace for pesantren operations. It does not expose navigation, links, or platform-registry screens for the company Super Administrator.
+- **Super Admin Command Center** is a separately built and routed application for company operators, including institution registry, approvals, module publishing, and platform audit. It is not linked from the institution workspace.
+- The institution app can display an official WhatsApp Business support link on login and inside the workspace when `VITE_SUPPORT_WHATSAPP_NUMBER` is configured. Set the GitHub Actions repository variable `PONDOK_SUPPORT_WHATSAPP_NUMBER` to the company number in international digits only (for example, `62812...`, without `+`, spaces, or punctuation). The value is a public contact number, not a credential. If it is unset or invalid, no broken WhatsApp link is rendered.
+
 ## Current implementation snapshot
 
 The repository currently contains:

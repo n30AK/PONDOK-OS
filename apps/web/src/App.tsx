@@ -3,7 +3,7 @@ import { authClient, getAccessToken, getCurrentUser, type PondokUser } from "./a
 import Operations from "./Operations";
 import Admissions from "./Admissions";
 import ModuleWorkspace, { getModuleResourceLabel } from "./ModuleWorkspace";
-import PlatformAdmin from "./PlatformAdmin";
+import InstitutionActivation from "./InstitutionActivation";
 
 type Tenant = { organizationId: string; membershipId: string; roles: string[]; permissions: string[] };
 type OrganizationChoice = { id: string; name: string; slug: string };
@@ -12,7 +12,7 @@ type Student = {
   preferredName?: string | null; birthDate?: string | null; genderCode?: string | null;
   status: string; createdAt: string; profileData?: Record<string, string> | null;
 };
-type Screen = "overview" | "students" | "modules" | "operations" | "admissions" | "platform";
+type Screen = "overview" | "students" | "modules" | "operations" | "admissions";
 type OperationsArea = "finance" | "inventory" | "hr";
 
 const modules = [
@@ -25,10 +25,16 @@ const modules = [
   { key: "cms", name: "Website & Pengumuman", desc: "Halaman publik, berita, pengumuman", icon: "▣", status: "Fondasi" },
   { key: "boarding", name: "Asrama & Kesantrian", desc: "Kamar, perizinan, pelanggaran, pembinaan", icon: "⌂", status: "Direncanakan" },
   { key: "crm", name: "CRM & Alumni", desc: "Wali santri, komunikasi, alumni, donatur", icon: "◎", status: "Direncanakan" },
-  { key: "control", name: "Control Center", desc: "Lisensi, instalasi, tenant, dukungan", icon: "⌘", status: "Direncanakan" }
 ];
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
+
+function SupportLink() {
+  if (!/^[1-9]\d{7,14}$/.test(SUPPORT_WHATSAPP_NUMBER)) return null;
+  const message = encodeURIComponent("Assalamu’alaikum, saya pengguna PONDOK OS dan membutuhkan bantuan terkait: ");
+  return <a className="support-link" href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${message}`} target="_blank" rel="noopener noreferrer">WhatsApp Business · Bantuan & dukungan</a>;
+}
 
 async function apiRequest<T>(path: string, organizationId: string, init: RequestInit = {}): Promise<T> {
   const token = await getAccessToken();
@@ -131,18 +137,22 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Wait until the server has verified the current identity and platform role.
-    // Super Admins load the organization list through the protected platform registry;
-    // ordinary users continue to use the membership-scoped tenant endpoint.
+    // The institution app never loads the company-wide platform registry.
+    // Platform operators are kept out of tenant workspaces and use the separate operator application.
     if (!user || !platformAccessChecked || platformAccessError) return;
+    if (isSuperAdmin) {
+      setOrganizations([]);
+      setTenant(null);
+      setNotice("Akun operator platform tidak memiliki akses ke workspace lembaga melalui aplikasi ini.");
+      setBusy(false);
+      return;
+    }
     let active = true;
     void (async () => {
       setBusy(true); setError(""); setNotice("");
       try {
         const token = await getAccessToken();
-        const endpoint = isSuperAdmin
-          ? "/v1/platform/admin/tenants"
-          : "/v1/tenant/organizations";
+        const endpoint = "/v1/tenant/organizations";
         const response = await fetch(`${API_BASE}${endpoint}`, {
           headers: { authorization: `Bearer ${token}` },
           cache: "no-store",
@@ -151,7 +161,7 @@ export default function App() {
         if (!response.ok) throw new Error(body.error ?? "Gagal memuat daftar pesantren.");
         const available: OrganizationChoice[] = Array.isArray(body.data)
           ? body.data.map((item: Record<string, unknown>) => ({
-              id: String(isSuperAdmin ? item.organizationId : item.id),
+              id: String(item.id),
               name: String(item.name ?? ""),
               slug: String(item.slug ?? ""),
             })).filter((item: OrganizationChoice) => item.id && item.id !== "undefined")
@@ -171,9 +181,7 @@ export default function App() {
           setNotice("Pilih pesantren untuk melanjutkan ke workspace.");
         } else {
           setTenant(null);
-          setNotice(isSuperAdmin
-            ? "Belum ada lembaga. Gunakan formulir Inisialisasi lembaga pertama di Command Center."
-            : "Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
+          setNotice("Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
         }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat organisasi.");
@@ -335,10 +343,6 @@ export default function App() {
           <div className="eyebrow">SELAMAT DATANG</div>
           <h2>Masuk ke PONDOK OS</h2>
           <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
-          <div className="login-note admin-login-guidance">
-            <strong>Akses Administrator Pusat / Super Admin</strong>
-            <span>Gunakan formulir login yang sama dengan akun Super Admin terdaftar. Sistem akan memverifikasi hak akses ke server dan menampilkan menu <strong>Central Command</strong> secara otomatis jika akun Anda berwenang. Tidak perlu membuat akun baru atau mendaftar sebagai pesantren.</span>
-          </div>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
           <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
@@ -346,7 +350,7 @@ export default function App() {
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
           <p className="login-note">Akses pengguna baru harus diberikan oleh administrator pesantren.</p>
-          
+          <SupportLink />
         </form>}
       </section>
     </main>;
@@ -376,7 +380,7 @@ export default function App() {
       <div className="sidebar-bottom"><div className="secure-note"><span className="secure-dot" /> Data tenant terisolasi</div><div className="profile"><div className="avatar">{initials}</div><div className="profile-text"><strong>{user.name || user.email}</strong><small>{user.email}</small></div><button className="icon-button" title="Keluar" onClick={() => void signOut()}>↗</button></div></div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : "Ringkasan"}</strong></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span>{isSuperAdmin && <a className="outline-button" href="/PONDOK-OS/command-center/">Super Admin Command Center ↗</a>}<button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
+      <header className="topbar"><div><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : "Ringkasan"}</strong></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
@@ -387,13 +391,13 @@ export default function App() {
               <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
             </> : organizations.length === 0 ? <>
               <p>Akun ini belum terhubung ke organisasi pesantren.</p>
-              <div className="alert warning">Akun ini belum memiliki workspace aktif. Permohonan aktivasi lembaga hanya untuk akun non-Super Admin. Akun Super Admin mengelola pembentukan workspace melalui Central Command.</div>
+              {isSuperAdmin ? <div className="alert warning">Akun operator platform tidak dapat digunakan untuk mengakses workspace lembaga.</div> : <div className="alert warning">Akun ini belum memiliki workspace aktif. Hubungi administrator pesantren untuk mendapatkan undangan atau mengajukan aktivasi lembaga.</div>}
             </> : <p>Menyiapkan workspace pesantren Anda…</p>}
             {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
-        </section>{isSuperAdmin ? <section className="platform-panel"><h2>Command Center Super Administrator</h2><p>Pengelolaan platform, registri lembaga, persetujuan, ekosistem modul, publisher, dan audit berada pada aplikasi terpisah.</p><a className="primary" href="/PONDOK-OS/command-center/">Buka Super Admin Command Center ↗</a></section> : <PlatformAdmin isSuperAdmin={false} />}</> : <>
-          <div className="page-heading"><div><div className="eyebrow">PONDOK OS / {tenant.organizationId.slice(0, 8).toUpperCase()}</div><h1>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "Manajemen PPDB" : screen === "platform" ? "Central Command" : "Ringkasan Pesantren"}</h1><p>{screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Ruang kerja khusus untuk data, formulir, alur persetujuan, dan pencatatan modul ini." : screen === "operations" ? "Data operasional yang ditampilkan mengikuti hak akses akun." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : screen === "platform" ? "Pengelolaan platform dan aktivasi lintas organisasi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
-          {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Modul aktif</span><b>▦</b></div><strong>10</strong><small>Fondasi domain tersedia bertahap</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan</span><b>◇</b></div><strong>Aktif</strong><small>JWT dan membership diverifikasi API</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div><button className="text-button" onClick={() => openModule("all")}>Lihat semua modul →</button></div><div className="module-grid">{modules.filter((item) => item.key !== "control").map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? openModule("academic-years") : item.key === "admissions" ? setScreen("admissions") : item.key === "finance" ? openOperations("finance") : item.key === "inventory" ? openOperations("inventory") : item.key === "library" ? openModule("library-catalog") : item.key === "hr" ? openOperations("hr") : item.key === "cms" ? openModule("cms-pages") : item.key === "boarding" ? openModule("dormitories") : item.key === "crm" ? openModule("contacts") : openModule("campuses")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
+        </section>{!isSuperAdmin && <InstitutionActivation />}</> : <>
+          <div className="page-heading"><div><div className="eyebrow">PONDOK OS / {tenant.organizationId.slice(0, 8).toUpperCase()}</div><h1>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "Manajemen PPDB" : "Ringkasan Pesantren"}</h1><p>{screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Ruang kerja khusus untuk data, formulir, alur persetujuan, dan pencatatan modul ini." : screen === "operations" ? "Data operasional yang ditampilkan mengikuti hak akses akun." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
+          {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Modul aktif</span><b>▦</b></div><strong>10</strong><small>Fondasi domain tersedia bertahap</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan</span><b>◇</b></div><strong>Aktif</strong><small>JWT dan membership diverifikasi API</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div><button className="text-button" onClick={() => openModule("all")}>Lihat semua modul →</button></div><div className="module-grid">{modules.map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? openModule("academic-years") : item.key === "admissions" ? setScreen("admissions") : item.key === "finance" ? openOperations("finance") : item.key === "inventory" ? openOperations("inventory") : item.key === "library" ? openModule("library-catalog") : item.key === "hr" ? openOperations("hr") : item.key === "cms" ? openModule("cms-pages") : item.key === "boarding" ? openModule("dormitories") : item.key === "crm" ? openModule("contacts") : openModule("campuses")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
           {screen === "modules" && <ModuleWorkspace organizationId={tenant.organizationId} permissions={tenant.permissions} initialResourceKey={moduleResource} onResourceChange={setModuleResource} />}
           {screen === "operations" && <Operations organizationId={tenant.organizationId} permissions={tenant.permissions} initialArea={operationsArea} />}
           {screen === "admissions" && <Admissions organizationId={tenant.organizationId} permissions={tenant.permissions} />}
@@ -402,7 +406,7 @@ export default function App() {
             <div className="table-wrap"><table><thead><tr><th>Nomor induk</th><th>Nama santri</th><th>Tanggal lahir</th><th>Program</th><th>Tempat tinggal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{students.map((student) => <tr key={student.id}><td className="mono">{student.studentNumber}</td><td><strong>{student.legalName}</strong>{student.preferredName && <small className="cell-sub">{student.preferredName}</small>}</td><td>{student.birthDate ? new Date(student.birthDate).toLocaleDateString("id-ID") : "—"}</td><td>{student.profileData?.educationTrack ?? "—"}</td><td>{student.profileData?.boardingStatus ?? "—"}</td><td><span className="status-chip">{student.status}</span></td><td>{tenant?.permissions.includes("academic.students.update") && <button type="button" className="outline-button" onClick={() => beginEditStudent(student)}>Ubah</button>}</td></tr>)}{students.length === 0 && <tr><td colSpan={7} className="empty-state">{busy ? "Memuat data…" : "Belum ada data santri. Tambahkan data pertama untuk memulai."}</td></tr>}</tbody></table></div>
           </section>}
         </>}
-        <footer className="footer">PONDOK OS <span>•</span> Secure institution workspace <span>•</span> v0.1 foundation</footer>
+        <footer className="footer">PONDOK OS <span>•</span> Secure institution workspace <span>•</span> v0.1 foundation <SupportLink /></footer>
       </div>
     </main>
   </div>;
