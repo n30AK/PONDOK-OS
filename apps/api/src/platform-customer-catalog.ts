@@ -139,7 +139,7 @@ export async function handlePlatformCustomerCatalogRequest(req:IncomingMessage,r
     const values:unknown[]=[contactId,customerId],sets:string[]=[];
     for(const [key,col] of fields)if(Object.hasOwn(body,key)){values.push(key==="contactPreferences"?JSON.stringify(body[key]):key==="email"&&body[key]?String(body[key]).trim().toLowerCase():body[key]);sets.push(`${col}=$${values.length}${key==="contactPreferences"?"::jsonb":""}`);}
     const result=await c.query(`UPDATE platform.customer_contacts SET ${sets.join(",")} WHERE id=$1::uuid AND customer_id=$2::uuid RETURNING id,customer_id AS "customerId",full_name AS "fullName",position_title AS "positionTitle",email,phone,is_primary AS "isPrimary",contact_preferences AS "contactPreferences",created_at AS "createdAt"`,values);
-    await audit(c,userId,"crm.customer_contact.updated","customer_contact",contactId,{changedFields:Object.keys(body)});
+    await audit(c,userId,"crm.customer_contact.updated","customer_contact",contactId!,{changedFields:Object.keys(body)});
     return result.rows[0]??null;
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
