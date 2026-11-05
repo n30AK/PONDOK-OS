@@ -72,7 +72,7 @@ function readTokenPayload(payload: unknown): string | null {
  */
 async function getTokenFromAuthEndpoint(): Promise<string> {
   if (!authUrl) throw new Error("Neon Auth belum dikonfigurasi.");
-  const response = await fetch(`${authUrl.replace(/\\/+$/, "")}/token`, {
+  const response = await fetch(`${(authUrl.endsWith("/") ? authUrl.slice(0, -1) : authUrl)}/token`, {
     method: "GET",
     credentials: "include",
     cache: "no-store",
