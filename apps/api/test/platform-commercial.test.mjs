@@ -67,5 +67,5 @@ test("quote requester cannot approve their own pending approval request",async()
  await handlePlatformCommercialRequest(req(`/v1/platform/erp/quotes/${quoteId}/approve`,"PATCH"),res,pool,userId);
  assert.equal(res.status,403);
  assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.approval_requests")));
- assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
+ assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
