@@ -16,7 +16,7 @@ function readUser(value: unknown): User | null {
   const root = value as Record<string, unknown>;
   const session = root.session && typeof root.session === "object" ? root.session as Record<string, unknown> : null;
   const raw = (session?.user ?? root.user) as Record<string, unknown> | undefined;
-  return raw && typeof raw.id === "string" ? { id: raw.id, email: typeof raw.email === "string" ? raw.email : undefined, name: typeof raw.name === "string" ? raw.name : undefined } : null;
+  return raw && typeof raw.id === "string" ? { id: raw.id, ...(typeof raw.email === "string" ? { email: raw.email } : {}), ...(typeof raw.name === "string" ? { name: raw.name } : {}) } : null;
 }
 function jwt(value: unknown): value is string { return typeof value === "string" && value.split(".").length === 3 && value.length > 100; }
 async function token(): Promise<string> {
