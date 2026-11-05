@@ -321,7 +321,8 @@ function CRMWorkspace(){
         request<{items:CrmLead[]}>("/v1/platform/erp/leads?limit=50"),
         request<{items:CrmCustomer[]}>("/v1/platform/erp/customers?limit=50")
       ]);
-      setLeads(leadResult.items??[]);setCustomers(customerResult.items??[]);\n      if(!selectedCustomerId&&customerResult.items?.[0])setSelectedCustomerId(customerResult.items[0].id);
+      setLeads(leadResult.items??[]);setCustomers(customerResult.items??[]);
+      if(!selectedCustomerId&&customerResult.items?.[0])setSelectedCustomerId(customerResult.items[0].id);
     }catch(e){setError(e instanceof Error?e.message:"Data CRM gagal dimuat.");}
     finally{setBusy(false);}
   },[selectedCustomerId]);
