@@ -1,0 +1,273 @@
+{
+  "schemaVersion": 1,
+  "product": "PONDOK OS Central Command",
+  "status": "target_catalogue_not_implemented",
+  "boundaries": [
+    "platform_business",
+    "fleet_control",
+    "tenant_operational_data"
+  ],
+  "groups": [
+    {
+      "id": "executive",
+      "label": "Executive & Analytics",
+      "modules": [
+        "executive_dashboard",
+        "kpi_drilldowns",
+        "saved_reports",
+        "scheduled_reports",
+        "alerts",
+        "data_exports"
+      ]
+    },
+    {
+      "id": "crm",
+      "label": "CRM & Sales",
+      "modules": [
+        "leads",
+        "accounts",
+        "contacts",
+        "pipelines",
+        "opportunities",
+        "activities",
+        "quotes",
+        "price_books",
+        "sales_forecast",
+        "customer_360"
+      ]
+    },
+    {
+      "id": "customer_ops",
+      "label": "Customer & Subscription",
+      "modules": [
+        "contracts",
+        "contract_versions",
+        "plans",
+        "entitlements",
+        "subscriptions",
+        "renewals",
+        "trials",
+        "customer_sites",
+        "onboarding"
+      ]
+    },
+    {
+      "id": "billing",
+      "label": "Billing & Collections",
+      "modules": [
+        "invoice_series",
+        "quotes_to_invoice",
+        "recurring_billing",
+        "credit_notes",
+        "receipts",
+        "payment_allocations",
+        "refunds",
+        "dunning",
+        "receivables_aging",
+        "customer_statements"
+      ]
+    },
+    {
+      "id": "accounting",
+      "label": "Accounting & Finance",
+      "modules": [
+        "chart_of_accounts",
+        "fiscal_periods",
+        "journals",
+        "general_ledger",
+        "trial_balance",
+        "balance_sheet",
+        "profit_loss",
+        "cash_flow",
+        "budgets",
+        "cash_bank",
+        "bank_reconciliation",
+        "fixed_assets",
+        "depreciation",
+        "tax_configuration",
+        "period_close"
+      ]
+    },
+    {
+      "id": "procurement",
+      "label": "Procurement & Vendors",
+      "modules": [
+        "vendors",
+        "purchase_requests",
+        "approvals",
+        "rfq",
+        "quotation_comparison",
+        "purchase_orders",
+        "goods_receipts",
+        "supplier_invoices",
+        "three_way_match",
+        "vendor_scorecards"
+      ]
+    },
+    {
+      "id": "inventory",
+      "label": "Inventory & Assets",
+      "modules": [
+        "items",
+        "warehouses",
+        "stock_movements",
+        "stock_counts",
+        "lots_serials_expiry",
+        "valuation",
+        "fixed_asset_register",
+        "maintenance",
+        "asset_disposal",
+        "barcode_qr"
+      ]
+    },
+    {
+      "id": "hr_payroll",
+      "label": "HRD & Payroll",
+      "modules": [
+        "employee_master",
+        "organization_chart",
+        "recruitment",
+        "onboarding",
+        "contracts",
+        "attendance",
+        "shifts",
+        "leave",
+        "overtime",
+        "performance",
+        "training",
+        "payroll_components",
+        "payroll_runs",
+        "payslips",
+        "bpjs_tax_adapters",
+        "offboarding"
+      ]
+    },
+    {
+      "id": "support",
+      "label": "Support & Customer Success",
+      "modules": [
+        "tickets",
+        "sla",
+        "knowledge_base",
+        "incident_management",
+        "problem_management",
+        "change_management",
+        "customer_health",
+        "renewal_risk",
+        "remote_support_consent"
+      ]
+    },
+    {
+      "id": "internal_ops",
+      "label": "Internal Operations",
+      "modules": [
+        "platform_staff",
+        "departments",
+        "approvals",
+        "internal_policies",
+        "internal_expenses",
+        "legal_entities",
+        "internal_assets"
+      ]
+    },
+    {
+      "id": "documents",
+      "label": "Documents & Reports",
+      "modules": [
+        "document_templates",
+        "invoice_pdf",
+        "contract_pdf",
+        "purchase_documents",
+        "payroll_documents",
+        "audit_packages",
+        "report_exports",
+        "retention"
+      ]
+    },
+    {
+      "id": "fleet",
+      "label": "Fleet & Remote Operations",
+      "modules": [
+        "installations",
+        "sites",
+        "connectors",
+        "device_enrollment",
+        "heartbeats",
+        "version_inventory",
+        "telemetry",
+        "maintenance_windows",
+        "remote_sessions",
+        "remote_jobs",
+        "signed_releases",
+        "rollbacks",
+        "offline_outbox",
+        "sync_conflicts"
+      ]
+    },
+    {
+      "id": "agents",
+      "label": "Multi-Agent AI Operations",
+      "modules": [
+        "orchestrator",
+        "fleet_observer",
+        "security_sentinel",
+        "database_guardian",
+        "application_sre",
+        "release_steward",
+        "backup_recovery",
+        "compliance_librarian",
+        "finance_controller",
+        "hr_payroll_auditor",
+        "crm_success",
+        "report_analyst",
+        "offline_sync_steward",
+        "agent_run_ledger",
+        "policy_approvals"
+      ]
+    },
+    {
+      "id": "governance",
+      "label": "Governance & Security",
+      "modules": [
+        "rbac",
+        "mfa",
+        "least_privilege",
+        "tenant_isolation",
+        "audit_trail",
+        "secrets_redaction",
+        "data_retention",
+        "incident_response",
+        "backup_restore",
+        "compliance_evidence"
+      ]
+    }
+  ],
+  "remoteActionClasses": [
+    {
+      "class": 0,
+      "name": "observe",
+      "autonomy": "allowed"
+    },
+    {
+      "class": 1,
+      "name": "reversible_routine",
+      "autonomy": "allowlisted_only"
+    },
+    {
+      "class": 2,
+      "name": "controlled_change",
+      "autonomy": "approval_required"
+    },
+    {
+      "class": 3,
+      "name": "destructive_or_sensitive",
+      "autonomy": "multi_party_approval_never_autonomous"
+    }
+  ],
+  "offlineMode": {
+    "localOperations": "continue",
+    "telemetry": "durable_outbox",
+    "remoteCommands": "unavailable_until_reconnect_and_expire_stale_commands",
+    "sync": "signed_idempotent_batches"
+  }
+}
