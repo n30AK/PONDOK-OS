@@ -62,6 +62,10 @@ jobs:
         run: node apps/api/scripts/test-observability-backup-maintenance.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify module billing, warranty and client repair records
+        run: node apps/api/scripts/test-module-billing-warranty-repair.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
       - name: Build all deployable workspaces
