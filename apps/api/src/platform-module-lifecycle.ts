@@ -184,7 +184,7 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
 
  if(req.method==="PATCH"&&orderAction){
   const order=await withAdmin(pool,userId,async c=>{
-   const r=await c.query<{id:string;customer_id:string;installation_id:string;module_id:string;contract_id:string|null;billing_mode:string;billing_status:string;activation_status:string;requested_by:string;approved_by:string|null;unit_price:string;quantity:string;discount_amount:string;tax_amount:string;billing_period_start:string|null;billing_period_end:string|null;invoice_id:string|null;entitlement_id:string|null;subscription_id:string|null}>("SELECT id,customer_id,installation_id,module_id,contract_id,billing_mode,billing_status,activation_status,requested_by,approved_by,unit_price,quantity,discount_amount,tax_amount,billing_period_start,billing_period_end,invoice_id,entitlement_id,subscription_id FROM platform.module_orders WHERE id=$1::uuid FOR UPDATE",[orderId]);
+   const r=await c.query<{id:string;customer_id:string;installation_id:string;module_id:string;contract_id:string|null;billing_mode:string;billing_status:string;activation_status:string;requested_by:string;approved_by:string|null;unit_price:string;quantity:string;discount_amount:string;tax_amount:string;billing_period_start:string|null;billing_period_end:string|null;currency:string;invoice_id:string|null;entitlement_id:string|null;subscription_id:string|null}>("SELECT id,customer_id,installation_id,module_id,contract_id,billing_mode,billing_status,activation_status,requested_by,approved_by,unit_price,quantity,discount_amount,tax_amount,billing_period_start,billing_period_end,currency,invoice_id,entitlement_id,subscription_id FROM platform.module_orders WHERE id=$1::uuid FOR UPDATE",[orderId]);
    if(!r.rows[0])return{notFound:true as const,invalidState:false as const,selfApproval:false as const,missingHeartbeat:false as const};
    const o=r.rows[0];
    if(orderVerb==="approve"||orderVerb==="reject"){
@@ -221,17 +221,23 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
     if(o.activation_status!=="approved"||(!["not_billable","paid","waived"].includes(o.billing_status)))return{notFound:false as const,invalidState:true as const,selfApproval:false as const,missingHeartbeat:false as const};
     let entitlementId=o.entitlement_id,subscriptionId=o.subscription_id;
     if(!entitlementId){
-     const e=await c.query<{id:string}>(`INSERT INTO platform.module_entitlements(customer_id,installation_id,module_id,status,source_contract_id,billing_mode,order_id) VALUES($1::uuid,$2::uuid,$3::uuid,'pending',$4::uuid,$5,$6::uuid) ON CONFLICT(customer_id,installation_id,module_id) DO UPDATE SET order_id=EXCLUDED.order_id,billing_mode=EXCLUDED.billing_mode,source_contract_id=EXCLUDED.source_contract_id RETURNING id`,[o.customer_id,o.installation_id,o.module_id,o.contract_id,o.billing_mode,orderId]);
-     entitlementId=e.rows[0]?.id??null;
+     const existingEntitlement=await c.query<{id:string;status:string;order_id:string|null}>("SELECT id,status,order_id FROM platform.module_entitlements WHERE customer_id=$1::uuid AND installation_id=$2::uuid AND module_id=$3::uuid FOR UPDATE",[o.customer_id,o.installation_id,o.module_id]);
+     if(existingEntitlement.rows[0]&&existingEntitlement.rows[0].order_id!==orderId&&existingEntitlement.rows[0].status!=="revoked")return{notFound:false as const,invalidState:true as const,selfApproval:false as const,missingHeartbeat:false as const};
+     if(existingEntitlement.rows[0]){
+      entitlementId=existingEntitlement.rows[0].id;
+      await c.query("UPDATE platform.module_entitlements SET status='pending',granted_at=NULL,granted_by=NULL,expires_at=CASE WHEN $2::date IS NULL THEN NULL ELSE ((($2::date + 1)::timestamp AT TIME ZONE 'Asia/Jakarta') - interval '1 second') END,source_contract_id=$3::uuid,billing_mode=$4,order_id=$5::uuid,last_change_at=now() WHERE id=$1::uuid",[entitlementId,o.billing_period_end,o.contract_id,o.billing_mode,orderId]);
+     }else{
+      const e=await c.query<{id:string}>(`INSERT INTO platform.module_entitlements(customer_id,installation_id,module_id,status,source_contract_id,billing_mode,order_id,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,'pending',$4::uuid,$5,$6::uuid,CASE WHEN $7::date IS NULL THEN NULL ELSE ((($7::date + 1)::timestamp AT TIME ZONE 'Asia/Jakarta') - interval '1 second') END) RETURNING id`,[o.customer_id,o.installation_id,o.module_id,o.contract_id,o.billing_mode,orderId,o.billing_period_end]);
+      entitlementId=e.rows[0]?.id??null;
+     }
     }
-    if(!entitlementId)throw new Error("module_entitlement_create_failed");
     if(["recurring","trial","included","complimentary"].includes(o.billing_mode)&&!subscriptionId){
      const module=await c.query<{module_key:string}>("SELECT module_key FROM platform.module_catalog WHERE id=$1::uuid",[o.module_id]);
-     const product=await c.query<{id:string}>("SELECT id FROM platform.product_catalog WHERE product_code=$1",["MOD-"+(module.rows[0]?.module_key??"").toUpperCase()]);
+     const product=await c.query<{id:string;currency:string}>("SELECT id,currency FROM platform.product_catalog WHERE product_code=$1",["MOD-"+(module.rows[0]?.module_key??"").toUpperCase()]);
      if(!product.rows[0])throw new Error("module_subscription_product_missing");
      const start=o.billing_period_start??businessDate(),end=o.billing_period_end;
      const status=o.billing_mode==="trial"?"trial":"active",unitPrice=["included","complimentary","trial"].includes(o.billing_mode)?0:Number(o.unit_price);
-     const s=await c.query<{id:string}>(`INSERT INTO platform.subscriptions(customer_id,contract_id,product_id,status,starts_at,ends_at,quantity,unit_price,currency,created_by) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::date::timestamptz,$6::date::timestamptz,$7,$8::numeric,'IDR',$9::uuid) RETURNING id`,[o.customer_id,o.contract_id,product.rows[0].id,status,start,end,Math.max(1,Math.round(Number(o.quantity))),unitPrice,userId]);
+     const s=await c.query<{id:string}>(`INSERT INTO platform.subscriptions(customer_id,contract_id,product_id,status,starts_at,ends_at,quantity,unit_price,currency,created_by) VALUES($1::uuid,$2::uuid,$3::uuid,$4,($5::date::timestamp AT TIME ZONE 'Asia/Jakarta'),CASE WHEN $6::date IS NULL THEN NULL ELSE ((($6::date + 1)::timestamp AT TIME ZONE 'Asia/Jakarta') - interval '1 second') END,$7,$8::numeric,$9,$10::uuid) RETURNING id`,[o.customer_id,o.contract_id,product.rows[0].id,status,start,end,Math.max(1,Math.round(Number(o.quantity))),unitPrice,o.currency,userId]);
      subscriptionId=s.rows[0]?.id??null;
     }
     await c.query("UPDATE platform.module_orders SET entitlement_id=$2::uuid,subscription_id=$3::uuid,activation_status='provisioning',updated_at=now() WHERE id=$1::uuid",[orderId,entitlementId,subscriptionId]);
