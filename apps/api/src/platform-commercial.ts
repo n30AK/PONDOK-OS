@@ -181,9 +181,9 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
     }
     if(quoteVerb==="approve"||quoteVerb==="reject"){
      if(quote.status!=="submitted")return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
-     if(quote.created_by===userId)return{notFound:false as const,invalidState:false as const,selfApproval:true as const};
-     const approval=await c.query<{id:string}>("SELECT id FROM platform.approval_requests WHERE resource_type='quote' AND resource_id=$1::uuid AND status='pending' ORDER BY created_at DESC LIMIT 1",[quoteId]);
+     const approval=await c.query<{id:string;requested_by:string}>("SELECT id,requested_by FROM platform.approval_requests WHERE resource_type='quote' AND resource_id=$1::uuid AND status='pending' ORDER BY created_at DESC LIMIT 1 FOR UPDATE",[quoteId]);
      if(!approval.rows[0])return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
+     if(approval.rows[0].requested_by===userId)return{notFound:false as const,invalidState:false as const,selfApproval:true as const};
      const status=quoteVerb==="approve"?"approved":"rejected";
      await c.query("UPDATE platform.approval_requests SET status=$2,decided_by=$3::uuid,decided_at=now(),decision_note=$4 WHERE id=$1::uuid",[approval.rows[0].id,status,userId,quoteVerb==="approve"?"Approved by platform admin":"Rejected by platform admin"]);
      await c.query("UPDATE platform.quotes SET status=$2,approved_by=CASE WHEN $2='approved' THEN $3::uuid ELSE approved_by END,approved_at=CASE WHEN $2='approved' THEN now() ELSE approved_at END,updated_at=now() WHERE id=$1::uuid",[quoteId,status,userId]);
@@ -216,9 +216,9 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
     }
     if(contractVerb==="approve"||contractVerb==="reject"){
      if(contract.status!=="review")return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
-     if(contract.created_by===userId)return{notFound:false as const,invalidState:false as const,selfApproval:true as const};
-     const approval=await c.query<{id:string}>("SELECT id FROM platform.approval_requests WHERE resource_type='contract' AND resource_id=$1::uuid AND status='pending' ORDER BY created_at DESC LIMIT 1",[contractId]);
+     const approval=await c.query<{id:string;requested_by:string}>("SELECT id,requested_by FROM platform.approval_requests WHERE resource_type='contract' AND resource_id=$1::uuid AND status='pending' ORDER BY created_at DESC LIMIT 1 FOR UPDATE",[contractId]);
      if(!approval.rows[0])return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
+     if(approval.rows[0].requested_by===userId)return{notFound:false as const,invalidState:false as const,selfApproval:true as const};
      const status=contractVerb==="approve"?"approved":"rejected";
      await c.query("UPDATE platform.approval_requests SET status=$2,decided_by=$3::uuid,decided_at=now(),decision_note=$4 WHERE id=$1::uuid",[approval.rows[0].id,status,userId,contractVerb==="approve"?"Approved by platform admin":"Rejected by platform admin"]);
      await c.query("UPDATE platform.contracts SET status=CASE WHEN $2='approved' THEN 'active' ELSE 'cancelled' END,approved_by=CASE WHEN $2='approved' THEN $3::uuid ELSE approved_by END,approved_at=CASE WHEN $2='approved' THEN now() ELSE approved_at END,updated_at=now() WHERE id=$1::uuid",[contractId,status,userId]);
