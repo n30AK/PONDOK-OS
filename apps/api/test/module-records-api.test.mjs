@@ -198,6 +198,20 @@ test("encrypts student health fields before persistence and keeps audit metadata
   }
 });
 
+test("student health records require the dedicated permission before any sensitive query", async () => {
+  let queryCount = 0;
+  const pool = { async query(sql) {
+    queryCount += 1;
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.read"])] };
+    throw new Error("sensitive health query must not run without dedicated permission");
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("GET", "/v1/modules/student-health-profiles"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(JSON.parse(res.body), { error: "permission_required", permission: "academic.students.health.read" });
+  assert.equal(queryCount, 1);
+});
+
 test("fails closed when the student health encryption key is missing", async () => {
   const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
   delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
