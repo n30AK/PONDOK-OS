@@ -37,7 +37,7 @@ type EnterpriseArea = Exclude<Section, "overview" | "institutions" | "activation
 const enterpriseAreas: Record<EnterpriseArea, { title: string; description: string; status: string; tables: string[]; next: string }> = {
   crm: { title: "CRM & Customer Success", description: "Siklus prospek, pelanggan, kontak, komunikasi, onboarding, dan retensi pelanggan PONDOK OS.", status: "Fondasi ERP tersedia · API dan workspace belum dihubungkan", tables: ["crm_leads", "customers", "customer_contacts"], next: "API CRM, pipeline prospek, aktivitas sales, customer onboarding, dan histori komunikasi." },
   catalog: { title: "Product & Module Catalog", description: "Katalog produk, paket layanan, modul, versi, harga, entitlement, dan marketplace modul.", status: "Fondasi katalog tersedia · provisioning belum dihubungkan", tables: ["product_catalog", "module_catalog", "module_entitlements"], next: "Editor katalog, versi dan harga, dependency modul, kompatibilitas, serta approval publikasi." },
-  contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "Fondasi kontrak tersedia · workflow belum dihubungkan", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Pembuatan penawaran, persetujuan kontrak, siklus renewal, dan entitlement per instalasi." },
+  contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "API penawaran dan persetujuan kontrak terhubung · subscription dan billing lanjutan menyusul", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Subscription, renewal automation, perubahan paket, dan entitlement per instalasi." },
   billing: { title: "Billing, Invoice & Pembayaran", description: "Tagihan modul, biaya implementasi dan maintenance, invoice, penerimaan pembayaran, piutang, dan rekonsiliasi.", status: "Fondasi invoice dan pembayaran tersedia · transaksi UI belum dihubungkan", tables: ["invoices", "invoice_lines", "payments", "maintenance_agreements", "maintenance_service_events"], next: "API pembuatan invoice idempotent, penerbitan dokumen, pencatatan pembayaran, aging piutang, dan credit note." },
   accounting: { title: "Accounting & General Ledger", description: "Chart of accounts, jurnal umum, buku besar, neraca saldo, rekonsiliasi, tutup buku, dan audit trail.", status: "Fondasi double-entry tersedia · posting transaksi dan laporan belum dihubungkan", tables: ["chart_of_accounts", "journal_entries", "journal_lines"], next: "API posting invoice/pembayaran ke jurnal seimbang, reversal, periode akuntansi, dan laporan keuangan." },
   support: { title: "Customer Support, Incident & SLA", description: "Tiket dukungan, klasifikasi dampak, eskalasi, insiden, SLA, root cause, dan komunikasi penyelesaian.", status: "Fondasi support dan incident tersedia · helpdesk belum dihubungkan", tables: ["support_cases", "installation_incidents"], next: "API tiket, antrean agen, SLA timer, eskalasi, notifikasi, dan portal dukungan klien." },
@@ -257,7 +257,8 @@ export default function App() {
       </>}
       {section === "crm" && <CRMWorkspace/>}
       {section === "catalog" && <ProductCatalogWorkspace/>}
-      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && section !== "catalog" && (() => {
+      {section === "contracts" && <CommercialWorkspace/>}
+      {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && section !== "catalog" && section !== "contracts" && (() => {
         const area = enterpriseAreas[section as EnterpriseArea];
         return <section className="panel enterprise-workspace">
           <PanelTitle title={area.title} subtitle={area.description}/>
@@ -279,6 +280,102 @@ type CrmCustomer = { id:string; customerCode:string; legalName:string; displayNa
 type CrmContact = {id:string;customerId:string;fullName:string;positionTitle?:string|null;email?:string|null;phone?:string|null;isPrimary:boolean};
 
 type CatalogProduct={id:string;productCode:string;productName:string;description?:string|null;productType:string;basePrice:string|number;currency:string;billingInterval?:string|null;isActive:boolean;createdAt:string};
+
+type CommercialQuote={id:string;quoteNumber:string;customerId:string;customerName:string;status:string;currency:string;subtotal:string|number;discountTotal:string|number;taxTotal:string|number;grandTotal:string|number;validUntil?:string|null;createdAt:string};
+type CommercialContract={id:string;contractNumber:string;customerId:string;customerName:string;quoteId:string;status:string;startsOn?:string|null;endsOn?:string|null;renewalMode:string;createdAt:string};
+function CommercialWorkspace(){
+ const [quotes,setQuotes]=useState<CommercialQuote[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]),[customers,setCustomers]=useState<CrmCustomer[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
+ const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const [quoteForm,setQuoteForm]=useState({customerId:"",productId:"",quantity:"1",unitPrice:"0",discountAmount:"0",taxAmount:"0",validUntil:""});
+ const [contractForm,setContractForm]=useState({quoteId:"",startsOn:"",endsOn:"",renewalMode:"manual"});
+ const load=useCallback(async()=>{
+  setBusy(true);setError("");
+  try{
+   const [q,k,c,p]=await Promise.all([
+    request<{items:CommercialQuote[]}>("/v1/platform/erp/quotes"),
+    request<{items:CommercialContract[]}>("/v1/platform/erp/contracts"),
+    request<{items:CrmCustomer[]}>("/v1/platform/erp/customers?limit=100"),
+    request<{items:CatalogProduct[]}>("/v1/platform/erp/catalog?activeOnly=true")
+   ]);
+   setQuotes(q.items??[]);setContracts(k.items??[]);setCustomers(c.items??[]);setProducts(p.items??[]);
+   if(!quoteForm.customerId&&c.items?.[0])setQuoteForm(x=>({...x,customerId:c.items![0].id}));
+   if(!contractForm.quoteId){const approved=(q.items??[]).find(x=>["approved","accepted"].includes(x.status));if(approved)setContractForm(x=>({...x,quoteId:approved.id}));}
+  }catch(e){setError(e instanceof Error?e.message:"Data penawaran dan kontrak gagal dimuat.");}
+  finally{setBusy(false);}
+ },[quoteForm.customerId,contractForm.quoteId]);
+ useEffect(()=>{void load();},[load]);
+ async function createQuote(event:FormEvent){
+  event.preventDefault();setSaving(true);setError("");setNotice("");
+  try{
+   const product=products.find(x=>x.id===quoteForm.productId);
+   await request<CommercialQuote>("/v1/platform/erp/quotes",{method:"POST",body:JSON.stringify({
+    customerId:quoteForm.customerId,validUntil:quoteForm.validUntil||null,currency:"IDR",
+    lines:[{productId:quoteForm.productId,description:product?.productName??"Produk",quantity:Number(quoteForm.quantity),unitPrice:Number(quoteForm.unitPrice),discountAmount:Number(quoteForm.discountAmount),taxAmount:Number(quoteForm.taxAmount)}]
+   })});
+   setNotice("Penawaran draft berhasil dibuat.");await load();
+  }catch(e){setError(e instanceof Error?e.message:"Penawaran gagal dibuat.");}
+  finally{setSaving(false);}
+ }
+ async function quoteAction(id:string,action:"submit"|"approve"|"reject"){
+  setSaving(true);setError("");setNotice("");
+  try{await request<{id:string;status:string}>(`/v1/platform/erp/quotes/${id}/${action}`,{method:"PATCH"});setNotice(`Penawaran berhasil diproses: ${action}.`);await load();}
+  catch(e){setError(e instanceof Error?e.message:"Perubahan penawaran ditolak.");}
+  finally{setSaving(false);}
+ }
+ async function createContract(event:FormEvent){
+  event.preventDefault();setSaving(true);setError("");setNotice("");
+  try{await request<CommercialContract>("/v1/platform/erp/contracts",{method:"POST",body:JSON.stringify({
+   quoteId:contractForm.quoteId,startsOn:contractForm.startsOn||null,endsOn:contractForm.endsOn||null,renewalMode:contractForm.renewalMode
+  })});setNotice("Draft kontrak berhasil dibuat.");await load();}
+  catch(e){setError(e instanceof Error?e.message:"Kontrak gagal dibuat.");}
+  finally{setSaving(false);}
+ }
+ async function contractAction(id:string,action:"submit"|"approve"|"reject"){
+  setSaving(true);setError("");setNotice("");
+  try{await request<{id:string;status:string}>(`/v1/platform/erp/contracts/${id}/${action}`,{method:"PATCH"});setNotice(`Kontrak berhasil diproses: ${action}.`);await load();}
+  catch(e){setError(e instanceof Error?e.message:"Perubahan kontrak ditolak.");}
+  finally{setSaving(false);}
+ }
+ const money=(value:string|number,currency="IDR")=>new Intl.NumberFormat("id-ID",{style:"currency",currency,maximumFractionDigits:0}).format(Number(value));
+ return <div className="crm-workspace"><section className="panel"><PanelTitle title="Penawaran, Persetujuan & Kontrak" subtitle="Alur komersial berjenjang. Penawaran dan kontrak tidak otomatis menerbitkan tagihan."/>
+  {error&&<div className="alert warning">{error}</div>}{notice&&<div className="alert">{notice}</div>}
+  <div className="stat-grid crm-stats">
+   <div className="stat-card"><div className="stat-top"><span>Penawaran</span><i>▤</i></div><strong>{quotes.length}</strong><small>Total penawaran</small></div>
+   <div className="stat-card"><div className="stat-top"><span>Menunggu persetujuan</span><i>⌛</i></div><strong>{quotes.filter(x=>x.status==="submitted").length+contracts.filter(x=>x.status==="review").length}</strong><small>Penawaran dan kontrak</small></div>
+   <div className="stat-card"><div className="stat-top"><span>Kontrak aktif</span><i>✓</i></div><strong>{contracts.filter(x=>x.status==="active").length}</strong><small>Kontrak disetujui</small></div>
+   <div className="stat-card"><div className="stat-top"><span>Nilai draft & disetujui</span><i>Rp</i></div><strong>{money(quotes.filter(x=>["draft","submitted","approved","accepted"].includes(x.status)).reduce((s,x)=>s+Number(x.grandTotal),0))}</strong><small>Nilai seluruh penawaran</small></div>
+  </div>
+  <form className="panel crm-form commercial-form" onSubmit={createQuote}><h3>Buat penawaran</h3>
+   <label>Pelanggan<select required value={quoteForm.customerId} onChange={e=>setQuoteForm({...quoteForm,customerId:e.target.value})}><option value="">Pilih pelanggan</option>{customers.map(x=><option key={x.id} value={x.id}>{x.displayName} · {x.customerCode}</option>)}</select></label>
+   <label>Produk / layanan<select required value={quoteForm.productId} onChange={e=>{const p=products.find(x=>x.id===e.target.value);setQuoteForm({...quoteForm,productId:e.target.value,unitPrice:p?String(Number(p.basePrice)):quoteForm.unitPrice});}}><option value="">Pilih katalog</option>{products.map(x=><option key={x.id} value={x.id}>{x.productName} · {x.productCode}</option>)}</select></label>
+   <label>Kuantitas<input type="number" min="0.001" max="1000000" step="0.001" required value={quoteForm.quantity} onChange={e=>setQuoteForm({...quoteForm,quantity:e.target.value})}/></label>
+   <label>Harga satuan (IDR)<input type="number" min="0" step="0.01" required value={quoteForm.unitPrice} onChange={e=>setQuoteForm({...quoteForm,unitPrice:e.target.value})}/></label>
+   <label>Diskon (IDR)<input type="number" min="0" step="0.01" value={quoteForm.discountAmount} onChange={e=>setQuoteForm({...quoteForm,discountAmount:e.target.value})}/></label>
+   <label>Pajak (IDR)<input type="number" min="0" step="0.01" value={quoteForm.taxAmount} onChange={e=>setQuoteForm({...quoteForm,taxAmount:e.target.value})}/></label>
+   <label>Berlaku sampai<input type="date" value={quoteForm.validUntil} onChange={e=>setQuoteForm({...quoteForm,validUntil:e.target.value})}/></label>
+   <button className="primary" disabled={saving||!customers.length||!products.length}>Buat draft penawaran</button>
+   {(!customers.length||!products.length)&&<p className="muted">Tambahkan pelanggan dan katalog produk terlebih dahulu.</p>}
+  </form>
+ </section>
+ <section className="panel"><PanelTitle title="Daftar penawaran" subtitle="Harga tersimpan sebagai snapshot pada setiap baris penawaran."/>
+  {busy?<div className="empty">Memuat…</div>:quotes.length===0?<Empty text="Belum ada penawaran."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Nilai</th><th>Status</th><th>Berlaku</th><th>Aksi</th></tr></thead><tbody>{quotes.map(x=><tr key={x.id}><td>{x.quoteNumber}</td><td>{x.customerName}</td><td>{money(x.grandTotal,x.currency)}</td><td><span className="pill neutral">{label(x.status)}</span></td><td>{x.validUntil?date(x.validUntil):"—"}</td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void quoteAction(x.id,"submit")}>Ajukan</button>:x.status==="submitted"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void quoteAction(x.id,"approve")}>Setujui</button><button className="secondary" disabled={saving} onClick={()=>void quoteAction(x.id,"reject")}>Tolak</button></div>: "—"}</td></tr>)}</tbody></table></div>}
+ </section>
+ <section className="panel"><PanelTitle title="Buat kontrak dari penawaran disetujui" subtitle="Kontrak hanya dapat dibuat dari penawaran berstatus approved atau accepted."/>
+  <form className="panel crm-form commercial-form" onSubmit={createContract}>
+   <label>Penawaran disetujui<select required value={contractForm.quoteId} onChange={e=>setContractForm({...contractForm,quoteId:e.target.value})}><option value="">Pilih penawaran</option>{quotes.filter(x=>["approved","accepted"].includes(x.status)).map(x=><option key={x.id} value={x.id}>{x.quoteNumber} · {x.customerName} · {money(x.grandTotal,x.currency)}</option>)}</select></label>
+   <label>Mulai<input type="date" value={contractForm.startsOn} onChange={e=>setContractForm({...contractForm,startsOn:e.target.value})}/></label>
+   <label>Berakhir<input type="date" value={contractForm.endsOn} onChange={e=>setContractForm({...contractForm,endsOn:e.target.value})}/></label>
+   <label>Perpanjangan<select value={contractForm.renewalMode} onChange={e=>setContractForm({...contractForm,renewalMode:e.target.value})}><option value="manual">Manual</option><option value="automatic">Otomatis</option><option value="none">Tidak diperpanjang</option></select></label>
+   <button className="primary" disabled={saving||!quotes.some(x=>["approved","accepted"].includes(x.status))}>Buat draft kontrak</button>
+  </form>
+ </section>
+ <section className="panel"><PanelTitle title="Kontrak pelanggan" subtitle="Aktivasi membutuhkan persetujuan Super Admin kedua; pemohon tidak dapat menyetujui permintaannya sendiri."/>
+  {contracts.length===0?<Empty text="Belum ada kontrak."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Periode</th><th>Perpanjangan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{contracts.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.startsOn?date(x.startsOn):"—"} – {x.endsOn?date(x.endsOn):"—"}</td><td>{label(x.renewalMode)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"submit")}>Ajukan aktivasi</button>:x.status==="review"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void contractAction(x.id,"approve")}>Aktifkan</button><button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
+ </section>
+ <p className="muted">Belum ada invoice, penerimaan pembayaran, subscription, atau jurnal otomatis pada tahap ini. Tagihan hanya akan dibuat setelah aturan komersial dan pembayaran disambungkan pada tahap berikutnya.</p>
+ </div>;
+}
+
 function ProductCatalogWorkspace(){
  const [items,setItems]=useState<CatalogProduct[]>([]),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [form,setForm]=useState({productName:"",description:"",productType:"subscription",basePrice:"0",currency:"IDR",billingInterval:"monthly"});
