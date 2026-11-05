@@ -130,7 +130,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
     const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
     const cell = (value: unknown) => {
       let text = display(value);
-      if (/^[=+@\\-\\t\\r]/.test(text)) text = "'" + text;
+      if (/^[=+@\-\t\r]/.test(text)) text = "'" + text;
       return '"' + text.replaceAll('"', '""') + '"';
     };
     const csv = "\uFEFF" + [columns.map(cell).join(","), ...rows.map((row) => columns.map((column) => cell(row[column])).join(","))].join("\r\n");
