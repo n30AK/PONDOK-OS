@@ -110,28 +110,50 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
   const [datasets, setDatasets] = useState<OperationalDataset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
+  const [query, setQuery] = useState("");
+  const [refreshedAt, setRefreshedAt] = useState("");
+  const load = useCallback(async () => {
     setLoading(true); setError("");
-    void request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean }>("/v1/platform/erp/operations/" + domain)
-      .then((result) => { if (active) setDatasets(result.datasets ?? []); })
-      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    try {
+      const result = await request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean }>("/v1/platform/erp/operations/" + domain);
+      setDatasets(result.datasets ?? []);
+      setRefreshedAt(new Date().toLocaleString("id-ID"));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional.");
+    } finally { setLoading(false); }
   }, [domain]);
+  useEffect(() => { void load(); }, [load]);
   const display = (value: unknown) => value === null || value === undefined || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  const visibleRows = (rows: Array<Record<string, unknown>>) => rows.filter((row) => !query.trim() || Object.values(row).some((value) => display(value).toLowerCase().includes(query.trim().toLowerCase())));
+  const exportCsv = (dataset: OperationalDataset) => {
+    const rows = visibleRows(dataset.rows);
+    const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
+    const cell = (value: unknown) => {
+      let text = display(value);
+      if (/^[=+@\-\t\r]/.test(text)) text = "'" + text;
+      return '"' + text.replaceAll('"', '""') + '"';
+    };
+    const csv = "\uFEFF" + [columns.map(cell).join(","), ...rows.map((row) => columns.map((column) => cell(row[column])).join(","))].join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `pondok-command-center-${domain}-${dataset.key}-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+  };
   return <section className="enterprise-workspace">
-    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Read-only · data berasal dari database platform. Perubahan transaksi belum diaktifkan pada layar ini.</span></div>
+    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Data aktual dari database platform. Workspace ini saat ini read-only; tombol ekspor hanya mengunduh data yang telah diizinkan API.</span></div>
+    <div className="toolbar"><input aria-label="Cari data domain" placeholder="Cari pada seluruh tabel domain ini…" value={query} onChange={(event) => setQuery(event.target.value)}/><div className="inline-actions"><span className="muted">{refreshedAt ? "Diperbarui " + refreshedAt : ""}</span><button className="secondary" onClick={() => void load()} disabled={loading}>{loading ? "Memuat…" : "↻ Muat ulang"}</button></div></div>
     {loading && <div className="panel"><p className="muted">Memuat dataset operasional…</p></div>}
-    {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? ((domain === "procurement" || domain === "inventory") ? "Migration 0024 sudah diuji pada branch Neon sementara. Data Procurement dan Inventory akan tampil setelah migration disetujui dan diterapkan ke Development." : "Migration 0025 sedang disiapkan dan diuji. Data HRD, Internal Operations, dan Document Center akan tampil setelah migration disetujui dan diterapkan ke Development.") : error}</div></div>}
+    {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? ((domain === "procurement" || domain === "inventory") ? "Migration 0024 sudah diuji pada branch Neon sementara, tetapi belum diterapkan. Aktivasi database menunggu persetujuan eksplisit." : "Migration 0025 belum diterapkan. HRD, Internal Operations, dan Document Center tidak akan menampilkan data sebelum migrasi disetujui dan diterapkan.") : error}</div></div>}
     {!loading && !error && datasets.map((dataset) => {
+      const rows = visibleRows(dataset.rows);
       const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
       return <section className="panel" key={dataset.key}>
-        <PanelTitle title={dataset.title} subtitle={dataset.returned + " record · maksimum 100 terbaru"}/>
-        {dataset.rows.length === 0 ? <Empty text="Belum ada data operasional yang tercatat."/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{dataset.rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
+        <div className="panel-title"><div><h2>{dataset.title}</h2><p>{rows.length} dari {dataset.returned} record · maksimum 100 terbaru</p></div>{dataset.rows.length > 0 && <button className="secondary" onClick={() => exportCsv(dataset)}>Ekspor CSV</button>}</div>
+        {rows.length === 0 ? <Empty text={query ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada data operasional yang tercatat."}/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
       </section>;
     })}
-    {!loading && !error && <p className="muted">Tampilan ini hanya membaca data. Tidak ada job remote, persetujuan, perubahan garansi, atau tindakan pemulihan yang dijalankan otomatis.</p>}
+    {!loading && !error && <p className="muted">Tidak ada tindakan berisiko otomatis. Perubahan transaksi, persetujuan, klaim garansi, remote job, dan pemulihan hanya boleh diaktifkan setelah API, otorisasi, audit, dan persetujuan yang sesuai tersedia.</p>}
   </section>;
 }
 export default function App() {
@@ -307,7 +329,7 @@ export default function App() {
   </div>;
 }
 
-type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; createdAt:string };
+type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; nextFollowUpAt?:string|null; createdAt:string };
 type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; createdAt:string };
 type CrmContact = {id:string;customerId:string;fullName:string;positionTitle?:string|null;email?:string|null;phone?:string|null;isPrimary:boolean};
 
@@ -515,6 +537,7 @@ function CRMWorkspace(){
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
   const [query,setQuery]=useState("");
+  const [stageDrafts,setStageDrafts]=useState<Record<string,string>>({});
   const [lead,setLead]=useState({organizationName:"",contactName:"",email:"",phone:"",source:"manual",stage:"new",estimatedValue:"",notes:""});
   const [customer,setCustomer]=useState({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:""});
   const load=useCallback(async()=>{
@@ -544,6 +567,19 @@ function CRMWorkspace(){
       setLead({organizationName:"",contactName:"",email:"",phone:"",source:"manual",stage:"new",estimatedValue:"",notes:""});
       setNotice("Prospek berhasil disimpan.");await load();
     }catch(e){setError(e instanceof Error?e.message:"Prospek gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+
+  async function updateLeadStage(item:CrmLead){
+    const stage=stageDrafts[item.id]??item.stage;
+    if(stage===item.stage)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await request<CrmLead>(`/v1/platform/erp/leads/${item.id}`,{method:"PATCH",body:JSON.stringify({stage})});
+      setStageDrafts(current=>{const next={...current};delete next[item.id];return next;});
+      setNotice(`Tahap prospek ${item.leadNumber} diperbarui menjadi ${label(stage)}.`);
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Tahap prospek gagal diperbarui.");}
     finally{setSaving(false);}
   }
 
@@ -611,7 +647,7 @@ function CRMWorkspace(){
       </div>
       <div className="toolbar crm-toolbar"><input placeholder="Cari prospek atau pelanggan…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="secondary" onClick={()=>void load()} disabled={busy}>{busy?"Memuat…":"Muat ulang"}</button></div>
     </section>
-    <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><span className="pill neutral">{label(x.stage)}</span></td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
+    <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><div className="inline-actions"><select aria-label={`Tahap prospek ${x.leadNumber}`} value={stageDrafts[x.id]??x.stage} onChange={e=>setStageDrafts(current=>({...current,[x.id]:e.target.value}))}>{["new","qualified","discovery","demo","proposal","negotiation","won","lost","dormant"].map(stage=><option key={stage} value={stage}>{label(stage)}</option>)}</select>{(stageDrafts[x.id]??x.stage)!==x.stage&&<button className="primary" disabled={saving} onClick={()=>void updateLeadStage(x)}>Simpan</button>}</div></td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}{x.nextFollowUpAt&&<small>Follow-up: {date(x.nextFollowUpAt)}</small>}</td></tr>)}</tbody></table></div>}</section>
     <section className="panel"><PanelTitle title="Daftar pelanggan" subtitle="Data aktual dari platform.customers"/>{busy?<div className="empty">Memuat data…</div>:visibleCustomers.length===0?<Empty text="Belum ada pelanggan yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama legal</th><th>Nama tampilan</th><th>Jenis</th><th>Status</th><th>Dibuat</th></tr></thead><tbody>{visibleCustomers.map(x=><tr key={x.id}><td>{x.customerCode}</td><td>{x.legalName}</td><td><b>{x.displayName}</b><small>{x.billingEmail||"—"}</small></td><td>{label(x.entityType)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
 
     <section className="panel"><PanelTitle title="Kontak & Customer 360" subtitle="Kontak resmi pelanggan, penanggung jawab, dan kanal komunikasi."/>
@@ -626,7 +662,7 @@ function CRMWorkspace(){
       </form>}
       {!selectedCustomerId?<Empty text="Tambahkan pelanggan terlebih dahulu untuk mengelola kontak."/>:contacts.length===0?<Empty text="Belum ada kontak untuk pelanggan ini."/>:<div className="table-wrap"><table><thead><tr><th>Nama</th><th>Jabatan</th><th>Email</th><th>Telepon</th><th>Jenis</th></tr></thead><tbody>{contacts.map(x=><tr key={x.id}><td><b>{x.fullName}</b></td><td>{x.positionTitle||"—"}</td><td>{x.email||"—"}</td><td>{x.phone||"—"}</td><td>{x.isPrimary?<span className="pill success">Utama</span>:<span className="pill neutral">Kontak</span>}</td></tr>)}</tbody></table></div>}
     </section>
-    <p className="muted">Tahap berikutnya: aktivitas sales, histori komunikasi, penawaran, kontrak, subscription, dan billing.</p>
+    <p className="muted">Pipeline mendukung perubahan tahap yang diaudit di API. Penawaran, persetujuan komersial, kontrak, invoice, pembayaran, dan jurnal tersedia pada workspace masing-masing; histori komunikasi terperinci masih menjadi pengembangan terpisah.</p>
   </div>;
 }
 
