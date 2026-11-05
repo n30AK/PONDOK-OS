@@ -40,3 +40,32 @@ test("non Super Admin cannot read commercial records",async()=>{
  assert.equal(res.status,403);
  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT k.id")));
 });
+
+test("quote creation stores a balanced price snapshot and audit event transactionally",async()=>{
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id FROM platform.customers"))return{rows:[{id:customerId}]};
+  if(sql.startsWith("SELECT id FROM platform.product_catalog"))return{rows:[{id:"423e4567-e89b-42d3-a456-426614174000"}]};
+  if(sql.startsWith("INSERT INTO platform.quotes"))return{rows:[{id:quoteId,quoteNumber:"QT-1",grandTotal:"190.00"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req("/v1/platform/erp/quotes","POST",{customerId,lines:[{productId:"423e4567-e89b-42d3-a456-426614174000",description:"Lisensi PONDOK",quantity:2,unitPrice:100,discountAmount:10,taxAmount:0}]}),res,pool,userId);
+ assert.equal(res.status,201);
+ assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.quote_lines")));
+ assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")));
+ assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+test("quote requester cannot approve their own pending approval request",async()=>{
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,status,created_by,discount_total"))return{rows:[{id:quoteId,status:"submitted",created_by:"423e4567-e89b-42d3-a456-426614174000",discount_total:"0.00"}]};
+  if(sql.startsWith("SELECT id,requested_by FROM platform.approval_requests"))return{rows:[{id:"523e4567-e89b-42d3-a456-426614174000",requested_by:userId}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/quotes/${quoteId}/approve`,"PATCH"),res,pool,userId);
+ assert.equal(res.status,403);
+ assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.approval_requests")));
+ assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
+});
