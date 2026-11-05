@@ -103,7 +103,7 @@ function toFormValue(field:Field,row:Row):string|boolean{
 export function getModuleResourceLabel(key:string):string { return key==="all"?"Semua Modul":RESOURCES.find(resource=>resource.key===key)?.label??"Modul"; }
 
 function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange}:Props) {
- const available=useMemo(()=>RESOURCES.filter(r=>permissions.includes(r.read)),[permissions]);
+ const available=RESOURCES;
  const groups=useMemo(()=>["Semua Modul","Master Data",...Array.from(new Set(available.map(r=>r.group)))],[available]);
  const requestedGroup=initialResourceKey==="all"?"Semua Modul":RESOURCES.find(r=>r.key===initialResourceKey)?.group;
  const initialResource=initialResourceKey==="all"?available[0]:available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup);
@@ -138,15 +138,15 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   return body as T;
  },[organizationId]);
  const load=useCallback(async()=>{
-  if(!resource)return;
+  if(!resource || !permissions.includes(resource.read)){setRows([]);setBusy(false);return;}
   setBusy(true);setError("");
   try{const result=await request<{data:Row[]}>(resource.endpoint);setRows(result.data??[]);}
   catch(e){setError(e instanceof Error?e.message:"Gagal memuat data modul.");}
   finally{setBusy(false);}
- },[request,resource]);
+ },[request,resource,permissions]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{
-  if(!resource)return;
+  if(!resource || !permissions.includes(resource.read)){setLookups({});return;}
   let active=true;
   const sources=Array.from(new Set(resource.fields.filter(f=>f.type==="relation"&&f.source).map(f=>f.source!)));
   void Promise.all(sources.map(async source=>{
@@ -161,7 +161,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
    }catch{return [source,[]] as const;}
   })).then(entries=>{if(active)setLookups(Object.fromEntries(entries));});
   return()=>{active=false;};
- },[organizationId,request,resource]);
+ },[organizationId,request,resource,permissions]);
  useEffect(()=>{setForm({});setShowForm(false);setEditingRow(null);},[resourceKey]);
  const beginEdit=(row:Row)=>{
   if(!resource||!canWrite||!row.id)return;
@@ -202,8 +202,8 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   }
   return toLabel(value);
  };
- if(available.length===0)return <div className="table-card"><h2>Modul belum dapat diakses</h2><p className="muted">Akun ini belum memiliki izin untuk membaca modul operasional. Hubungi administrator institusi.</p></div>;
- if(!resource)return <div className="table-card"><h2>{requestedLabel}</h2><p className="muted">Menu ini tidak dialihkan ke modul lain. Akun Anda belum memiliki izin baca yang diperlukan untuk membuka data ini{requestedResource?" (izin: "+requestedResource.read+")":""}. Hubungi administrator institusi untuk penyesuaian hak akses.</p></div>;
+ if(!resource)return <div className="table-card"><h2>{requestedLabel}</h2><p className="muted">Pilih salah satu menu modul untuk melanjutkan.</p></div>;
+ if(!permissions.includes(resource.read))return <div className="table-card"><h2>{resource.label}</h2><p className="muted">Menu ini tersedia, tetapi akun Anda belum memiliki izin baca <strong>{resource.read}</strong>. Hubungi administrator institusi untuk meminta akses. Data tetap dilindungi oleh pemeriksaan izin di server.</p></div>;
  return <section className="operations-panel">
   <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI / {resource.group.toUpperCase()}</div><h2>{resource.label}</h2><p>{guidance?.purpose??"Kelola data sesuai konteks modul dan hak akses organisasi."}</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
   <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=g==="Semua Modul"?available[0]:g==="Master Data"?available.find(r=>MASTER_DATA_KEYS.has(r.key)):available.find(r=>r.group===g);if(next){setResourceKey(next.key);internalSelection.current=initialResourceKey!==(g==="Semua Modul"?"all":next.key);onResourceChange?.(g==="Semua Modul"?"all":next.key);}}}>{g}</button>)}</div>
