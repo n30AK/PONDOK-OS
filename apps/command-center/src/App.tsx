@@ -47,7 +47,8 @@ const enterpriseAreas: Record<EnterpriseArea, { title: string; description: stri
   reports: { title: "Management, Client & Assurance Reports", description: "Laporan kesehatan tiap klien, keamanan, ketersediaan, backup, SLA, pekerjaan maintenance, pendapatan, dan risiko.", status: "Fondasi laporan assurance tersedia · generator dan distribusi belum dihubungkan", tables: ["client_assurance_reports", "report_exports"], next: "Generator laporan periodik, PDF/CSV, approval, delivery log, dan pemisahan data klien vs stakeholder." },
   agents: { title: "AI Agent Operations & Automation", description: "Orkestrasi agent, pemantauan, diagnosis, rekomendasi, tugas terstruktur, approval, dan audit otomatisasi.", status: "Fondasi pencatatan agent tersedia · runtime agent belum aktif", tables: ["agent_runs", "security_findings", "remote_jobs", "approval_requests"], next: "Runtime agent deterministik lebih dahulu, policy engine, signed task manifest, approval berjenjang, dan audit eksekusi." },
 };
-\nconst API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const AUTH_URL = import.meta.env.VITE_NEON_AUTH_URL?.trim();
 const auth = AUTH_URL ? createAuthClient(AUTH_URL) : null;
 
