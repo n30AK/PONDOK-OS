@@ -57,6 +57,29 @@ CREATE TABLE IF NOT EXISTS platform.journal_lines (
 CREATE INDEX IF NOT EXISTS platform_journal_lines_account ON platform.journal_lines(account_id,journal_entry_id);
 CREATE INDEX IF NOT EXISTS platform_journal_lines_customer ON platform.journal_lines(customer_id,journal_entry_id);
 
+CREATE TABLE IF NOT EXISTS platform.client_repair_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  repair_log_id uuid NOT NULL REFERENCES platform.client_repair_logs(id),
+  customer_id uuid NOT NULL REFERENCES platform.customers(id),
+  installation_id uuid NOT NULL REFERENCES platform.installations(id),
+  event_type text NOT NULL CHECK (event_type IN ('opened','assigned','diagnosis_added','approval_requested','approval_granted','work_started','work_paused','testing_started','resolved','reopened','customer_acknowledged','closed')),
+  previous_status text, new_status text, event_summary_redacted text NOT NULL, evidence_reference text,
+  actor_type text NOT NULL CHECK (actor_type IN ('staff','agent','vendor','customer','system')),
+  actor_reference text, occurred_at timestamptz NOT NULL DEFAULT now(), correlation_id text
+);
+CREATE INDEX IF NOT EXISTS platform_client_repair_events_timeline ON platform.client_repair_events(repair_log_id,occurred_at);
+
+CREATE TABLE IF NOT EXISTS platform.warranty_claim_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  warranty_claim_id uuid NOT NULL REFERENCES platform.warranty_claims(id),
+  customer_id uuid NOT NULL REFERENCES platform.customers(id),
+  installation_id uuid NOT NULL REFERENCES platform.installations(id),
+  event_type text NOT NULL CHECK (event_type IN ('submitted','eligibility_reviewed','accepted','rejected','assigned','repair_started','waiting_customer','resolved','closed','reopened')),
+  event_summary_redacted text NOT NULL, evidence_reference text,
+  actor_type text NOT NULL CHECK (actor_type IN ('staff','agent','vendor','customer','system')),
+  actor_reference text, occurred_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS platform_warranty_claim_events_timeline ON platform.warranty_claim_events(warranty_claim_id,occurred_at);
 CREATE OR REPLACE FUNCTION platform.assert_journal_entry_balanced()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -67,6 +90,15 @@ BEGIN
   IF TG_TABLE_NAME = 'journal_entries' THEN
     target_id := COALESCE(NEW.id, OLD.id);
   ELSE
+    IF TG_OP = 'UPDATE' AND OLD.journal_entry_id IS DISTINCT FROM NEW.journal_entry_id THEN
+      SELECT total_debit,total_credit INTO expected_debit,expected_credit FROM platform.journal_entries WHERE id=OLD.journal_entry_id;
+      IF FOUND THEN
+        SELECT COALESCE(sum(debit),0),COALESCE(sum(credit),0) INTO actual_debit,actual_credit FROM platform.journal_lines WHERE journal_entry_id=OLD.journal_entry_id;
+        IF actual_debit <> expected_debit OR actual_credit <> expected_credit OR actual_debit <> actual_credit THEN
+          RAISE EXCEPTION 'Journal entry % became unbalanced after line reassignment',OLD.journal_entry_id;
+        END IF;
+      END IF;
+    END IF;
     target_id := COALESCE(NEW.journal_entry_id, OLD.journal_entry_id);
   END IF;
   SELECT total_debit,total_credit INTO expected_debit,expected_credit
@@ -104,7 +136,7 @@ ALTER TABLE platform.payments
 DO $security$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['chart_of_accounts','journal_entries','journal_lines'] LOOP
+  FOREACH t IN ARRAY ARRAY['chart_of_accounts','journal_entries','journal_lines','client_repair_events','warranty_claim_events'] LOOP
     EXECUTE format('ALTER TABLE platform.%I ENABLE ROW LEVEL SECURITY',t);
     EXECUTE format('ALTER TABLE platform.%I FORCE ROW LEVEL SECURITY',t);
     EXECUTE format('CREATE POLICY platform_admin_access ON platform.%I USING (platform.is_active_super_admin()) WITH CHECK (platform.is_active_super_admin())',t);
@@ -114,8 +146,8 @@ END
 $security$;
 
 REVOKE DELETE ON ALL TABLES IN SCHEMA platform FROM pondok_platform_runtime;
-REVOKE UPDATE,DELETE ON platform.journal_entries,platform.journal_lines FROM pondok_platform_runtime;
-GRANT SELECT,INSERT ON platform.journal_entries,platform.journal_lines TO pondok_platform_runtime;
+REVOKE UPDATE,DELETE ON platform.journal_entries,platform.journal_lines,platform.client_repair_events,platform.warranty_claim_events FROM pondok_platform_runtime;
+GRANT SELECT,INSERT ON platform.journal_entries,platform.journal_lines,platform.client_repair_events,platform.warranty_claim_events TO pondok_platform_runtime;
 REVOKE UPDATE,DELETE ON platform.audit_events FROM pondok_platform_runtime;
 
 DO $validation$
@@ -123,10 +155,10 @@ DECLARE protected_count integer;
 BEGIN
   SELECT count(*) INTO protected_count
   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE n.nspname='platform' AND c.relname=ANY(ARRAY['chart_of_accounts','journal_entries','journal_lines'])
+  WHERE n.nspname='platform' AND c.relname=ANY(ARRAY['chart_of_accounts','journal_entries','journal_lines','client_repair_events','warranty_claim_events'])
     AND c.relrowsecurity AND c.relforcerowsecurity;
-  IF protected_count <> 3 THEN
-    RAISE EXCEPTION 'Central Command accounting ledger RLS validation failed: % of 3 tables protected',protected_count;
+  IF protected_count <> 5 THEN
+    RAISE EXCEPTION 'Central Command ledger/service event RLS validation failed: % of 5 tables protected',protected_count;
   END IF;
 END
 $validation$;
