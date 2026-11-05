@@ -123,6 +123,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const contract=await c.query<{id:string;customer_id:string;quote_id:string|null;status:string}>("SELECT id,customer_id,quote_id,status FROM platform.contracts WHERE id=$1::uuid FOR UPDATE",[body.contractId]);
     if(!contract.rows[0])return{notFound:true as const,invalidState:false as const,item:null};
     if(contract.rows[0].status!=="active"||!contract.rows[0].quote_id)return{notFound:false as const,invalidState:true as const,item:null};
+    const existingInvoice=await c.query("SELECT id FROM platform.invoices WHERE contract_id=$1::uuid LIMIT 1",[body.contractId]);
+    if(existingInvoice.rows[0])return{notFound:false as const,invalidState:true as const,item:null};
     const quote=await c.query<{currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string}>("SELECT currency,subtotal,discount_total,tax_total,grand_total FROM platform.quotes WHERE id=$1::uuid",[contract.rows[0].quote_id]);
     if(!quote.rows[0])return{notFound:true as const,invalidState:false as const,item:null};
     const lines=await c.query<{product_id:string|null;description:string;quantity:string;unit_price:string;discount_amount:string;tax_amount:string;line_total:string}>("SELECT product_id,description,quantity,unit_price,discount_amount,tax_amount,line_total FROM platform.quote_lines WHERE quote_id=$1::uuid",[contract.rows[0].quote_id]);
@@ -180,6 +182,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const inv=invoice.rows[0],amount=amountCents(body.amount)!;
     const outstanding=Math.round((Number(inv.grand_total)-Number(inv.amount_paid))*100);
     if(!["issued","partially_paid","overdue"].includes(inv.status)||amount>outstanding)return{notFound:false as const,invalidState:true as const};
+    const pending=await c.query("SELECT id FROM platform.payments WHERE invoice_id=$1::uuid AND status='pending' LIMIT 1",[body.invoiceId]);
+    if(pending.rows[0])return{notFound:false as const,invalidState:true as const};
     const paymentReference=numberId("PAY");
     const result=await c.query(`INSERT INTO platform.payments(payment_reference,customer_id,invoice_id,amount,currency,payment_method,status,paid_at,external_reference) VALUES($1,$2::uuid,$3::uuid,$4::numeric,'IDR',$5,'pending',$6::timestamptz,$7) RETURNING id,payment_reference AS "paymentReference",customer_id AS "customerId",invoice_id AS "invoiceId",amount,payment_method AS "paymentMethod",status,paid_at AS "paidAt",created_at AS "createdAt"`,[paymentReference,inv.customer_id,body.invoiceId,money(amount),body.paymentMethod,body.paidAt??new Date().toISOString(),body.externalReference??null]);
     const row=result.rows[0] as {id:string}|undefined;if(!row)throw new Error("payment_insert_failed");
