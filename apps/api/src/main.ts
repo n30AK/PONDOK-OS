@@ -13,6 +13,7 @@ import { handleModuleRecordsRequest } from "./module-records.js";
 import { handlePlatformRequest, listUserOrganizations } from "./platform-admin.js";
 import { handlePlatformErpRequest } from "./platform-erp.js";
 import { handlePlatformCommercialRequest } from "./platform-commercial.js";
+import { handlePlatformBillingRequest } from "./platform-billing.js";
 import { handlePlatformCustomerCatalogRequest } from "./platform-customer-catalog.js";
 import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
@@ -116,6 +117,7 @@ export async function handleRequest(
       return;
     }
     try {
+      if (await handlePlatformBillingRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformCommercialRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformCustomerCatalogRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformErpRequest(request, response, dependencies.pool, identity.userId)) return;
