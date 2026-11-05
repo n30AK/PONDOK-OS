@@ -124,7 +124,7 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
    if(scoped.value?.notFound){reply(res,404,{error:"module_not_found"});return true;}
    if(scoped.value?.selfApproval){reply(res,403,{error:"release_requester_cannot_approve_own_release"});return true;}
    if(scoped.value?.invalidState){reply(res,409,{error:"module_release_transition_not_allowed"});return true;}
-   reply(res,200,{data:{id:catalogId,status:catalogVerb==="request-release"?"pending":scoped.value?.status??"pending"}});
+   reply(res,200,{data:{id:catalogId,status:catalogVerb==="request-release"?"pending":(scoped.value && "status" in scoped.value ? scoped.value.status : "pending")}});
   }catch{reply(res,500,{error:"module_release_transition_failed"});}
   return true;
  }
@@ -138,8 +138,8 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
    const scoped=await withAdmin(pool,userId,async c=>{
     const existing=await c.query<{id:string;order_number:string;customer_id:string;installation_id:string;module_id:string;contract_id:string;action:string;billing_mode:string}>("SELECT id,order_number,customer_id,installation_id,module_id,contract_id,action,billing_mode FROM platform.module_orders WHERE idempotency_key=$1",[key]);
     if(existing.rows[0]){
-     const x=existing.rows[0];if(x.customer_id!==body.customerId||x.installation_id!==body.installationId||x.module_id!==body.moduleId||x.action!==action)return{conflict:true as const,item:null};
-     return{conflict:false as const,item:{id:x.id,replayed:true}};
+     const x=existing.rows[0];if(x.customer_id!==body.customerId||x.installation_id!==body.installationId||x.module_id!==body.moduleId||x.contract_id!==body.contractId||x.action!==action||x.billing_mode!==billingMode)return{conflict:true as const,item:null};
+     return{conflict:false as const,item:{id:x.id,orderNumber:x.order_number,replayed:true}};
     }
     const installation=await c.query("SELECT id FROM platform.installations WHERE id=$1::uuid AND customer_id=$2::uuid AND status<>'revoked'",[body.installationId,body.customerId]);
     if(!installation.rows[0])return{invalidInstallation:true as const,notFound:false as const,notReady:false as const,item:null};
@@ -150,8 +150,9 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
     if(!contract.rows[0])return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:true as const,item:null};
     const product=await c.query<{id:string;base_price:string;currency:string;is_active:boolean}>("SELECT id,base_price,currency,is_active FROM platform.product_catalog WHERE product_code=$1",[ "MOD-"+module.rows[0].module_key.toUpperCase()]);
     if(!product.rows[0]||!product.rows[0].is_active)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:true as const,item:null};
-    const qty=quantityMilli(body.quantity??1)!,price=cents(Number(product.rows[0].base_price))!,discount=cents(body.discountAmount??0)!,tax=cents(body.taxAmount??0)!;
-    const gross=Number((BigInt(qty)*BigInt(price)+500n)/1000n);
+    const qty=quantityMilli(body.quantity??1)!,price=cents(Number(product.rows[0].base_price)),discount=cents(body.discountAmount??0)!,tax=cents(body.taxAmount??0)!;
+    if(price===null||(body.currency!==undefined&&body.currency!==product.rows[0].currency))return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:true as const,item:null};
+    const grossBig=(BigInt(qty)*BigInt(price)+500n)/1000n;if(grossBig>1_000_000_000_000n)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:true as const,item:null};const gross=Number(grossBig);
     if(billingMode!=="included"&&billingMode!=="complimentary"&&billingMode!=="trial"&&gross<=0)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:true as const,item:null};
     if(discount>gross||gross-discount+tax>1_000_000_000_000)return{invalidInstallation:false as const,notFound:false as const,notReady:false as const,invalidContract:false as const,productMissing:false as const,invalidPrice:true as const,item:null};
     if(billingMode!=="one_time"){
@@ -168,10 +169,10 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
     return{conflict:false as const,item:{id:order.id,orderNumber,replayed:false}};
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
-   if(scoped.value?.conflict){reply(res,409,{error:"idempotency_key_conflict"});return true;}
-   if(scoped.value?.invalidInstallation){reply(res,404,{error:"installation_not_found_for_customer"});return true;}
-   if(scoped.value?.notFound){reply(res,404,{error:"module_not_found"});return true;}
-   if(scoped.value?.notReady){reply(res,409,{error:"module_not_operational"});return true;}
+   if(scoped.value && "conflict" in scoped.value && scoped.value.conflict){reply(res,409,{error:"idempotency_key_conflict"});return true;}
+   if(scoped.value && "invalidInstallation" in scoped.value && scoped.value.invalidInstallation){reply(res,404,{error:"installation_not_found_for_customer"});return true;}
+   if(scoped.value && "notFound" in scoped.value && scoped.value.notFound){reply(res,404,{error:"module_not_found"});return true;}
+   if(scoped.value && "notReady" in scoped.value && scoped.value.notReady){reply(res,409,{error:"module_not_operational"});return true;}
    if("invalidContract"in (scoped.value??{})&&scoped.value?.invalidContract){reply(res,409,{error:"active_customer_contract_required"});return true;}
    if("productMissing"in (scoped.value??{})&&scoped.value?.productMissing){reply(res,409,{error:"module_product_catalog_not_active"});return true;}
    if("invalidPrice"in (scoped.value??{})&&scoped.value?.invalidPrice){reply(res,422,{error:"module_order_price_or_discount_invalid"});return true;}
