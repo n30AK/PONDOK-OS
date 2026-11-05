@@ -124,7 +124,7 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     if(!contract.rows[0])return{notFound:true as const,invalidState:false as const,item:null};
     if(contract.rows[0].status!=="active"||!contract.rows[0].quote_id)return{notFound:false as const,invalidState:true as const,item:null};
     const existingInvoice=await c.query("SELECT id FROM platform.invoices WHERE contract_id=$1::uuid LIMIT 1",[body.contractId]);
-    if(existingInvoice.rows[0])return{notFound:false as const,invalidState:true as const,item:null};
+    if(existingInvoice.rows[0])return{notFound:false as const,invalidState:false as const,duplicate:true as const,item:null};
     const quote=await c.query<{currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string}>("SELECT currency,subtotal,discount_total,tax_total,grand_total FROM platform.quotes WHERE id=$1::uuid",[contract.rows[0].quote_id]);
     if(!quote.rows[0])return{notFound:true as const,invalidState:false as const,item:null};
     const lines=await c.query<{product_id:string|null;description:string;quantity:string;unit_price:string;discount_amount:string;tax_amount:string;line_total:string}>("SELECT product_id,description,quantity,unit_price,discount_amount,tax_amount,line_total FROM platform.quote_lines WHERE quote_id=$1::uuid",[contract.rows[0].quote_id]);
@@ -134,10 +134,11 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const invoice=result.rows[0] as {id:string}|undefined;if(!invoice)throw new Error("invoice_insert_failed");
     for(const line of lines.rows)await c.query("INSERT INTO platform.invoice_lines(invoice_id,product_id,description,quantity,unit_price,discount_amount,tax_amount,line_total) VALUES($1::uuid,$2::uuid,$3,$4::numeric,$5::numeric,$6::numeric,$7::numeric,$8::numeric)",[invoice.id,line.product_id,line.description,line.quantity,line.unit_price,line.discount_amount,line.tax_amount,line.line_total]);
     await audit(c,userId,"billing.invoice.created","invoice",invoice.id,{contractId:body.contractId,lineCount:lines.rows.length});
-    return{notFound:false as const,invalidState:false as const,item:result.rows[0]};
+    return{notFound:false as const,invalidState:false as const,duplicate:false as const,item:result.rows[0]};
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
    if(scoped.value&&"notFound"in scoped.value&&scoped.value.notFound){reply(res,404,{error:"contract_or_quote_not_found"});return true;}
+   if(scoped.value&&"duplicate"in scoped.value&&scoped.value.duplicate){reply(res,409,{error:"invoice_already_exists_for_contract"});return true;}
    if(scoped.value&&"invalidState"in scoped.value&&scoped.value.invalidState){reply(res,409,{error:"active_contract_with_quote_required"});return true;}
    reply(res,201,{data:scoped.value?.item});
   }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:"invoice_create_failed"});}
