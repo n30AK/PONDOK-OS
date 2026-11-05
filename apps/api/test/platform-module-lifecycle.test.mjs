@@ -38,7 +38,7 @@ test("non Super Admin cannot seed module catalog",async()=>{
 test("module order creation requires an idempotency key before database mutation",async()=>{
  const {pool,calls}=createPool(async()=>({rows:[{allowed:true}]}));
  const res=response();
- await handlePlatformModuleLifecycleRequest(req("/v1/platform/erp/module-orders","POST",{customerId,installationId,moduleId,contractId}),res,userId?pool:pool,userId);
+ await handlePlatformModuleLifecycleRequest(req("/v1/platform/erp/module-orders","POST",{customerId,installationId,moduleId,contractId}),res,pool,userId);
  assert.equal(res.status,422);
  assert.equal(JSON.parse(res.body).error,"idempotency_key_required");
  assert.equal(calls.length,0);
