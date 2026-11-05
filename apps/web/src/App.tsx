@@ -29,10 +29,10 @@ const modules = [
 ];
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ?? "").replace(/\\D/g, "");
+const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
 
 function SupportLink() {
-  if (!/^[1-9]\\d{7,14}$/.test(SUPPORT_WHATSAPP_NUMBER)) return null;
+  if (!/^[1-9]\d{7,14}$/.test(SUPPORT_WHATSAPP_NUMBER)) return null;
   const message = encodeURIComponent("Assalamu’alaikum, saya pengguna PONDOK OS dan membutuhkan bantuan terkait: ");
   return <a className="support-link" href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${message}`} target="_blank" rel="noopener noreferrer">WhatsApp Business · Bantuan & dukungan</a>;
 }
