@@ -131,8 +131,8 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
     return{notFound:false as const,invalidProduct:false as const,item:header.rows[0]};
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
-   if(scoped.value?.notFound){reply(res,404,{error:"customer_not_found"});return true;}
-   if(scoped.value?.invalidProduct){reply(res,422,{error:"inactive_or_unknown_product"});return true;}
+   if(scoped.value && "notFound" in scoped.value && scoped.value.notFound){reply(res,404,{error:"customer_not_found"});return true;}
+   if(scoped.value && "invalidProduct" in scoped.value && scoped.value.invalidProduct){reply(res,422,{error:"inactive_or_unknown_product"});return true;}
    reply(res,201,{data:scoped.value?.item});
   }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:"quote_create_failed"});}
   return true;
@@ -155,9 +155,9 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
     return{notFound:false as const,invalidState:false as const,duplicate:false as const,item:result.rows[0]};
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
-   if(scoped.value?.notFound){reply(res,404,{error:"quote_not_found"});return true;}
-   if(scoped.value?.invalidState){reply(res,409,{error:"quote_must_be_approved_before_contract"});return true;}
-   if(scoped.value?.duplicate){reply(res,409,{error:"contract_already_exists_for_quote"});return true;}
+   if(scoped.value && "notFound" in scoped.value && scoped.value.notFound){reply(res,404,{error:"quote_not_found"});return true;}
+   if(scoped.value && "invalidState" in scoped.value && scoped.value.invalidState){reply(res,409,{error:"quote_must_be_approved_before_contract"});return true;}
+   if(scoped.value && "duplicate" in scoped.value && scoped.value.duplicate){reply(res,409,{error:"contract_already_exists_for_quote"});return true;}
    reply(res,201,{data:scoped.value?.item});
   }catch(e){reply(res,500,{error:"contract_create_failed"});}
   return true;
@@ -173,7 +173,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
      if(quote.status!=="draft")return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
      await c.query("UPDATE platform.quotes SET status='submitted',updated_at=now() WHERE id=$1::uuid",[quoteId]);
      await c.query("INSERT INTO platform.approval_requests(request_type,resource_type,resource_id,status,requested_by) VALUES($1,'quote',$2::uuid,'pending',$3::uuid)",[Number(quote.discount_total)>0?"quote_discount":"other",quoteId,userId]);
-     await audit(c,userId,"commercial.quote.submitted","quote",quoteId,{});
+     await audit(c,userId,"commercial.quote.submitted","quote",quoteId!,{});
      return{notFound:false as const,invalidState:false as const,selfApproval:false as const};
     }
     if(quoteVerb==="approve"||quoteVerb==="reject"){
@@ -184,7 +184,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
      const status=quoteVerb==="approve"?"approved":"rejected";
      await c.query("UPDATE platform.approval_requests SET status=$2,decided_by=$3::uuid,decided_at=now(),decision_note=$4 WHERE id=$1::uuid",[approval.rows[0].id,status,userId,quoteVerb==="approve"?"Approved by platform admin":"Rejected by platform admin"]);
      await c.query("UPDATE platform.quotes SET status=$2,approved_by=CASE WHEN $2='approved' THEN $3::uuid ELSE approved_by END,approved_at=CASE WHEN $2='approved' THEN now() ELSE approved_at END,updated_at=now() WHERE id=$1::uuid",[quoteId,status,userId]);
-     await audit(c,userId,`commercial.quote.${quoteVerb}d`,"quote",quoteId,{});
+     await audit(c,userId,`commercial.quote.${quoteVerb==="approve"?"approved":"rejected"}`,"quote",quoteId!,{});
      return{notFound:false as const,invalidState:false as const,selfApproval:false as const};
     }
     return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
@@ -208,7 +208,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
      if(contract.status!=="draft")return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
      await c.query("UPDATE platform.contracts SET status='review',updated_at=now() WHERE id=$1::uuid",[contractId]);
      await c.query("INSERT INTO platform.approval_requests(request_type,resource_type,resource_id,status,requested_by) VALUES('contract_activation','contract',$1::uuid,'pending',$2::uuid)",[contractId,userId]);
-     await audit(c,userId,"commercial.contract.submitted","contract",contractId,{});
+     await audit(c,userId,"commercial.contract.submitted","contract",contractId!,{});
      return{notFound:false as const,invalidState:false as const,selfApproval:false as const};
     }
     if(contractVerb==="approve"||contractVerb==="reject"){
@@ -219,7 +219,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
      const status=contractVerb==="approve"?"approved":"rejected";
      await c.query("UPDATE platform.approval_requests SET status=$2,decided_by=$3::uuid,decided_at=now(),decision_note=$4 WHERE id=$1::uuid",[approval.rows[0].id,status,userId,contractVerb==="approve"?"Approved by platform admin":"Rejected by platform admin"]);
      await c.query("UPDATE platform.contracts SET status=CASE WHEN $2='approved' THEN 'active' ELSE 'cancelled' END,approved_by=CASE WHEN $2='approved' THEN $3::uuid ELSE approved_by END,approved_at=CASE WHEN $2='approved' THEN now() ELSE approved_at END,updated_at=now() WHERE id=$1::uuid",[contractId,status,userId]);
-     await audit(c,userId,`commercial.contract.${contractVerb}d`,"contract",contractId,{});
+     await audit(c,userId,`commercial.contract.${contractVerb==="approve"?"approved":"rejected"}`,"contract",contractId!,{});
      return{notFound:false as const,invalidState:false as const,selfApproval:false as const};
     }
     return{notFound:false as const,invalidState:true as const,selfApproval:false as const};
