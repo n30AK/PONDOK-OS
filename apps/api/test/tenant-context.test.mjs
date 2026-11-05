@@ -7,7 +7,7 @@ const issuer = "https://auth.example.test";
 const userId = "a7e6e2e2-8c2a-4e10-9b2e-3a18f9a6d4c1";
 const organizationId = "b8f7f3f3-9d3b-4f21-8c3f-4b29a0b7e5d2";
 
-async function setupServer(context, membershipRows) {
+async function setupServer(context, membershipRows, securityRow = { runtime_role: "pondok_runtime", scoped_organization_id: organizationId, active_membership: true, membership_rls: true, protected_table_count: 63, tenant_table_count: 63 }) {
   const { publicKey, privateKey } = await generateKeyPair("EdDSA");
   const jwk = await exportJWK(publicKey);
   Object.assign(jwk, { kid: "tenant-test-key", alg: "EdDSA", use: "sig" });
@@ -17,9 +17,13 @@ async function setupServer(context, membershipRows) {
     .setSubject(userId).setIssuer(issuer).setIssuedAt().setExpirationTime("5m").sign(privateKey);
   let queryArgs;
   const pool = {
-    async query(_sql, values) {
-      queryArgs = values;
-      return { rows: membershipRows };
+    async query(sql, values) {
+      if (sql.includes("FROM core.organization_memberships")) {
+        queryArgs = values;
+        return { rows: membershipRows };
+      }
+      if (sql.includes("current_user::text AS runtime_role")) return { rows: [securityRow] };
+      throw new Error("unexpected tenant-context query");
     },
   };
   const server = createApiServer({ jwks, issuer, pool });
@@ -71,5 +75,29 @@ test("tenant context returns roles and permissions from database membership", as
     membershipId: "c9a8a4a4-0e4c-4a32-9d4f-5c30b1c8f6e3",
     roles: ["academic_admin"],
     permissions: ["academic.students.read", "academic.attendance.write"],
+    security: { status: "protected", runtimeRole: "pondok_runtime", protectedTables: 63, tenantTables: 63 },
   });
+});
+
+
+test("tenant context fails closed when any tenant table is missing forced RLS", async (context) => {
+  const app = await setupServer(context, [{
+    membership_id: "c9a8a4a4-0e4c-4a32-9d4f-5c30b1c8f6e3",
+    organization_id: organizationId,
+    roles: ["institution_owner"],
+    permissions: ["academic.students.read"],
+  }], {
+    runtime_role: "pondok_runtime",
+    scoped_organization_id: organizationId,
+    active_membership: true,
+    membership_rls: true,
+    protected_table_count: 62,
+    tenant_table_count: 63,
+  });
+  const response = await app.request({
+    authorization: `Bearer ${app.token}`,
+    "x-organization-id": organizationId,
+  });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "tenant_security_context_unavailable" });
 });
