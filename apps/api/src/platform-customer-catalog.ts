@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { TenantDatabase } from "./tenant-db.js";
 
@@ -112,7 +113,7 @@ export async function handlePlatformCustomerCatalogRequest(req:IncomingMessage,r
   const invalid=validateProduct(body);if(invalid){reply(res,422,{error:invalid});return true;}
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
-    const productCode=`PRD-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${(await import("node:crypto")).randomUUID().slice(0,8).toUpperCase()}`;
+    const productCode=`PRD-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${randomUUID().slice(0,8).toUpperCase()}`;
     const result=await c.query(`INSERT INTO platform.product_catalog(product_code,product_name,description,product_type,base_price,currency,billing_interval) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,product_code AS "productCode",product_name AS "productName",description,product_type AS "productType",base_price AS "basePrice",currency,billing_interval AS "billingInterval",is_active AS "isActive",created_at AS "createdAt"`,[productCode,String(body.productName).trim(),body.description??null,body.productType??"subscription",body.basePrice??0,body.currency??"IDR",body.billingInterval??null]);
     const row=result.rows[0] as {id:string}|undefined;if(!row)throw new Error("product_insert_failed");
     await audit(c,userId,"catalog.product.created","product",row.id,{productCode,productType:body.productType??"subscription"});
