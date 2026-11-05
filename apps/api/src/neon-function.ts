@@ -16,7 +16,7 @@ const jwks = process.env.NEON_AUTH_JWKS_URL
 
 const dependencies: ApiDependencies = {
   ...(jwks ? { jwks } : {}),
-  ...(process.env.NEON_AUTH_BASE_URL ? { issuer: process.env.NEON_AUTH_BASE_URL } : {}),
+  ...(process.env.NEON_AUTH_BASE_URL ? { issuer: new URL(process.env.NEON_AUTH_BASE_URL).origin } : {}),
   ...(pool ? { pool } : {}),
 };
 
