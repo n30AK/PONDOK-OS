@@ -173,10 +173,10 @@ export async function handlePlatformModuleLifecycleRequest(req:IncomingMessage,r
    if(scoped.value && "invalidInstallation" in scoped.value && scoped.value.invalidInstallation){reply(res,404,{error:"installation_not_found_for_customer"});return true;}
    if(scoped.value && "notFound" in scoped.value && scoped.value.notFound){reply(res,404,{error:"module_not_found"});return true;}
    if(scoped.value && "notReady" in scoped.value && scoped.value.notReady){reply(res,409,{error:"module_not_operational"});return true;}
-   if("invalidContract"in (scoped.value??{})&&scoped.value?.invalidContract){reply(res,409,{error:"active_customer_contract_required"});return true;}
-   if("productMissing"in (scoped.value??{})&&scoped.value?.productMissing){reply(res,409,{error:"module_product_catalog_not_active"});return true;}
-   if("invalidPrice"in (scoped.value??{})&&scoped.value?.invalidPrice){reply(res,422,{error:"module_order_price_or_discount_invalid"});return true;}
-   if("invalidPeriod"in (scoped.value??{})&&scoped.value?.invalidPeriod){reply(res,422,{error:"recurring_or_trial_period_and_integer_quantity_required"});return true;}
+   if(scoped.value && "invalidContract" in scoped.value && scoped.value.invalidContract){reply(res,409,{error:"active_customer_contract_required"});return true;}
+   if(scoped.value && "productMissing" in scoped.value && scoped.value.productMissing){reply(res,409,{error:"module_product_catalog_not_active"});return true;}
+   if(scoped.value && "invalidPrice" in scoped.value && scoped.value.invalidPrice){reply(res,422,{error:"module_order_price_or_discount_invalid"});return true;}
+   if(scoped.value && "invalidPeriod" in scoped.value && scoped.value.invalidPeriod){reply(res,422,{error:"recurring_or_trial_period_and_integer_quantity_required"});return true;}
    reply(res,201,{data:scoped.value?.item});
   }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:"module_order_create_failed"});}
   return true;
