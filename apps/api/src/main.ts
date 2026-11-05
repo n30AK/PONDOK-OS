@@ -11,6 +11,7 @@ import { handleInventoryRequest } from "./inventory.js";
 import { handleHrRequest } from "./hr.js";
 import { handleModuleRecordsRequest } from "./module-records.js";
 import { handlePlatformRequest, listUserOrganizations } from "./platform-admin.js";
+import { handlePlatformErpRequest } from "./platform-erp.js";
 import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
@@ -70,7 +71,7 @@ export async function handleRequest(
   }
 
   const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/admissions/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/platform/");
-  const allowedMethods = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/modules/")
+  const allowedMethods = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/platform/erp/")
     ? ["GET", "HEAD", "POST", "PATCH"]
     : writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
   if (!allowedMethods.includes(method)) {
@@ -113,6 +114,7 @@ export async function handleRequest(
       return;
     }
     try {
+      if (await handlePlatformErpRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformRequest(request, response, dependencies.pool, identity.userId)) return;
     } catch {
       sendJson(response, 500, { error: "platform_service_unavailable" });
