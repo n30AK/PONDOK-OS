@@ -41,7 +41,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // Managed Auth JWTs are short-lived. If a restored tab holds an expired
   // access token, ask Auth for a fresh token and retry exactly once.
   if (response.status === 401 && AUTH_URL) {
-    const refreshed = await fetch(AUTH_URL.replace(/\\/$/, "") + "/token", {
+    const refreshed = await fetch((AUTH_URL.endsWith("/") ? AUTH_URL.slice(0, -1) : AUTH_URL) + "/token", {
       credentials: "include", cache: "no-store",
       headers: { accept: "application/json" },
     });
