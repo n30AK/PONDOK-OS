@@ -304,6 +304,9 @@ function ProductCatalogWorkspace(){
 function CRMWorkspace(){
   const [leads,setLeads]=useState<CrmLead[]>([]);
   const [customers,setCustomers]=useState<CrmCustomer[]>([]);
+  const [contacts,setContacts]=useState<CrmContact[]>([]);
+  const [selectedCustomerId,setSelectedCustomerId]=useState("");
+  const [contactForm,setContactForm]=useState({fullName:"",positionTitle:"",email:"",phone:"",isPrimary:false});
   const [busy,setBusy]=useState(false);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
@@ -321,8 +324,9 @@ function CRMWorkspace(){
       setLeads(leadResult.items??[]);setCustomers(customerResult.items??[]);\n      if(!selectedCustomerId&&customerResult.items?.[0])setSelectedCustomerId(customerResult.items[0].id);
     }catch(e){setError(e instanceof Error?e.message:"Data CRM gagal dimuat.");}
     finally{setBusy(false);}
-  },[]);
+  },[selectedCustomerId]);
   useEffect(()=>{void load();},[load]);
+  useEffect(()=>{if(!selectedCustomerId){setContacts([]);return;}let active=true;void request<{items:CrmContact[]}>(`/v1/platform/erp/customers/${selectedCustomerId}/contacts`).then(x=>{if(active)setContacts(x.items??[]);}).catch(e=>{if(active)setError(e instanceof Error?e.message:"Kontak pelanggan gagal dimuat.");});return()=>{active=false;};},[selectedCustomerId]);
   async function createLead(event:FormEvent){
     event.preventDefault();setSaving(true);setError("");setNotice("");
     try{
