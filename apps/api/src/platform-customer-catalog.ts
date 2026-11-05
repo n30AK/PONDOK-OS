@@ -94,12 +94,12 @@ export async function handlePlatformCustomerCatalogRequest(req:IncomingMessage,r
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
     const customer=await c.query("SELECT id FROM platform.customers WHERE id=$1::uuid",[customerId]);
-    if(!customer.rows[0])return{notFound:true as const};
+    if(!customer.rows[0])return{notFound:true as const,data:undefined};
     if(body.isPrimary===true)await c.query("UPDATE platform.customer_contacts SET is_primary=false WHERE customer_id=$1::uuid AND is_primary=true",[customerId]);
     const result=await c.query(`INSERT INTO platform.customer_contacts(customer_id,full_name,position_title,email,phone,is_primary,contact_preferences) VALUES($1::uuid,$2,$3,$4,$5,$6,$7::jsonb) RETURNING id,customer_id AS "customerId",full_name AS "fullName",position_title AS "positionTitle",email,phone,is_primary AS "isPrimary",contact_preferences AS "contactPreferences",created_at AS "createdAt"`,[customerId,String(body.fullName).trim(),body.positionTitle??null,body.email?String(body.email).trim().toLowerCase():null,body.phone??null,body.isPrimary===true,JSON.stringify(body.contactPreferences??{})]);
     const row=result.rows[0] as {id:string}|undefined;if(!row)throw new Error("contact_insert_failed");
     await audit(c,userId,"crm.customer_contact.created","customer_contact",row.id,{customerId,isPrimary:body.isPrimary===true});
-    return{data:result.rows[0]};
+    return{notFound:false as const,data:result.rows[0]};
    });
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
    if(scoped.value?.notFound){reply(res,404,{error:"customer_not_found"});return true;}
