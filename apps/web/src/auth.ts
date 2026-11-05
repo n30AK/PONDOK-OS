@@ -47,13 +47,55 @@ function readPondokUser(payload: AuthUserPayload | null | undefined): PondokUser
   };
 }
 
+function isJwt(value: unknown): value is string {
+  return typeof value === "string" && value.split(".").length === 3 && value.length > 100;
+}
+
+function readTokenPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const value = payload as Record<string, unknown>;
+  const nested = value.data && typeof value.data === "object" && !Array.isArray(value.data)
+    ? value.data as Record<string, unknown>
+    : null;
+  const session = value.session && typeof value.session === "object" && !Array.isArray(value.session)
+    ? value.session as Record<string, unknown>
+    : null;
+  const candidates = [value.token, value.access_token, nested?.token, nested?.access_token, session?.access_token];
+  return candidates.find(isJwt) ?? null;
+}
+
+/**
+ * The SDK's token helper can occasionally return a session-shaped response
+ * without the JWT. Ask the Managed Auth token endpoint directly as a fallback.
+ * The HTTP-only session cookie remains browser-managed and is never copied to
+ * localStorage or exposed to application code.
+ */
+async function getTokenFromAuthEndpoint(): Promise<string> {
+  if (!authUrl) throw new Error("Neon Auth belum dikonfigurasi.");
+  const response = await fetch(`${authUrl.replace(/\\/+$/, "")}/token`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`Neon Auth menolak penerbitan token (HTTP ${response.status}). Sesi mungkin kedaluwarsa; keluar lalu masuk kembali.`);
+  }
+  const payload: unknown = await response.json().catch(() => null);
+  const token = readTokenPayload(payload);
+  if (!token) throw new Error("Neon Auth merespons tanpa JWT yang valid. Muat ulang halaman lalu masuk kembali.");
+  return token;
+}
+
 export async function getAccessToken(): Promise<string> {
   if (!authClient) throw new Error("Neon Auth belum dikonfigurasi. Isi VITE_NEON_AUTH_URL.");
-  const result = await authClient.token();
-  if (result.error || !result.data?.token) {
-    throw new Error(result.error?.message ?? "Sesi login tidak menghasilkan access token.");
+  try {
+    const result = await authClient.token();
+    if (isJwt(result.data?.token)) return result.data.token;
+  } catch {
+    // Fall through to the managed token endpoint; never log token or cookie data.
   }
-  return result.data.token;
+  return getTokenFromAuthEndpoint();
 }
 
 export async function getCurrentUser(): Promise<PondokUser | null> {
