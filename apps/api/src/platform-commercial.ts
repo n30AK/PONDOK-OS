@@ -146,7 +146,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
   const invalid=validateContractInput(body);if(invalid){reply(res,422,{error:invalid});return true;}
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
-    const quote=await c.query<{id:string;customer_id:string;status:string}>("SELECT id,customer_id,status FROM platform.quotes WHERE id=$1::uuid",[body.quoteId]);
+    const quote=await c.query<{id:string;customer_id:string;status:string}>("SELECT id,customer_id,status FROM platform.quotes WHERE id=$1::uuid FOR UPDATE",[body.quoteId]);
     if(!quote.rows[0])return{notFound:true as const,item:null};
     if(!["approved","accepted"].includes(quote.rows[0].status))return{invalidState:true as const,item:null};
     const existing=await c.query("SELECT id FROM platform.contracts WHERE quote_id=$1::uuid",[body.quoteId]);
@@ -169,7 +169,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
  if(req.method==="PATCH"&&quoteAction){
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
-    const q=await c.query<{id:string;status:string;created_by:string;discount_total:string}>("SELECT id,status,created_by,discount_total FROM platform.quotes WHERE id=$1::uuid",[quoteId]);
+    const q=await c.query<{id:string;status:string;created_by:string;discount_total:string}>("SELECT id,status,created_by,discount_total FROM platform.quotes WHERE id=$1::uuid FOR UPDATE",[quoteId]);
     if(!q.rows[0])return{notFound:true as const,invalidState:false as const,selfApproval:false as const};
     const quote=q.rows[0];
     if(quoteVerb==="submit"){
@@ -204,7 +204,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
  if(req.method==="PATCH"&&contractAction){
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
-    const q=await c.query<{id:string;status:string;created_by:string}>("SELECT id,status,created_by FROM platform.contracts WHERE id=$1::uuid",[contractId]);
+    const q=await c.query<{id:string;status:string;created_by:string}>("SELECT id,status,created_by FROM platform.contracts WHERE id=$1::uuid FOR UPDATE",[contractId]);
     if(!q.rows[0])return{notFound:true as const,invalidState:false as const,selfApproval:false as const};
     const contract=q.rows[0];
     if(contractVerb==="submit"){
