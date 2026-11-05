@@ -131,16 +131,31 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    // Wait until the server has verified the current identity and platform role.
+    // Super Admins load the organization list through the protected platform registry;
+    // ordinary users continue to use the membership-scoped tenant endpoint.
+    if (!user || !platformAccessChecked || platformAccessError) return;
     let active = true;
     void (async () => {
       setBusy(true); setError(""); setNotice("");
       try {
         const token = await getAccessToken();
-        const response = await fetch(`${API_BASE}/v1/tenant/organizations`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+        const endpoint = isSuperAdmin
+          ? "/v1/platform/admin/tenants"
+          : "/v1/tenant/organizations";
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          headers: { authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error ?? "Gagal memuat daftar pesantren.");
-        const available = Array.isArray(body.data) ? body.data as OrganizationChoice[] : [];
+        const available: OrganizationChoice[] = Array.isArray(body.data)
+          ? body.data.map((item: Record<string, unknown>) => ({
+              id: String(isSuperAdmin ? item.organizationId : item.id),
+              name: String(item.name ?? ""),
+              slug: String(item.slug ?? ""),
+            })).filter((item: OrganizationChoice) => item.id && item.id !== "undefined")
+          : [];
         if (!active) return;
         setOrganizations(available);
         if (available.length === 1) {
@@ -151,14 +166,21 @@ export default function App() {
           setCampusId(localStorage.getItem(`pondok.campusId.${orgId}`) ?? "");
           localStorage.setItem("pondok.organizationId", orgId);
           setNotice("Workspace pesantren berhasil dibuka.");
-        } else if (available.length > 1) setNotice("Pilih pesantren untuk melanjutkan ke workspace.");
-        else setNotice("Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
+        } else if (available.length > 1) {
+          setTenant(null);
+          setNotice("Pilih pesantren untuk melanjutkan ke workspace.");
+        } else {
+          setTenant(null);
+          setNotice(isSuperAdmin
+            ? "Belum ada lembaga. Gunakan formulir Inisialisasi lembaga pertama di Command Center."
+            : "Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
+        }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat organisasi.");
       } finally { if (active) setBusy(false); }
     })();
     return () => { active = false; };
-  }, [user]);
+  }, [user, platformAccessChecked, platformAccessError, isSuperAdmin]);
 
   const loadStudents = useCallback(async (orgId: string) => {
     const result = await apiRequest<{ data: Student[] }>("/v1/academic/students?limit=100", orgId);
