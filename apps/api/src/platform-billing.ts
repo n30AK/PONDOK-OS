@@ -65,13 +65,14 @@ const DEFAULT_ACCOUNTS=[
 export async function handlePlatformBillingRequest(req:IncomingMessage,res:ServerResponse,pool:TenantDatabase,userId:string):Promise<boolean>{
  const url=new URL(req.url??"/","http://localhost"),path=url.pathname;
  const accountsPath=path==="/v1/platform/erp/accounts";
+ const journalsPath=path==="/v1/platform/erp/journals";
  const seedAccountsPath=path==="/v1/platform/erp/accounts/initialize-defaults";
  const invoicesPath=path==="/v1/platform/erp/invoices";
  const invoiceAction=path.match(/^\/v1\/platform\/erp\/invoices\/([0-9a-f-]{36})\/issue$/i);
  const invoiceItem=path.match(/^\/v1\/platform\/erp\/invoices\/([0-9a-f-]{36})$/i);
  const paymentsPath=path==="/v1/platform/erp/payments";
  const paymentAction=path.match(/^\/v1\/platform\/erp\/payments\/([0-9a-f-]{36})\/(verify|reject)$/i);
- if(!accountsPath&&!seedAccountsPath&&!invoicesPath&&!invoiceAction&&!invoiceItem&&!paymentsPath&&!paymentAction)return false;
+ if(!accountsPath&&!journalsPath&&!seedAccountsPath&&!invoicesPath&&!invoiceAction&&!invoiceItem&&!paymentsPath&&!paymentAction)return false;
  const invoiceId=invoiceAction?.[1]??invoiceItem?.[1],paymentId=paymentAction?.[1],paymentVerb=paymentAction?.[2]?.toLowerCase();
  if((invoiceId&&!UUID.test(invoiceId))||(paymentId&&!UUID.test(paymentId))){reply(res,400,{error:"invalid_resource_id"});return true;}
 
@@ -80,6 +81,7 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
    const scoped=await withAdmin(pool,userId,async c=>{
     if(accountsPath){const r=await c.query("SELECT id,account_code AS \"accountCode\",account_name AS \"accountName\",account_type AS \"accountType\",normal_balance AS \"normalBalance\",is_control_account AS \"isControlAccount\",is_active AS \"isActive\" FROM platform.chart_of_accounts ORDER BY account_code");return{items:r.rows,returned:r.rows.length};}
     if(invoicesPath){const r=await c.query(`SELECT i.id,i.invoice_number AS "invoiceNumber",i.customer_id AS "customerId",cu.display_name AS "customerName",i.contract_id AS "contractId",i.status,i.currency,i.issued_on AS "issuedOn",i.due_on AS "dueOn",i.grand_total AS "grandTotal",i.amount_paid AS "amountPaid",i.journal_entry_id AS "journalEntryId",i.created_at AS "createdAt" FROM platform.invoices i JOIN platform.customers cu ON cu.id=i.customer_id ORDER BY i.created_at DESC LIMIT 100`);return{items:r.rows,returned:r.rows.length};}
+    if(journalsPath){const r=await c.query(`SELECT j.id,j.entry_number AS "entryNumber",j.entry_date AS "entryDate",j.description,j.source_type AS "sourceType",j.status,j.total_debit AS "totalDebit",j.total_credit AS "totalCredit",j.posting_key AS "postingKey",count(l.id)::int AS "lineCount" FROM platform.journal_entries j LEFT JOIN platform.journal_lines l ON l.journal_entry_id=j.id GROUP BY j.id ORDER BY j.entry_date DESC,j.created_at DESC LIMIT 100`);return{items:r.rows,returned:r.rows.length};}
     if(invoiceItem){const r=await c.query(`SELECT i.id,i.invoice_number AS "invoiceNumber",i.customer_id AS "customerId",cu.display_name AS "customerName",i.contract_id AS "contractId",i.subscription_id AS "subscriptionId",i.status,i.currency,i.issued_on AS "issuedOn",i.due_on AS "dueOn",i.subtotal,i.discount_total AS "discountTotal",i.tax_total AS "taxTotal",i.grand_total AS "grandTotal",i.amount_paid AS "amountPaid",i.journal_entry_id AS "journalEntryId",i.created_at AS "createdAt" FROM platform.invoices i JOIN platform.customers cu ON cu.id=i.customer_id WHERE i.id=$1::uuid`,[invoiceId]);if(!r.rows[0])return{notFound:true as const,item:null};const lines=await c.query(`SELECT id,product_id AS "productId",description,quantity,unit_price AS "unitPrice",discount_amount AS "discountAmount",tax_amount AS "taxAmount",line_total AS "lineTotal" FROM platform.invoice_lines WHERE invoice_id=$1::uuid ORDER BY id`,[invoiceId]);return{notFound:false as const,item:{...(r.rows[0] as Record<string,unknown>),lines:lines.rows}};}
     if(paymentsPath){const r=await c.query(`SELECT p.id,p.payment_reference AS "paymentReference",p.customer_id AS "customerId",cu.display_name AS "customerName",p.invoice_id AS "invoiceId",i.invoice_number AS "invoiceNumber",p.amount,p.currency,p.payment_method AS "paymentMethod",p.status,p.paid_at AS "paidAt",p.verified_at AS "verifiedAt",p.journal_entry_id AS "journalEntryId",p.created_at AS "createdAt" FROM platform.payments p JOIN platform.customers cu ON cu.id=p.customer_id LEFT JOIN platform.invoices i ON i.id=p.invoice_id ORDER BY p.created_at DESC LIMIT 100`);return{items:r.rows,returned:r.rows.length};}
     return null;
