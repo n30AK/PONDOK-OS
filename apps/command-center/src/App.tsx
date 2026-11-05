@@ -5,7 +5,8 @@ type User = { id: string; email?: string; name?: string };
 type Tenant = { organizationId: string; name: string; slug: string; organizationType: string; status: string; createdAt: string; memberCount: number; planCode?: string | null; licenseStatus?: string | null; licenseEndsAt?: string | null };
 type Activation = { id: string; contactEmail: string; contactName: string; organizationName: string; organizationSlug: string; organizationType: string; campusCode: string; campusName: string; status: string; createdAt: string; reviewNote?: string | null };
 type ModuleRequest = { id: string; organizationId: string; moduleId: string; moduleVersion: string; status: string; createdAt: string; updatedAt: string };
-type Publisher = { userId: string; email?: string; status?: string; createdAt?: string };\ntype AuditEvent = { id: string; actorUserId: string; action: string; resourceType: string; resourceId?: string | null; metadata: Record<string, unknown>; occurredAt: string };
+type Publisher = { userId: string; email?: string; status?: string; createdAt?: string };
+type AuditEvent = { id: string; actorUserId: string; action: string; resourceType: string; resourceId?: string | null; metadata: Record<string, unknown>; occurredAt: string };
 type Section = "overview" | "institutions" | "activation" | "modules" | "publishers" | "security";
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const AUTH_URL = import.meta.env.VITE_NEON_AUTH_URL?.trim();
@@ -50,7 +51,8 @@ export default function App() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [activations, setActivations] = useState<Activation[]>([]);
   const [modules, setModules] = useState<ModuleRequest[]>([]);
-  const [publishers, setPublishers] = useState<Publisher[]>([]);\n  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [publishers, setPublishers] = useState<Publisher[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
@@ -65,13 +67,15 @@ export default function App() {
       request<Tenant[]>("/v1/platform/admin/tenants"),
       request<Activation[]>("/v1/platform/admin/activation-requests"),
       request<ModuleRequest[]>("/v1/platform/admin/modules/requests"),
-      request<Publisher[]>("/v1/platform/admin/module-publishers"),\n      request<AuditEvent[]>("/v1/platform/admin/audit-events?limit=100"),
+      request<Publisher[]>("/v1/platform/admin/module-publishers"),
+      request<AuditEvent[]>("/v1/platform/admin/audit-events?limit=100"),
     ]);
     const failed: string[] = [];
     if (tenantResult.status === "fulfilled") setTenants(tenantResult.value); else failed.push(`Registry lembaga: ${tenantResult.reason instanceof Error ? tenantResult.reason.message : "gagal"}`);
     if (activationResult.status === "fulfilled") setActivations(activationResult.value); else failed.push(`Aktivasi: ${activationResult.reason instanceof Error ? activationResult.reason.message : "gagal"}`);
     if (moduleResult.status === "fulfilled") setModules(moduleResult.value); else failed.push(`Module registry: ${moduleResult.reason instanceof Error ? moduleResult.reason.message : "belum tersedia"}`);
-    if (publisherResult.status === "fulfilled") setPublishers(publisherResult.value); else failed.push(`Publisher: ${publisherResult.reason instanceof Error ? publisherResult.reason.message : "belum tersedia"}`);\n    if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value); else failed.push(`Audit log: ${auditResult.reason instanceof Error ? auditResult.reason.message : "belum tersedia"}`);
+    if (publisherResult.status === "fulfilled") setPublishers(publisherResult.value); else failed.push(`Publisher: ${publisherResult.reason instanceof Error ? publisherResult.reason.message : "belum tersedia"}`);
+    if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value); else failed.push(`Audit log: ${auditResult.reason instanceof Error ? auditResult.reason.message : "belum tersedia"}`);
     setErrors(failed); setLoading(false);
   }, [verified]);
 
