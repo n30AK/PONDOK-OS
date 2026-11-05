@@ -86,7 +86,10 @@ const domains: Record<string, Dataset[]> = {
     { key: "registry", title: "Register dokumen", sql: `SELECT id,document_number AS "documentNumber",document_type AS "documentType",title,description,classification,related_entity_type AS "relatedEntityType",related_entity_id AS "relatedEntityId",checksum_sha256 AS "checksumSha256",size_bytes AS "sizeBytes",retention_until AS "retentionUntil",status,created_at AS "createdAt" FROM platform.document_registry ORDER BY created_at DESC LIMIT 100` },
     { key: "versions", title: "Versi dokumen", sql: `SELECT v.id,d.document_number AS "documentNumber",d.title,v.version_number AS "versionNumber",v.checksum_sha256 AS "checksumSha256",v.size_bytes AS "sizeBytes",v.created_at AS "createdAt" FROM platform.document_versions v JOIN platform.document_registry d ON d.id=v.document_id ORDER BY v.created_at DESC LIMIT 100` },
     { key: "accessEvents", title: "Audit akses dokumen", sql: `SELECT e.id,d.document_number AS "documentNumber",d.title,e.actor_user_id AS "actorUserId",e.action,e.occurred_at AS "occurredAt",e.request_id AS "requestId" FROM platform.document_access_events e JOIN platform.document_registry d ON d.id=e.document_id ORDER BY e.occurred_at DESC LIMIT 100` },
-  ]\n};\n\nfunction reply(res: ServerResponse, status: number, body: unknown): void {
+  ]
+};
+
+function reply(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" });
   res.end(JSON.stringify(body));
 }
