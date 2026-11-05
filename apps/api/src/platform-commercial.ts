@@ -21,7 +21,7 @@ function quantityMilli(v:unknown):number|null{
  const scaled=v*1000;if(Math.abs(scaled-Math.round(scaled))>1e-7)return null;return Math.round(scaled);
 }
 function money(v:number){return (v/100).toFixed(2);}
-function dateOnly(v:unknown){if(typeof v!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;const [y,m,d]=v.split("-").map(Number);const date=new Date(Date.UTC(y,m-1,d));return date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d;}
+function dateOnly(v:unknown){if(typeof v!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;const parts=v.split("-");if(parts.length!==3)return false;const y=Number(parts[0]),m=Number(parts[1]),d=Number(parts[2]);if(!Number.isInteger(y)||!Number.isInteger(m)||!Number.isInteger(d))return false;const date=new Date(Date.UTC(y,m-1,d));return date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d;}
 function grossCents(quantity:number,price:number):number|null{const total=(BigInt(quantity)*BigInt(price)+500n)/1000n;return total>1_000_000_000_000n?null:Number(total);}
 export function validateQuoteInput(v:Json):string|null{
  if(typeof v.customerId!=="string"||!UUID.test(v.customerId))return "invalid_customer_id";
