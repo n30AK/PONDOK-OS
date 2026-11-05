@@ -104,7 +104,7 @@ export function getModuleResourceLabel(key:string):string { return key==="all"?"
 
 function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange}:Props) {
  const available=RESOURCES;
- const groups=useMemo(()=>["Semua Modul","Master Data",...Array.from(new Set(available.map(r=>r.group)))],[available]);
+ const groups=useMemo(()=>Array.from(new Set(["Semua Modul","Master Data",...available.map(r=>r.group)])),[available]);
  const requestedGroup=initialResourceKey==="all"?"Semua Modul":RESOURCES.find(r=>r.key===initialResourceKey)?.group;
  const initialResource=initialResourceKey==="all"?available[0]:available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup);
  const [group,setGroup]=useState(initialResourceKey==="all"?"Semua Modul":initialResource?.group??requestedGroup??groups[0]??"");
