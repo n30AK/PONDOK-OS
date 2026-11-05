@@ -49,6 +49,8 @@ async function apiRequest<T>(path: string, organizationId: string, init: Request
 export default function App() {
   const [user, setUser] = useState<PondokUser | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [platformAccessChecked, setPlatformAccessChecked] = useState(false);
+  const [platformAccessError, setPlatformAccessError] = useState("");
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationChoice[]>([]);
   const [screen, setScreen] = useState<Screen>("overview");
@@ -86,15 +88,28 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) { setIsSuperAdmin(false); return; }
+    if (!user) {
+      setIsSuperAdmin(false);
+      setPlatformAccessChecked(false);
+      setPlatformAccessError("");
+      return;
+    }
     let active = true;
+    setPlatformAccessChecked(false);
+    setPlatformAccessError("");
     void getAccessToken().then((token) => fetch(`${API_BASE}/v1/platform/admin/me`, {
       headers: { authorization: `Bearer ${token}` }, cache: "no-store"
     })).then(async (response) => {
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "Gagal memeriksa akses platform.");
+      if (!response.ok) throw new Error(body.error ?? `Pemeriksaan akses platform gagal (${response.status}).`);
       if (active) setIsSuperAdmin(body.data?.isSuperAdmin === true);
-    }).catch(() => { if (active) setIsSuperAdmin(false); });
+    }).catch((reason: unknown) => {
+      if (!active) return;
+      setIsSuperAdmin(false);
+      setPlatformAccessError(reason instanceof Error ? reason.message : "Sesi belum dapat diverifikasi. Silakan muat ulang atau masuk kembali.");
+    }).finally(() => {
+      if (active) setPlatformAccessChecked(true);
+    });
     return () => { active = false; };
   }, [user]);
 
@@ -340,18 +355,18 @@ export default function App() {
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
-        {!tenant ? <><section className="welcome-card">
+        {!tenant ? !platformAccessChecked ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">MEMERIKSA AKSES</div><h1>Memverifikasi sesi dan hak akses…</h1><p>Mohon tunggu. Formulir aktivasi tidak akan ditampilkan sebelum status akun berhasil diverifikasi.</p></div></section> : platformAccessError ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div><h1>Sesi belum dapat diverifikasi</h1><div className="alert error">{platformAccessError}</div><p className="muted">Jangan kirim permohonan aktivasi lembaga saat status hak akses akun belum berhasil diperiksa. Data lembaga Anda tidak perlu diisi ulang.</p><button type="button" className="primary" onClick={() => window.location.reload()}>Coba periksa kembali</button></div></section> : <><section className="welcome-card">
           <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1>
             {busy ? <p>Memuat daftar pesantren dan hak akses Anda…</p> : organizations.length > 1 ? <>
               <p>Akun Anda terhubung ke beberapa pesantren. Pilih pesantren untuk membuka ruang kerja.</p>
               <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
             </> : organizations.length === 0 ? <>
               <p>Akun ini belum terhubung ke organisasi pesantren.</p>
-              <div className="alert warning">Akun ini belum memiliki workspace aktif. Ajukan permohonan aktivasi lembaga melalui formulir Central Activation di bawah. Workspace baru dibuat setelah perusahaan menyetujui permohonan.</div><p className="muted">Untuk lembaga baru, ajukan aktivasi melalui formulir di bawah. Aktivasi mandiri dengan token bootstrap lama tidak digunakan dalam alur distribusi terpusat.</p>
+              <div className="alert warning">Akun ini belum memiliki workspace aktif. Permohonan aktivasi lembaga hanya untuk akun non-Super Admin. Akun Super Admin mengelola pembentukan workspace melalui Central Command.</div>
             </> : <p>Menyiapkan workspace pesantren Anda…</p>}
             {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
-        </section><PlatformAdmin isSuperAdmin={isSuperAdmin} /></> : <>
+        </section>{isSuperAdmin ? <PlatformAdmin isSuperAdmin={isSuperAdmin} /> : <PlatformAdmin isSuperAdmin={false} />}</> : <>
           <div className="page-heading"><div><div className="eyebrow">PONDOK OS / {tenant.organizationId.slice(0, 8).toUpperCase()}</div><h1>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "Manajemen PPDB" : screen === "platform" ? "Central Command" : "Ringkasan Pesantren"}</h1><p>{screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Ruang kerja khusus untuk data, formulir, alur persetujuan, dan pencatatan modul ini." : screen === "operations" ? "Data operasional yang ditampilkan mengikuti hak akses akun." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : screen === "platform" ? "Pengelolaan platform dan aktivasi lintas organisasi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
           {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Modul aktif</span><b>▦</b></div><strong>10</strong><small>Fondasi domain tersedia bertahap</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan</span><b>◇</b></div><strong>Aktif</strong><small>JWT dan membership diverifikasi API</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div><button className="text-button" onClick={() => openModule("all")}>Lihat semua modul →</button></div><div className="module-grid">{modules.filter((item) => item.key !== "control").map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? openModule("academic-years") : item.key === "admissions" ? setScreen("admissions") : item.key === "finance" ? openOperations("finance") : item.key === "inventory" ? openOperations("inventory") : item.key === "library" ? openModule("library-catalog") : item.key === "hr" ? openOperations("hr") : item.key === "cms" ? openModule("cms-pages") : item.key === "boarding" ? openModule("dormitories") : item.key === "crm" ? openModule("contacts") : openModule("campuses")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
           {screen === "modules" && <ModuleWorkspace organizationId={tenant.organizationId} permissions={tenant.permissions} initialResourceKey={moduleResource} onResourceChange={setModuleResource} />}
