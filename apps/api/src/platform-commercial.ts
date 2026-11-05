@@ -21,7 +21,8 @@ function quantityMilli(v:unknown):number|null{
  const scaled=v*1000;if(Math.abs(scaled-Math.round(scaled))>1e-7)return null;return Math.round(scaled);
 }
 function money(v:number){return (v/100).toFixed(2);}
-function dateOnly(v:unknown){return typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+"T00:00:00Z"));}
+function dateOnly(v:unknown){if(typeof v!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;const [y,m,d]=v.split("-").map(Number);const date=new Date(Date.UTC(y,m-1,d));return date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d;}
+function grossCents(quantity:number,price:number):number|null{const total=(BigInt(quantity)*BigInt(price)+500n)/1000n;return total>1_000_000_000_000n?null:Number(total);}
 export function validateQuoteInput(v:Json):string|null{
  if(typeof v.customerId!=="string"||!UUID.test(v.customerId))return "invalid_customer_id";
  if(v.currency!==undefined&&(typeof v.currency!=="string"||!/^[A-Z]{3}$/.test(v.currency)))return "invalid_currency";
@@ -34,8 +35,10 @@ export function validateQuoteInput(v:Json):string|null{
   if(quantityMilli(line.quantity)===null)return "invalid_line_quantity";
   const price=cents(line.unitPrice),discount=cents(line.discountAmount??0),tax=cents(line.taxAmount??0);
   if(price===null)return "invalid_unit_price";if(discount===null)return "invalid_line_discount";if(tax===null)return "invalid_line_tax";
-  const gross=Math.round((quantityMilli(line.quantity)!*price)/1000);
+  const gross=grossCents(quantityMilli(line.quantity)!,price);
+  if(gross===null)return "line_total_too_large";
   if(discount>gross)return "line_discount_exceeds_gross";
+  if(gross-discount+tax>1_000_000_000_000)return "line_total_too_large";
  }
  return null;
 }
@@ -114,7 +117,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
   const invalid=validateQuoteInput(body);if(invalid){reply(res,422,{error:invalid});return true;}
   const lines=(body.lines as Json[]).map(line=>{
    const qty=quantityMilli(line.quantity)!,price=cents(line.unitPrice)!,discount=cents(line.discountAmount??0)!,tax=cents(line.taxAmount??0)!;
-   const gross=Math.round(qty*price/1000),total=gross-discount+tax;
+   const gross=grossCents(qty,price)!,total=gross-discount+tax;
    return{productId:line.productId??null,description:String(line.description).trim(),quantity:(qty/1000).toFixed(3),unitPrice:money(price),discountAmount:money(discount),taxAmount:money(tax),lineTotal:money(total),gross};
   });
   const subtotal=lines.reduce((s,x)=>s+x.gross,0),discountTotal=lines.reduce((s,x)=>s+Math.round(Number(x.discountAmount)*100),0),taxTotal=lines.reduce((s,x)=>s+Math.round(Number(x.taxAmount)*100),0),grandTotal=subtotal-discountTotal+taxTotal;
