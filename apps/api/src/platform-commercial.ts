@@ -91,7 +91,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
      const header=await c.query(`SELECT q.id,q.quote_number AS "quoteNumber",q.customer_id AS "customerId",cu.display_name AS "customerName",q.status,q.currency,q.subtotal,q.discount_total AS "discountTotal",q.tax_total AS "taxTotal",q.grand_total AS "grandTotal",q.valid_until AS "validUntil",q.created_by AS "createdBy",q.approved_by AS "approvedBy",q.approved_at AS "approvedAt",q.created_at AS "createdAt",q.updated_at AS "updatedAt" FROM platform.quotes q JOIN platform.customers cu ON cu.id=q.customer_id WHERE q.id=$1::uuid`,[quoteId]);
      if(!header.rows[0])return{notFound:true as const,item:null};
      const lines=await c.query(`SELECT id,product_id AS "productId",description,quantity,unit_price AS "unitPrice",discount_amount AS "discountAmount",tax_amount AS "taxAmount",line_total AS "lineTotal" FROM platform.quote_lines WHERE quote_id=$1::uuid ORDER BY id`,[quoteId]);
-     return{notFound:false as const,item:{...header.rows[0],lines:lines.rows}};
+     return{notFound:false as const,item:{...(header.rows[0] as Record<string,unknown>),lines:lines.rows}};
     }
     if(contractCollection){
      const result=await c.query(`SELECT k.id,k.contract_number AS "contractNumber",k.customer_id AS "customerId",cu.display_name AS "customerName",k.quote_id AS "quoteId",k.status,k.starts_on AS "startsOn",k.ends_on AS "endsOn",k.renewal_mode AS "renewalMode",k.created_at AS "createdAt" FROM platform.contracts k JOIN platform.customers cu ON cu.id=k.customer_id ORDER BY k.created_at DESC LIMIT 100`);
