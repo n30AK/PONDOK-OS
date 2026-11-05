@@ -12,6 +12,7 @@ import { handleHrRequest } from "./hr.js";
 import { handleModuleRecordsRequest } from "./module-records.js";
 import { handlePlatformRequest, listUserOrganizations } from "./platform-admin.js";
 import { handlePlatformErpRequest } from "./platform-erp.js";
+import { handlePlatformOperationsRequest } from "./platform-operations.js";
 import { handlePlatformCommercialRequest } from "./platform-commercial.js";
 import { handlePlatformBillingRequest } from "./platform-billing.js";
 import { handlePlatformCustomerCatalogRequest } from "./platform-customer-catalog.js";
@@ -120,6 +121,7 @@ export async function handleRequest(
       if (await handlePlatformBillingRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformCommercialRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformCustomerCatalogRequest(request, response, dependencies.pool, identity.userId)) return;
+      if (await handlePlatformOperationsRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformErpRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformRequest(request, response, dependencies.pool, identity.userId)) return;
     } catch {
