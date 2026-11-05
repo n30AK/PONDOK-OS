@@ -58,6 +58,18 @@ jobs:
         run: node apps/api/scripts/test-platform-control-plane.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify client observability, backup and maintenance controls
+        run: node apps/api/scripts/test-observability-backup-maintenance.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify module billing, warranty and client repair records
+        run: node apps/api/scripts/test-module-billing-warranty-repair.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify Central Command double-entry accounting ledger
+        run: node apps/api/scripts/test-central-command-ledger.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Typecheck workspace
         run: pnpm typecheck
       - name: Build all deployable workspaces
