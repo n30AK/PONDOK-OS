@@ -64,7 +64,11 @@ AS $function$
 DECLARE target_id uuid; expected_debit numeric(18,2); expected_credit numeric(18,2);
         actual_debit numeric(18,2); actual_credit numeric(18,2); line_count integer;
 BEGIN
-  target_id := COALESCE(NEW.journal_entry_id, OLD.journal_entry_id);
+  IF TG_TABLE_NAME = 'journal_entries' THEN
+    target_id := COALESCE(NEW.id, OLD.id);
+  ELSE
+    target_id := COALESCE(NEW.journal_entry_id, OLD.journal_entry_id);
+  END IF;
   SELECT total_debit,total_credit INTO expected_debit,expected_credit
   FROM platform.journal_entries WHERE id=target_id;
   IF NOT FOUND THEN RETURN NULL; END IF;
