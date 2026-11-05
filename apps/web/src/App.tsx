@@ -143,7 +143,7 @@ export default function App() {
     if (isSuperAdmin) {
       setOrganizations([]);
       setTenant(null);
-      setNotice("Akun operator platform tidak memiliki akses ke workspace lembaga melalui aplikasi ini.");
+      setNotice("");
       setBusy(false);
       return;
     }
@@ -311,6 +311,27 @@ export default function App() {
   };
 
   const initials = useMemo(() => (user?.name || user?.email || "P").slice(0, 1).toUpperCase(), [user]);
+
+  if (platformAccessChecked && isSuperAdmin && !platformAccessError) {
+    return <main className="auth-layout">
+      <section className="auth-brand">
+        <div className="brand-mark">P</div>
+        <p className="eyebrow">PLATFORM CONTROL PLANE</p>
+        <h1>Central <em>Command.</em></h1>
+        <p className="brand-copy">Akun Anda terverifikasi sebagai Operator Platform PONDOK OS. Gunakan ruang kendali pusat untuk mengelola institusi, aktivasi, modul, keamanan, dan operasional platform.</p>
+        <div className="auth-foot">Akses operator dipisahkan dari data dan workspace setiap pesantren.</div>
+      </section>
+      <section className="auth-panel">
+        <div className="login-card">
+          <div className="eyebrow">OPERATOR PLATFORM</div>
+          <h2>Selamat datang, {user.name || user.email?.split("@")[0]}</h2>
+          <p className="muted">Anda tidak perlu menjadi anggota organisasi pesantren. Akun administrator pesantren dikelola secara terpisah dan hanya dapat mengakses tenant yang ditetapkan kepadanya.</p>
+          <button type="button" className="primary full" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}command-center/`)}>Buka Central Command <span>→</span></button>
+          <button type="button" className="text-button auth-toggle" onClick={() => void signOut()}>Keluar dari akun operator</button>
+        </div>
+      </section>
+    </main>;
+  }
 
   if (!user) {
     return <main className="auth-layout">
