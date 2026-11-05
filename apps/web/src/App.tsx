@@ -276,7 +276,7 @@ export default function App() {
     try { await authClient?.signOut(); }
     finally {
       setUser(null); setTenant(null); setStudents([]); setBusy(false);
-      setNotice("Sesi telah diakhiri.");
+      setNotice("");
     }
   };
 
@@ -312,13 +312,17 @@ export default function App() {
         </form> : <form className="login-card" onSubmit={signIn}>
           <div className="eyebrow">SELAMAT DATANG</div>
           <h2>Masuk ke PONDOK OS</h2>
-          <p className="muted">Gunakan akun institusi yang telah didaftarkan oleh administrator.</p>
+          <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
+          <div className="login-note admin-login-guidance">
+            <strong>Akses Administrator Pusat / Super Admin</strong>
+            <span>Gunakan formulir login yang sama dengan akun Super Admin terdaftar. Sistem akan memverifikasi hak akses ke server dan menampilkan menu <strong>Central Command</strong> secara otomatis jika akun Anda berwenang. Tidak perlu membuat akun baru atau mendaftar sebagai pesantren.</span>
+          </div>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
           <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
-          <button className="primary full" disabled={busy || !authClient}>{busy ? "Memproses…" : "Masuk ke workspace"} <span>→</span></button>
+          <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
           <p className="login-note">Akses pengguna baru harus diberikan oleh administrator pesantren.</p>
           
         </form>}
