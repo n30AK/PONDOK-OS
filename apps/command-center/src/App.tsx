@@ -123,7 +123,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
   return <section className="enterprise-workspace">
     <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Read-only · data berasal dari database platform. Perubahan transaksi belum diaktifkan pada layar ini.</span></div>
     {loading && <div className="panel"><p className="muted">Memuat dataset operasional…</p></div>}
-    {error && <div className="alert warning"><b>Data belum dapat dimuat</b><div>{error}</div></div>}
+    {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? "Migration 0024 sudah diuji pada branch Neon sementara. Data Procurement dan Inventory akan tampil setelah migration disetujui dan diterapkan ke Development." : error}</div></div>}
     {!loading && !error && datasets.map((dataset) => {
       const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
       return <section className="panel" key={dataset.key}>
