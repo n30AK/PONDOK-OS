@@ -11,6 +11,8 @@ test("quote validator checks customer, line counts, money precision, and discoun
  assert.equal(validateQuoteInput({customerId,lines:[]}),"quote_requires_1_to_50_lines");
  assert.equal(validateQuoteInput({customerId,lines:[{description:"Lisensi",quantity:1,unitPrice:100,discountAmount:120}]}),"line_discount_exceeds_gross");
  assert.equal(validateQuoteInput({customerId,lines:[{description:"Lisensi",quantity:1,unitPrice:100.001}]}),"invalid_unit_price");
+ assert.equal(validateQuoteInput({customerId,lines:[{description:"Lisensi",quantity:1_000_000_000,unitPrice:1_000_000_000_000}]}),"line_total_too_large");
+ assert.equal(validateQuoteInput({customerId,validUntil:"2026-02-30",lines:[{description:"Lisensi",quantity:1,unitPrice:100}]}),"invalid_valid_until");
  assert.equal(validateQuoteInput({customerId,lines:[{description:"Lisensi",quantity:2.5,unitPrice:100000,discountAmount:5000,taxAmount:0}]}),null);
 });
 test("contract validator requires valid quote and coherent dates",()=>{
