@@ -40,12 +40,12 @@ const enterpriseAreas: Record<EnterpriseArea, { title: string; description: stri
   contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "API penawaran dan persetujuan kontrak terhubung · subscription dan billing lanjutan menyusul", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Subscription, renewal automation, perubahan paket, dan entitlement per instalasi." },
   billing: { title: "Billing, Invoice & Pembayaran", description: "Tagihan modul, biaya implementasi dan maintenance, invoice, penerimaan pembayaran, piutang, dan rekonsiliasi.", status: "API invoice, pembayaran, dan posting jurnal tersedia · credit note dan rekonsiliasi menyusul", tables: ["invoices", "invoice_lines", "payments", "maintenance_agreements", "maintenance_service_events"], next: "Invoice PDF, credit note, refund, aging piutang, recurring billing, dan rekonsiliasi bank." },
   accounting: { title: "Accounting & General Ledger", description: "Chart of accounts, jurnal umum, buku besar, neraca saldo, rekonsiliasi, tutup buku, dan audit trail.", status: "Chart of Accounts dan posting double-entry invoice/pembayaran terhubung · laporan keuangan menyusul", tables: ["chart_of_accounts", "journal_entries", "journal_lines"], next: "Reversal, trial balance, general ledger drilldown, bank reconciliation, period close, P&L, balance sheet, dan cash flow." },
-  support: { title: "Customer Support, Incident & SLA", description: "Tiket dukungan, klasifikasi dampak, eskalasi, insiden, SLA, root cause, dan komunikasi penyelesaian.", status: "Fondasi support dan incident tersedia · helpdesk belum dihubungkan", tables: ["support_cases", "installation_incidents"], next: "API tiket, antrean agen, SLA timer, eskalasi, notifikasi, dan portal dukungan klien." },
-  fleet: { title: "Client Fleet & Observability", description: "Daftar instalasi klien, heartbeat, log teredaksi, pemeriksaan kesehatan, versi aplikasi, dan insiden.", status: "Fondasi observability tersedia · konektor klien belum terpasang", tables: ["installations", "installation_log_events", "installation_health_checks"], next: "Enrollment instalasi, kredensial perangkat, ingest log, heartbeat, health scheduler, dan dashboard fleet." },
-  backup: { title: "Backup, Disaster Recovery & Continuity", description: "Kebijakan backup, retensi, checksum, enkripsi, bukti restore, RPO/RTO, dan latihan pemulihan.", status: "Fondasi kebijakan dan bukti backup tersedia · executor klien belum terpasang", tables: ["backup_policies", "backup_runs", "client_assurance_reports"], next: "Agent backup lokal, target penyimpanan milik klien, verifikasi checksum, restore drill, dan alert kegagalan." },
-  warranty: { title: "Warranty, Repair & Maintenance", description: "Masa garansi, cakupan dan pengecualian, klaim, riwayat perbaikan, jam kerja, biaya, dan invoice layanan.", status: "Fondasi garansi dan timeline perbaikan tersedia · workflow belum dihubungkan", tables: ["warranty_agreements", "warranty_claims", "warranty_claim_events", "client_repair_logs", "client_repair_events"], next: "API klaim garansi, work order, assignment teknisi, bukti perbaikan, persetujuan biaya, dan SLA." },
-  reports: { title: "Management, Client & Assurance Reports", description: "Laporan kesehatan tiap klien, keamanan, ketersediaan, backup, SLA, pekerjaan maintenance, pendapatan, dan risiko.", status: "Fondasi laporan assurance tersedia · generator dan distribusi belum dihubungkan", tables: ["client_assurance_reports", "report_exports"], next: "Generator laporan periodik, PDF/CSV, approval, delivery log, dan pemisahan data klien vs stakeholder." },
-  agents: { title: "AI Agent Operations & Automation", description: "Orkestrasi agent, pemantauan, diagnosis, rekomendasi, tugas terstruktur, approval, dan audit otomatisasi.", status: "Fondasi pencatatan agent tersedia · runtime agent belum aktif", tables: ["agent_runs", "security_findings", "remote_jobs", "approval_requests"], next: "Runtime agent deterministik lebih dahulu, policy engine, signed task manifest, approval berjenjang, dan audit eksekusi." },
+  support: { title: "Customer Support, Incident & SLA", description: "Tiket dukungan, klasifikasi dampak, eskalasi, insiden, SLA, root cause, dan komunikasi penyelesaian.", status: "API baca dan workspace operasional aktif · tindakan tiket dan eskalasi lanjutan menyusul", tables: ["support_cases", "installation_incidents"], next: "Daftar tiket, insiden, tingkat keparahan, SLA, dan status penyelesaian ditampilkan dari database Development." },
+  fleet: { title: "Client Fleet & Observability", description: "Daftar instalasi klien, heartbeat, log teredaksi, pemeriksaan kesehatan, versi aplikasi, dan insiden.", status: "API baca dan workspace fleet aktif · enrollment perangkat dan konektor klien belum tersedia", tables: ["installations", "installation_log_events", "installation_health_checks"], next: "Daftar instalasi, versi, heartbeat, health check, dan log yang sudah direduksi." },
+  backup: { title: "Backup, Disaster Recovery & Continuity", description: "Kebijakan backup, retensi, checksum, enkripsi, bukti restore, RPO/RTO, dan latihan pemulihan.", status: "API baca dan workspace backup aktif · eksekutor backup lokal/restore belum terpasang", tables: ["backup_policies", "backup_runs", "client_assurance_reports"], next: "Kebijakan, frekuensi, retensi, status enkripsi/checksum, riwayat backup, dan hasil restore test." },
+  warranty: { title: "Warranty, Repair & Maintenance", description: "Masa garansi, cakupan dan pengecualian, klaim, riwayat perbaikan, jam kerja, biaya, dan invoice layanan.", status: "API baca dan workspace garansi aktif · workflow klaim, assignment teknisi, dan approval biaya menyusul", tables: ["warranty_agreements", "warranty_claims", "warranty_claim_events", "client_repair_logs", "client_repair_events"], next: "Perjanjian, cakupan, masa berlaku, klaim, hasil eligibility, dan riwayat perbaikan." },
+  reports: { title: "Management, Client & Assurance Reports", description: "Laporan kesehatan tiap klien, keamanan, ketersediaan, backup, SLA, pekerjaan maintenance, pendapatan, dan risiko.", status: "API baca dan workspace laporan aktif · generator PDF/CSV dan distribusi menyusul", tables: ["client_assurance_reports", "stakeholder_service_reports", "report_exports"], next: "Laporan assurance, laporan stakeholder, periode, skor, status approval, delivery, dan permintaan ekspor." },
+  agents: { title: "AI Agent Operations & Automation", description: "Orkestrasi agent, pemantauan, diagnosis, rekomendasi, tugas terstruktur, approval, dan audit otomatisasi.", status: "API observasi agent aktif · runtime agent otonom dan dispatch job tetap dinonaktifkan", tables: ["agent_runs", "security_findings", "remote_jobs", "approval_requests"], next: "Riwayat agent, temuan keamanan, tugas terstruktur, dan antrean approval; tindakan berisiko tetap memerlukan persetujuan manusia." },
 
   procurement: { title: "Procurement", description: "Vendor, permintaan pembelian, persetujuan anggaran, RFQ, perbandingan penawaran, purchase order, penerimaan, dan pembayaran vendor.", status: "Belum tersedia · schema, API, workflow, dan UI perlu dibangun", tables: [], next: "Vendor master, purchase requisition, budget reservation, RFQ, bid comparison, PO, goods receipt, three-way matching, dan accounts payable." },
   inventory: { title: "Inventory & Asset", description: "Gudang, stok, mutasi, stok opname, barcode/QR, serial number, aset tetap, penyusutan, pemeliharaan, dan penghapusan.", status: "Belum tersedia · schema, API, workflow, dan UI perlu dibangun", tables: [], next: "Multi-warehouse, stock ledger, transfer, cycle count, serial/batch tracking, fixed asset register, depreciation schedule, maintenance, dan disposal." },
@@ -105,6 +105,35 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const date = (value?: string) => value ? new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
 const label = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (x) => x.toUpperCase());
 
+type OperationalDataset = { key: string; title: string; rows: Array<Record<string, unknown>>; returned: number };
+function OperationalDataWorkspace({ domain }: { domain: string }) {
+  const [datasets, setDatasets] = useState<OperationalDataset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setError("");
+    void request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean }>("/v1/platform/erp/operations/" + domain)
+      .then((result) => { if (active) setDatasets(result.datasets ?? []); })
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat data operasional."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [domain]);
+  const display = (value: unknown) => value === null || value === undefined || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  return <section className="enterprise-workspace">
+    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Read-only · data berasal dari database platform. Perubahan transaksi belum diaktifkan pada layar ini.</span></div>
+    {loading && <div className="panel"><p className="muted">Memuat dataset operasional…</p></div>}
+    {error && <div className="alert warning"><b>Data belum dapat dimuat</b><div>{error}</div></div>}
+    {!loading && !error && datasets.map((dataset) => {
+      const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
+      return <section className="panel" key={dataset.key}>
+        <PanelTitle title={dataset.title} subtitle={dataset.returned + " record · maksimum 100 terbaru"}/>
+        {dataset.rows.length === 0 ? <Empty text="Belum ada data operasional yang tercatat."/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{dataset.rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
+      </section>;
+    })}
+    {!loading && !error && <p className="muted">Tampilan ini hanya membaca data. Tidak ada job remote, persetujuan, perubahan garansi, atau tindakan pemulihan yang dijalankan otomatis.</p>}
+  </section>;
+}
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
@@ -262,17 +291,18 @@ export default function App() {
       {section === "accounting" && <AccountingWorkspace/>}
       {Object.prototype.hasOwnProperty.call(enterpriseAreas, section) && section !== "crm" && section !== "catalog" && section !== "contracts" && section !== "billing" && section !== "accounting" && (() => {
         const area = enterpriseAreas[section as EnterpriseArea];
+        const liveDomains = ["support","fleet","backup","warranty","reports","agents"];
         return <section className="panel enterprise-workspace">
           <PanelTitle title={area.title} subtitle={area.description}/>
-          <div className="enterprise-status"><b>STATUS IMPLEMENTASI</b><span>{area.status}</span></div>
-          <h3>Fondasi data terkait</h3>
-          <div className="enterprise-table-list">{area.tables.map((table) => <code key={table}>{table}</code>)}</div>
-          <h3>Ruang lingkup workspace</h3>
-          <p className="muted">{area.next}</p>
-          <div className="enterprise-notice"><b>Transparansi implementasi</b><p>Halaman ini menampilkan peta modul dan status fondasi yang benar-benar ada. Data transaksi belum ditampilkan karena API workspace ini belum tersedia. Tidak ada data contoh, angka, invoice, atau status operasional yang direkayasa.</p></div>
-        </section>;
-      })()}
-      <footer>© PONDOK OS · Central Command <span>Control plane terpisah · Development</span></footer></div>
+          {liveDomains.includes(section) ? <OperationalDataWorkspace domain={section}/> : <>
+            <div className="enterprise-status"><b>STATUS IMPLEMENTASI</b><span>{area.status}</span></div>
+            <h3>Fondasi data terkait</h3>
+            <div className="enterprise-table-list">{area.tables.map((table) => <code key={table}>{table}</code>)}</div>
+            <h3>Ruang lingkup workspace</h3>
+            <p className="muted">{area.next}</p>
+            <div className="enterprise-notice"><b>Transparansi implementasi</b><p>Workspace transaksi belum diaktifkan karena schema/API untuk domain ini belum tersedia pada Development. Tidak ada data contoh atau status operasional yang direkayasa.</p></div>
+          </>}</section>;
+      })()}      <footer>© PONDOK OS · Central Command <span>Control plane terpisah · Development</span></footer></div>
     </main>
   </div>;
 }
