@@ -12,6 +12,7 @@ import { handleHrRequest } from "./hr.js";
 import { handleModuleRecordsRequest } from "./module-records.js";
 import { handlePlatformRequest, listUserOrganizations } from "./platform-admin.js";
 import { handlePlatformErpRequest } from "./platform-erp.js";
+import { handlePlatformCustomerCatalogRequest } from "./platform-customer-catalog.js";
 import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
@@ -114,6 +115,7 @@ export async function handleRequest(
       return;
     }
     try {
+      if (await handlePlatformCustomerCatalogRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformErpRequest(request, response, dependencies.pool, identity.userId)) return;
       if (await handlePlatformRequest(request, response, dependencies.pool, identity.userId)) return;
     } catch {
