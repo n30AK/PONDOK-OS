@@ -42,7 +42,8 @@ async function audit(c:Client,userId:string,action:string,type:string,id:string,
  await c.query("INSERT INTO platform.audit_events(actor_user_id,action,resource_type,resource_id,metadata) VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb)",[userId,action,type,id,JSON.stringify(metadata)]);
 }
 function errorCode(e:unknown){return typeof e==="object"&&e!==null&&"code"in e?String((e as {code:unknown}).code):"";}
-function numberId(prefix:string){return `${prefix}-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${randomUUID().slice(0,8).toUpperCase()}`;}
+function businessDate(){const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jakarta",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const year=parts.find(x=>x.type==="year")?.value,month=parts.find(x=>x.type==="month")?.value,day=parts.find(x=>x.type==="day")?.value;if(!year||!month||!day)throw new Error("business_date_unavailable");return year+"-"+month+"-"+day;}
+function numberId(prefix:string){return prefix+"-"+businessDate().replace(/-/g,"")+"-"+randomUUID().slice(0,8).toUpperCase();}
 async function account(c:Client,code:string){const r=await c.query<{id:string}>("SELECT id FROM platform.chart_of_accounts WHERE account_code=$1 AND is_active=true",[code]);return r.rows[0]?.id??null;}
 async function postJournal(c:Client,userId:string,args:{entryNumber:string;date:string;description:string;sourceType:"invoice"|"payment";sourceId:string;postingKey:string;debit:number;credit:number;lines:Array<{accountId:string;description:string;debit:number;credit:number;customerId?:string;invoiceId?:string}>}){
  if(args.debit<=0||args.debit!==args.credit||args.lines.length<2)throw new Error("unbalanced_journal_payload");
@@ -158,8 +159,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const lines=[{accountId:ar,description:"Piutang invoice",debit:total,credit:0,customerId:invoice.rows[0].customer_id,invoiceId:invoiceId!}];
     if(netRevenue>0)lines.push({accountId:revenue,description:"Pendapatan lisensi dan layanan",debit:0,credit:netRevenue,customerId:invoice.rows[0].customer_id,invoiceId:invoiceId!});
     if(tax>0&&vat)lines.push({accountId:vat,description:"PPN keluaran",debit:0,credit:tax,customerId:invoice.rows[0].customer_id,invoiceId:invoiceId!});
-    const journalId=await postJournal(c,userId,{entryNumber:numberId("JE"),date:new Date().toISOString().slice(0,10),description:`Penerbitan invoice ${invoiceId}`,sourceType:"invoice",sourceId:invoiceId!,postingKey:`INVOICE:${invoiceId}`,debit:total,credit:total,lines});
-    await c.query("UPDATE platform.invoices SET status='issued',issued_on=current_date,issued_at=now(),journal_entry_id=$2::uuid,updated_at=now() WHERE id=$1::uuid",[invoiceId,journalId]);
+    const journalId=await postJournal(c,userId,{entryNumber:numberId("JE"),date:businessDate(),description:`Penerbitan invoice ${invoiceId}`,sourceType:"invoice",sourceId:invoiceId!,postingKey:`INVOICE:${invoiceId}`,debit:total,credit:total,lines});
+    await c.query("UPDATE platform.invoices SET status='issued',issued_on=$2::date,issued_at=now(),journal_entry_id=$3::uuid,updated_at=now() WHERE id=$1::uuid",[invoiceId,businessDate(),journalId]);
     await audit(c,userId,"billing.invoice.issued","invoice",invoiceId!,{journalEntryId:journalId,grandTotal:money(total)});
     return{notFound:false as const,invalidState:false as const,missingAccounts:false as const,journalId};
    });
@@ -220,7 +221,7 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     if(amount<=0||amount>outstanding)return{notFound:false as const,invalidState:true as const,selfApproval:false as const,missingAccounts:false as const};
     const cashCode=p.payment_method==="cash"?"1000":"1010",cash=await account(c,cashCode),ar=await account(c,"1100");
     if(!cash||!ar)return{notFound:false as const,invalidState:false as const,selfApproval:false as const,missingAccounts:true as const};
-    const journalId=await postJournal(c,userId,{entryNumber:numberId("JE"),date:new Date().toISOString().slice(0,10),description:`Penerimaan pembayaran ${paymentId}`,sourceType:"payment",sourceId:paymentId!,postingKey:`PAYMENT:${paymentId}`,debit:amount,credit:amount,lines:[
+    const journalId=await postJournal(c,userId,{entryNumber:numberId("JE"),date:businessDate(),description:`Penerimaan pembayaran ${paymentId}`,sourceType:"payment",sourceId:paymentId!,postingKey:`PAYMENT:${paymentId}`,debit:amount,credit:amount,lines:[
      {accountId:cash,description:p.payment_method==="cash"?"Penerimaan kas":"Penerimaan bank",debit:amount,credit:0,customerId:p.customer_id,invoiceId:p.invoice_id},
      {accountId:ar,description:"Pelunasan piutang",debit:0,credit:amount,customerId:p.customer_id,invoiceId:p.invoice_id}
     ]});
