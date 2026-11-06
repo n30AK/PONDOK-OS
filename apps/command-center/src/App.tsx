@@ -160,6 +160,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [registerName, setRegisterName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [verified, setVerified] = useState(false);
   const [section, setSection] = useState<Section>("overview");
@@ -229,6 +231,17 @@ export default function App() {
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Login gagal."); }
     finally { setAuthBusy(false); }
   }
+  async function signUp(event: FormEvent) {
+    event.preventDefault(); if (!auth) { setNotice("Konfigurasi Neon Auth tidak tersedia."); return; }
+    setAuthBusy(true); setNotice("");
+    try {
+      const result = await auth.signUp.email({ email: email.trim(), password, name: registerName.trim() });
+      if (result.error) throw new Error(result.error.message);
+      setPassword(""); setAuthMode("signin");
+      setNotice("Akun identitas berhasil didaftarkan jika verifikasi email/Auth mengizinkan. Pendaftaran ini TIDAK memberikan hak Super Administrator. Akses Central Command hanya dapat diberikan secara terpisah oleh pemilik platform.");
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Pendaftaran gagal."); }
+    finally { setAuthBusy(false); }
+  }
   async function signOut() { await auth?.signOut(); setUser(null); setVerified(false); setTenants([]); setActivations([]); setModules([]); setPublishers([]); setAuditEvents([]); }
   async function approve(id: string) {
     setIssuedToken(""); setNotice("");
@@ -266,7 +279,7 @@ export default function App() {
     catch (reason) { setNotice(reason instanceof Error ? reason.message : "Inisialisasi gagal."); }
   }
 
-  if (!user) return <main className="login-shell"><section className="login-card"><div className="brand-mark">P<span>·</span></div><p className="kicker">PLATFORM CONTROL PLANE</p><h1>Central Command</h1><p className="muted">Ruang kendali khusus Super Administrator PONDOK OS. Terpisah dari workspace operasional pesantren.</p>{notice && <div className="alert">{notice}</div>}<form onSubmit={signIn}><label>Email administrator<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Kata sandi<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label><button className="primary full" disabled={authBusy}>{authBusy ? "Memverifikasi…" : "Masuk ke Command Center"}</button></form><small>Hak Super Admin diverifikasi ulang oleh API pada setiap sesi. Tidak ada pendaftaran mandiri.</small></section></main>;
+  if (!user) return <main className="login-shell"><section className="login-card"><div className="brand-mark">P<span>·</span></div><p className="kicker">PLATFORM CONTROL PLANE</p><h1>Central Command</h1><p className="muted">Aplikasi kendali platform yang terpisah dari Workspace pesantren. Hak Super Administrator tidak pernah diberikan melalui pendaftaran mandiri.</p>{notice && <div className="alert">{notice}</div>}{authMode === "signin" ? <form onSubmit={signIn}><label>Email operator<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Kata sandi<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label><button className="primary full" disabled={authBusy}>{authBusy ? "Memverifikasi…" : "Masuk ke Central Command"}</button></form> : <form onSubmit={signUp}><label>Nama lengkap<input value={registerName} onChange={(e) => setRegisterName(e.target.value)} autoComplete="name" required maxLength={120} /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Kata sandi<input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required /></label><button className="primary full" disabled={authBusy || !auth}>{authBusy ? "Mendaftarkan…" : "Daftarkan akun identitas"}</button></form>}<button type="button" className="text-button" onClick={() => { setAuthMode(authMode === "signin" ? "signup" : "signin"); setNotice(""); setPassword(""); }}>{authMode === "signin" ? "Belum memiliki akun? Daftar identitas" : "Sudah memiliki akun? Masuk"}</button><small>Setiap sesi wajib diverifikasi oleh API. Akun baru tidak memperoleh hak platform, akses tenant, atau peran Super Administrator secara otomatis. Akses operator memerlukan pemberian hak secara terpisah dan tercatat.</small></section></main>;
   if (!verified) return <main className="login-shell"><section className="login-card"><div className="spinner" /><h2>Memverifikasi hak administrator</h2><p className="muted">{notice || "Memeriksa sesi dan otorisasi melalui server…"}</p><button className="secondary" onClick={() => void signOut()}>Keluar</button></section></main>;
 
   const navGroups: { title: string; items: { id: Section; name: string; icon: string }[] }[] = [
