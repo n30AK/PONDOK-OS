@@ -312,7 +312,7 @@ export default function App() {
 
   const initials = useMemo(() => (user?.name || user?.email || "P").slice(0, 1).toUpperCase(), [user]);
 
-  if (platformAccessChecked && isSuperAdmin && !platformAccessError) {
+  if (user && platformAccessChecked && isSuperAdmin && !platformAccessError) {
     return <main className="auth-layout">
       <section className="auth-brand">
         <div className="brand-mark">P</div>
