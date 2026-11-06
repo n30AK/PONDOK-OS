@@ -64,6 +64,7 @@ export default function App() {
   const [operationsArea, setOperationsArea] = useState<OperationsArea>("finance");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selfSignUp, setSelfSignUp] = useState(false);
   const [firstSetup, setFirstSetup] = useState(false);
   const [existingAdminAccount, setExistingAdminAccount] = useState(false);
   const [adminName, setAdminName] = useState("");
@@ -213,6 +214,20 @@ export default function App() {
       setError(reason instanceof Error ? reason.message : "Login gagal.");
     } finally { setBusy(false); }
   };
+  const registerWorkspaceAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!authClient) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.signUp.email({ email: email.trim(), password, name: adminName.trim() });
+      if (result.error) throw new Error(result.error.message);
+      setPassword("");
+      setSelfSignUp(false);
+      setNotice("Pendaftaran akun berhasil jika verifikasi Auth diaktifkan. Akun baru belum memiliki akses Workspace sampai administrator pesantren mengundang dan menetapkan keanggotaan serta perannya. Pendaftaran tidak membuat organisasi atau tenant.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Pendaftaran akun gagal.");
+    } finally { setBusy(false); }
+  };
 
   const bootstrapFirstOrganization = async (event: FormEvent) => {
     event.preventDefault();
@@ -312,27 +327,6 @@ export default function App() {
 
   const initials = useMemo(() => (user?.name || user?.email || "P").slice(0, 1).toUpperCase(), [user]);
 
-  if (user && platformAccessChecked && isSuperAdmin && !platformAccessError) {
-    return <main className="auth-layout">
-      <section className="auth-brand">
-        <div className="brand-mark">P</div>
-        <p className="eyebrow">PLATFORM CONTROL PLANE</p>
-        <h1>Central <em>Command.</em></h1>
-        <p className="brand-copy">Akun Anda terverifikasi sebagai Operator Platform PONDOK OS. Gunakan ruang kendali pusat untuk mengelola institusi, aktivasi, modul, keamanan, dan operasional platform.</p>
-        <div className="auth-foot">Akses operator dipisahkan dari data dan workspace setiap pesantren.</div>
-      </section>
-      <section className="auth-panel">
-        <div className="login-card">
-          <div className="eyebrow">OPERATOR PLATFORM</div>
-          <h2>Selamat datang, {user.name || user.email?.split("@")[0]}</h2>
-          <p className="muted">Anda tidak perlu menjadi anggota organisasi pesantren. Akun administrator pesantren dikelola secara terpisah dan hanya dapat mengakses tenant yang ditetapkan kepadanya.</p>
-          <button type="button" className="primary full" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}command-center/`)}>Buka Central Command <span>→</span></button>
-          <button type="button" className="text-button auth-toggle" onClick={() => void signOut()}>Keluar dari akun operator</button>
-        </div>
-      </section>
-    </main>;
-  }
-
   if (!user) {
     return <main className="auth-layout">
       <section className="auth-brand">
@@ -360,6 +354,20 @@ export default function App() {
           <p className="login-note">Token tidak disimpan di browser. Setelah organisasi pertama dibuat, endpoint setup akan menolak permintaan berikutnya.</p>
           <button type="button" className="text-button auth-toggle" onClick={() => { setExistingAdminAccount((value) => !value); setError(""); }}>{existingAdminAccount ? "Belum punya akun? Daftarkan administrator" : "Sudah punya akun? Gunakan akun yang ada"}</button>
           <button type="button" className="text-button auth-toggle" onClick={() => { setFirstSetup(false); setError(""); }}>← Kembali ke login</button>
+        </form> : selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
+          <div className="eyebrow">PENDAFTARAN PENGGUNA</div>
+          <h2>Buat akun PONDOK OS</h2>
+          <p className="muted">Buat identitas akun terlebih dahulu. Akses data pesantren hanya diberikan melalui undangan dan penetapan peran oleh administrator lembaga.</p>
+          {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
+          <label>Nama lengkap<input value={adminName} onChange={(e) => setAdminName(e.target.value)} autoComplete="name" required maxLength={120} /></label>
+          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
+          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required /></label>
+          {error && <div className="alert error">{error}</div>}
+          {notice && <div className="alert success">{notice}</div>}
+          <button className="primary full" disabled={busy || !authClient}>{busy ? "Mendaftarkan akun…" : "Daftar akun"}</button>
+          <p className="login-note">Pendaftaran tidak membuat pesantren, tenant, atau hak administrator. Hubungi administrator lembaga untuk mendapatkan akses.</p>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(false); setError(""); setNotice(""); setPassword(""); }}>← Kembali ke login</button>
+          <SupportLink />
         </form> : <form className="login-card" onSubmit={signIn}>
           <div className="eyebrow">SELAMAT DATANG</div>
           <h2>Masuk ke PONDOK OS</h2>
@@ -370,6 +378,7 @@ export default function App() {
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(true); setAdminName(""); setError(""); setNotice(""); }}>Belum punya akun? Daftar akun</button>
           <p className="login-note">Akses pengguna baru harus diberikan oleh administrator pesantren.</p>
           <SupportLink />
         </form>}
@@ -412,7 +421,7 @@ export default function App() {
               <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
             </> : organizations.length === 0 ? <>
               <p>Akun ini belum terhubung ke organisasi pesantren.</p>
-              {isSuperAdmin ? <div className="alert warning">Akun operator platform tidak dapat digunakan untuk mengakses workspace lembaga.</div> : <div className="alert warning">Akun ini belum memiliki workspace aktif. Hubungi administrator pesantren untuk mendapatkan undangan atau mengajukan aktivasi lembaga.</div>}
+              <div className="alert warning">Akun ini belum memiliki workspace aktif. Hubungi administrator pesantren untuk mendapatkan undangan atau mengajukan aktivasi lembaga.</div>
             </> : <p>Menyiapkan workspace pesantren Anda…</p>}
             {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
