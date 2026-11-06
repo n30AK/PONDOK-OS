@@ -386,6 +386,34 @@ export default function App() {
     </main>;
   }
 
+  // Keep the tenant application completely separate from platform operators.
+  // Do not render tenant navigation or the generic no-membership state for them.
+  if (!platformAccessChecked) {
+    return <main className="auth-layout"><section className="login-card">
+      <div className="eyebrow">PEMERIKSAAN AKSES</div>
+      <h2>Memverifikasi hak akses akun</h2>
+      <p className="muted">Workspace menunggu konfirmasi otorisasi dari server sebelum menampilkan area pesantren.</p>
+    </section></main>;
+  }
+  if (platformAccessError) {
+    return <main className="auth-layout"><section className="login-card">
+      <div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div>
+      <h2>Sesi belum dapat diverifikasi</h2>
+      <div className="alert error">{platformAccessError}</div>
+      <button type="button" className="primary full" onClick={() => window.location.reload()}>Coba periksa kembali</button>
+      <button type="button" className="text-button" onClick={() => void signOut()}>Keluar</button>
+    </section></main>;
+  }
+  if (isSuperAdmin) {
+    return <main className="auth-layout"><section className="login-card">
+      <div className="eyebrow">AKUN OPERATOR PLATFORM</div>
+      <h2>Akses Workspace Pesantren tidak tersedia</h2>
+      <p className="muted">Akun ini memiliki hak operator platform. Gunakan Central Command untuk mengelola platform. Akun operator tidak memiliki workspace atau keanggotaan pesantren secara otomatis.</p>
+      <a className="primary full" href="/PONDOK-OS/command-center/">Buka Central Command →</a>
+      <button type="button" className="text-button" onClick={() => void signOut()}>Keluar dari akun</button>
+    </section></main>;
+  }
+
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>PONDOK OS</strong><small>INSTITUTION WORKSPACE</small></div></div>
