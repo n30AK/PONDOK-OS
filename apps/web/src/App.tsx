@@ -312,27 +312,6 @@ export default function App() {
 
   const initials = useMemo(() => (user?.name || user?.email || "P").slice(0, 1).toUpperCase(), [user]);
 
-  if (user && platformAccessChecked && isSuperAdmin && !platformAccessError) {
-    return <main className="auth-layout">
-      <section className="auth-brand">
-        <div className="brand-mark">P</div>
-        <p className="eyebrow">PLATFORM CONTROL PLANE</p>
-        <h1>Central <em>Command.</em></h1>
-        <p className="brand-copy">Akun Anda terverifikasi sebagai Operator Platform PONDOK OS. Gunakan ruang kendali pusat untuk mengelola institusi, aktivasi, modul, keamanan, dan operasional platform.</p>
-        <div className="auth-foot">Akses operator dipisahkan dari data dan workspace setiap pesantren.</div>
-      </section>
-      <section className="auth-panel">
-        <div className="login-card">
-          <div className="eyebrow">OPERATOR PLATFORM</div>
-          <h2>Selamat datang, {user.name || user.email?.split("@")[0]}</h2>
-          <p className="muted">Anda tidak perlu menjadi anggota organisasi pesantren. Akun administrator pesantren dikelola secara terpisah dan hanya dapat mengakses tenant yang ditetapkan kepadanya.</p>
-          <button type="button" className="primary full" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}command-center/`)}>Buka Central Command <span>→</span></button>
-          <button type="button" className="text-button auth-toggle" onClick={() => void signOut()}>Keluar dari akun operator</button>
-        </div>
-      </section>
-    </main>;
-  }
-
   if (!user) {
     return <main className="auth-layout">
       <section className="auth-brand">
@@ -412,7 +391,7 @@ export default function App() {
               <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
             </> : organizations.length === 0 ? <>
               <p>Akun ini belum terhubung ke organisasi pesantren.</p>
-              {isSuperAdmin ? <div className="alert warning">Akun operator platform tidak dapat digunakan untuk mengakses workspace lembaga.</div> : <div className="alert warning">Akun ini belum memiliki workspace aktif. Hubungi administrator pesantren untuk mendapatkan undangan atau mengajukan aktivasi lembaga.</div>}
+              <div className="alert warning">Akun ini belum memiliki workspace aktif. Hubungi administrator pesantren untuk mendapatkan undangan atau mengajukan aktivasi lembaga.</div>
             </> : <p>Menyiapkan workspace pesantren Anda…</p>}
             {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
