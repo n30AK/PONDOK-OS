@@ -64,6 +64,7 @@ export default function App() {
   const [operationsArea, setOperationsArea] = useState<OperationsArea>("finance");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selfSignUp, setSelfSignUp] = useState(false);
   const [firstSetup, setFirstSetup] = useState(false);
   const [existingAdminAccount, setExistingAdminAccount] = useState(false);
   const [adminName, setAdminName] = useState("");
@@ -213,6 +214,20 @@ export default function App() {
       setError(reason instanceof Error ? reason.message : "Login gagal.");
     } finally { setBusy(false); }
   };
+  const registerWorkspaceAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!authClient) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.signUp.email({ email: email.trim(), password, name: adminName.trim() });
+      if (result.error) throw new Error(result.error.message);
+      setPassword("");
+      setSelfSignUp(false);
+      setNotice("Pendaftaran akun berhasil jika verifikasi Auth diaktifkan. Akun baru belum memiliki akses Workspace sampai administrator pesantren mengundang dan menetapkan keanggotaan serta perannya. Pendaftaran tidak membuat organisasi atau tenant.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Pendaftaran akun gagal.");
+    } finally { setBusy(false); }
+  };
 
   const bootstrapFirstOrganization = async (event: FormEvent) => {
     event.preventDefault();
@@ -339,6 +354,20 @@ export default function App() {
           <p className="login-note">Token tidak disimpan di browser. Setelah organisasi pertama dibuat, endpoint setup akan menolak permintaan berikutnya.</p>
           <button type="button" className="text-button auth-toggle" onClick={() => { setExistingAdminAccount((value) => !value); setError(""); }}>{existingAdminAccount ? "Belum punya akun? Daftarkan administrator" : "Sudah punya akun? Gunakan akun yang ada"}</button>
           <button type="button" className="text-button auth-toggle" onClick={() => { setFirstSetup(false); setError(""); }}>← Kembali ke login</button>
+        </form> : selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
+          <div className="eyebrow">PENDAFTARAN PENGGUNA</div>
+          <h2>Buat akun PONDOK OS</h2>
+          <p className="muted">Buat identitas akun terlebih dahulu. Akses data pesantren hanya diberikan melalui undangan dan penetapan peran oleh administrator lembaga.</p>
+          {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
+          <label>Nama lengkap<input value={adminName} onChange={(e) => setAdminName(e.target.value)} autoComplete="name" required maxLength={120} /></label>
+          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
+          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required /></label>
+          {error && <div className="alert error">{error}</div>}
+          {notice && <div className="alert success">{notice}</div>}
+          <button className="primary full" disabled={busy || !authClient}>{busy ? "Mendaftarkan akun…" : "Daftar akun"}</button>
+          <p className="login-note">Pendaftaran tidak membuat pesantren, tenant, atau hak administrator. Hubungi administrator lembaga untuk mendapatkan akses.</p>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(false); setError(""); setNotice(""); setPassword(""); }}>← Kembali ke login</button>
+          <SupportLink />
         </form> : <form className="login-card" onSubmit={signIn}>
           <div className="eyebrow">SELAMAT DATANG</div>
           <h2>Masuk ke PONDOK OS</h2>
@@ -349,6 +378,7 @@ export default function App() {
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(true); setAdminName(""); setError(""); setNotice(""); }}>Belum punya akun? Daftar akun</button>
           <p className="login-note">Akses pengguna baru harus diberikan oleh administrator pesantren.</p>
           <SupportLink />
         </form>}
