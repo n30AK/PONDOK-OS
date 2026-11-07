@@ -1,4 +1,4 @@
-const CACHE = "pondok-shell-v3";
+const CACHE = "pondok-shell-v4";
 const BASE = new URL("./", self.location.href);
 const BASE_PATH = BASE.pathname;
 const SHELL = [
