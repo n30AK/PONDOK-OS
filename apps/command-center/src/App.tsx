@@ -69,7 +69,7 @@ function jwt(value: unknown): value is string { return typeof value === "string"
 async function token(): Promise<string> {
   if (!auth || !AUTH_URL) throw new Error("Neon Auth belum dikonfigurasi.");
   // Match Workspace: make one explicit credentialed Managed Auth token call.
-  const response = await fetch(`${AUTH_URL.replace(/\\/$/, "")}/token`, { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
+  const response = await fetch(`${AUTH_URL.replace(/\/$/, "")}/token`, { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`Sesi autentikasi tidak dapat diverifikasi (HTTP ${response.status}).`);
   const data = await response.json() as Record<string, unknown>;
   const nested = data.data && typeof data.data === "object" ? data.data as Record<string, unknown> : {};
