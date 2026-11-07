@@ -120,13 +120,8 @@ export default function App() {
     return () => { active = false; };
   }, [user]);
 
-  // Keep platform operators in their dedicated application. Central Command
-  // independently verifies the same session and Super Administrator grant
-  // server-side before rendering any platform data.
-  useEffect(() => {
-    if (!user || !platformAccessChecked || platformAccessError || !isSuperAdmin) return;
-    window.location.replace(`${import.meta.env.BASE_URL}command-center/`);
-  }, [user, platformAccessChecked, platformAccessError, isSuperAdmin]);
+  // Workspace and Central Command are separate applications. Never redirect
+  // this application based on platform role; tenant access is resolved below.
   const openModule = (resourceKey: string) => { setModuleResource(resourceKey); setScreen("modules"); setError(""); setNotice(""); };
   const openOperations = (area: OperationsArea) => { setOperationsArea(area); setScreen("operations"); setError(""); setNotice(""); };
 
@@ -151,7 +146,7 @@ export default function App() {
     if (isSuperAdmin) {
       setOrganizations([]);
       setTenant(null);
-      setNotice("");
+      setNotice("Akun ini tidak memiliki keanggotaan pada workspace pesantren. Masuklah menggunakan akun lembaga yang telah diundang administrator.");
       setBusy(false);
       return;
     }
@@ -411,16 +406,6 @@ export default function App() {
       <button type="button" className="text-button" onClick={() => void signOut()}>Keluar</button>
     </section></main>;
   }
-  if (isSuperAdmin) {
-    return <main className="auth-layout"><section className="login-card">
-      <div className="eyebrow">AKUN OPERATOR PLATFORM</div>
-      <h2>Membuka Central Command</h2>
-      <p className="muted">Akun operator diarahkan ke aplikasi internal platform. Central Command akan memverifikasi kembali sesi dan hak Super Administrator sebelum memberikan akses.</p>
-      <div className="spinner" />
-      <a className="text-button" href={`${import.meta.env.BASE_URL}command-center/`}>Lanjutkan jika halaman tidak berpindah</a>
-    </section></main>;
-  }
-
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>PONDOK OS</strong><small>INSTITUTION WORKSPACE</small></div></div>
