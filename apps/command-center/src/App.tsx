@@ -68,12 +68,13 @@ function readUser(value: unknown): User | null {
 function jwt(value: unknown): value is string { return typeof value === "string" && value.split(".").length === 3 && value.length > 100; }
 async function token(): Promise<string> {
   if (!auth || !AUTH_URL) throw new Error("Neon Auth belum dikonfigurasi.");
-  try { const result = await auth.token(); if (jwt(result.data?.token)) return result.data.token; } catch { /* secure cookie fallback below */ }
+  // Match Workspace: make one explicit credentialed Managed Auth token call.
   const response = await fetch(`${AUTH_URL.replace(/\/$/, "")}/token`, { credentials: "include", cache: "no-store", headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`Sesi autentikasi tidak dapat diverifikasi (HTTP ${response.status}).`);
   const data = await response.json() as Record<string, unknown>;
   const nested = data.data && typeof data.data === "object" ? data.data as Record<string, unknown> : {};
-  const candidate = [data.token, data.access_token, nested.token, nested.access_token].find(jwt);
+  const session = data.session && typeof data.session === "object" ? data.session as Record<string, unknown> : {};
+  const candidate = [data.token, data.access_token, nested.token, nested.access_token, session.access_token].find(jwt);
   if (!candidate) throw new Error("Neon Auth tidak memberikan JWT yang valid. Masuk kembali.");
   return candidate;
 }
