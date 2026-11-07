@@ -33,7 +33,7 @@ const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ??
 function SupportLink() {
   if (!/^[1-9]\d{7,14}$/.test(SUPPORT_WHATSAPP_NUMBER)) return null;
   const message = encodeURIComponent("Assalamu’alaikum, saya pengguna PONDOK OS dan membutuhkan bantuan terkait: ");
-  return <a className="support-link" href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${message}`} target="_blank" rel="noopener noreferrer">WhatsApp Business · Bantuan & dukungan</a>;
+  return <a className="support-link" href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${message}`} target="_blank" rel="noopener noreferrer">Hubungi Super Administrator melalui WhatsApp</a>;
 }
 
 async function apiRequest<T>(path: string, organizationId: string, init: RequestInit = {}): Promise<T> {
@@ -408,8 +408,7 @@ export default function App() {
     return <main className="auth-layout"><section className="login-card">
       <div className="eyebrow">AKUN OPERATOR PLATFORM</div>
       <h2>Akses Workspace Pesantren tidak tersedia</h2>
-      <p className="muted">Akun ini memiliki hak operator platform. Gunakan Central Command untuk mengelola platform. Akun operator tidak memiliki workspace atau keanggotaan pesantren secara otomatis.</p>
-      <a className="primary full" href="/PONDOK-OS/command-center/">Buka Central Command →</a>
+      <p className="muted">Akun ini merupakan akun internal pengelola platform dan bukan akun pengguna pesantren. Workspace hanya digunakan oleh lembaga pesantren beserta anggota yang diberi hak akses oleh administrator lembaganya.</p>
       <button type="button" className="text-button" onClick={() => void signOut()}>Keluar dari akun</button>
     </section></main>;
   }
