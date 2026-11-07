@@ -6,7 +6,6 @@ type AuthUserPayload = {
   session?: { user?: unknown } | null;
 };
 type AuthClient = {
-  token(): Promise<AuthResult<{ token?: string }>>;
   getSession(): Promise<AuthResult<AuthUserPayload>>;
   signIn: { email(input: { email: string; password: string }): Promise<AuthResult<AuthUserPayload>> };
   signUp: { email(input: { email: string; password: string; name: string }): Promise<AuthResult<AuthUserPayload>> };
@@ -89,12 +88,9 @@ async function getTokenFromAuthEndpoint(): Promise<string> {
 
 export async function getAccessToken(): Promise<string> {
   if (!authClient) throw new Error("Neon Auth belum dikonfigurasi. Isi VITE_NEON_AUTH_URL.");
-  try {
-    const result = await authClient.token();
-    if (isJwt(result.data?.token)) return result.data.token;
-  } catch {
-    // Fall through to the managed token endpoint; never log token or cookie data.
-  }
+  // Use the explicit credentialed Managed Auth endpoint consistently. This
+  // avoids an extra SDK token request that can fail before cookie fallback.
+  // The HTTP-only session cookie stays browser-managed; no token is persisted.
   return getTokenFromAuthEndpoint();
 }
 
