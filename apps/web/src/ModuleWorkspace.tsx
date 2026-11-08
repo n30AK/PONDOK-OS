@@ -145,9 +145,9 @@ export function getModuleResourceLabel(key:string):string { return key==="all"?"
 function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange,preview=false}:Props) {
  const available=RESOURCES;
  const groups=useMemo(()=>Array.from(new Set(["Semua Modul","Master Data",...available.map(r=>r.group)])),[available]);
- const requestedGroup=initialResourceKey==="all"?"Semua Modul":RESOURCES.find(r=>r.key===initialResourceKey)?.group;
+ const requestedGroup=initialResourceKey==="all"?"Semua Modul":(MASTER_DATA_KEYS.has(initialResourceKey??"")?"Master Data":RESOURCES.find(r=>r.key===initialResourceKey)?.group);
  const initialResource=initialResourceKey==="all"?available[0]:available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup);
- const [group,setGroup]=useState(initialResourceKey==="all"?"Semua Modul":initialResource?.group??requestedGroup??groups[0]??"");
+ const [group,setGroup]=useState(initialResourceKey==="all"?"Semua Modul":(MASTER_DATA_KEYS.has(initialResourceKey??"")?"Master Data":initialResource?.group??requestedGroup??groups[0]??""));
  const [resourceKey,setResourceKey]=useState(initialResource?.key??(initialResourceKey==="all"?"":initialResourceKey));
  const internalSelection=useRef(false);
  useEffect(()=>{
@@ -305,7 +305,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   <div className="module-page-layout">
    <aside className="module-page-nav" aria-label="Navigasi halaman modul">
     <div className="module-page-nav-title">DAFTAR HALAMAN</div>
-    {groups.filter(g=>g!=="Semua Modul").map(g=><div className="module-page-nav-group" key={g}>
+    {(group==="Semua Modul"?groups.filter(g=>g!=="Semua Modul"):[group]).map(g=><div className="module-page-nav-group" key={g}>
      <div className="module-page-nav-group-title">{g}</div>
      {available.filter(r=>g==="Master Data"?MASTER_DATA_KEYS.has(r.key):r.group===g).map(r=><button type="button" key={r.key} className={resourceKey===r.key?"module-page-nav-link active":"module-page-nav-link"} onClick={()=>{setGroup(g);setResourceKey(r.key);setShowForm(false);setEditingRow(null);internalSelection.current=initialResourceKey!==r.key;onResourceChange?.(r.key);}}>{r.label}</button>)}
     </div>)}
