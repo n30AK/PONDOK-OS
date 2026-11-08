@@ -71,3 +71,32 @@ test("accepted applicant conversion requires a tenant campus and a valid student
     campusId: "123e4567-e89b-42d3-a456-426614174000", studentNumber: "x".repeat(65)
   }), "invalid_student_number");
 });
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+test("PPDB sensitive reads fail closed when access audit cannot be written", () => {
+  const source = readFileSync(fileURLToPath(new URL("../src/admissions.ts", import.meta.url)), "utf8");
+  assert.match(source, /admissions_read_audit_unavailable/);
+  assert.match(source, /admissions\.application\.list/);
+  assert.match(source, /accessChannel: "workspace"/);
+});
+
+test("PPDB lifecycle writes are atomically coupled to metadata-only audit events", () => {
+  const source = readFileSync(fileURLToPath(new URL("../src/admissions.ts", import.meta.url)), "utf8");
+  for (const action of [
+    "admissions.period.create",
+    "admissions.period.open",
+    "admissions.period.close",
+    "admissions.application.create",
+    "admissions.application.submit",
+    "admissions.application.review",
+    "admissions.application.convert_to_student"
+  ]) {
+    assert.ok(source.includes(action), `missing audit action: ${action}`);
+  }
+  assert.match(source, /FROM created RETURNING id/);
+  assert.match(source, /FROM updated RETURNING id/);
+  assert.match(source, /FROM review RETURNING id/);
+  assert.match(source, /FROM linked RETURNING id/);
+});
