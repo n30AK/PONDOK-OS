@@ -174,6 +174,8 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  },[initialResourceKey,available,requestedGroup,groups]);
  const [rows,setRows]=useState<Row[]>([]);
  const [lookups,setLookups]=useState<Record<string,Lookup[]>>({});
+ const [lookupLoading,setLookupLoading]=useState<string[]>([]);
+ const [lookupErrors,setLookupErrors]=useState<Record<string,string>>({});
  const [form,setForm]=useState<Record<string,string|boolean>>({});
  const [editingRow,setEditingRow]=useState<Row|null>(null);
  const [detailRow,setDetailRow]=useState<Row|null>(null);
@@ -226,22 +228,24 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
    if(!resource){setLookups({});return;}
    const sources=Array.from(new Set(resource.fields.filter(f=>f.type==="relation"&&f.source).map(f=>f.source!)));
    setLookups(Object.fromEntries(sources.map(source=>[source,[{id:"DEMO-ONLY-001",label:"Contoh relasi (data sintetis)"}]])));
+   setLookupLoading([]);setLookupErrors({});
    return;
   }
-  if(!resource || !permissions.includes(resource.read)){setLookups({});return;}
+  if(!resource || !permissions.includes(resource.read)){setLookups({});setLookupLoading([]);setLookupErrors({});return;}
   let active=true;
   const sources=Array.from(new Set(resource.fields.filter(f=>f.type==="relation"&&f.source).map(f=>f.source!)));
+  setLookupLoading(sources);setLookupErrors({});
   void Promise.all(sources.map(async source=>{
    try{
     if(source==="students"){
      const result=await request<{data:Array<Record<string,unknown>>}>("student-options");
-     return [source,(result.data??[]).map(s=>({id:String(s.id),label:String(s.legalName??s.studentNumber)}))] as const;
+     return {source,items:(result.data??[]).map(s=>({id:String(s.id),label:String(s.legalName??s.studentNumber)})),error:""};
     }
     const result=await request<{data:Row[]}>(source);
     const labelKey=resource.fields.find(f=>f.source===source)?.labelKey??"name";
-    return [source,(result.data??[]).map(row=>({id:String(row.id),label:String(row[labelKey]??row.name??row.code??row.id)}))] as const;
-   }catch{return [source,[]] as const;}
-  })).then(entries=>{if(active)setLookups(Object.fromEntries(entries));});
+    return {source,items:(result.data??[]).map(row=>({id:String(row.id),label:String(row[labelKey]??row.name??row.code??row.id)})),error:""};
+   }catch(error){return {source,items:[],error:error instanceof Error?error.message:"Gagal memuat pilihan relasi."};}
+  })).then(entries=>{if(active){setLookups(Object.fromEntries(entries.map(entry=>[entry.source,entry.items])));setLookupErrors(Object.fromEntries(entries.filter(entry=>entry.error).map(entry=>[entry.source,entry.error])));setLookupLoading([]);}});
   return()=>{active=false;};
  },[organizationId,request,resource,permissions,preview]);
  useEffect(()=>{setForm({});setShowForm(false);setEditingRow(null);setDetailRow(null);setShowSensitiveDetail(false);setGuardianVerificationRow(null);},[resourceKey]);
@@ -337,7 +341,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   {showForm&&resource&&canWrite&&<form className="student-form operations-form" onSubmit={submit}>
    <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{guidance?.purpose??(editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren.")}</p>{guidance&&<><p><strong>Alur data:</strong> {guidance.lifecycle}</p><p><strong>Klasifikasi:</strong> {guidance.classification.toUpperCase()} · <strong>Acuan:</strong> {guidance.regulatoryRefs.join(", ")}</p><ul className="field-hint">{guidance.formNotes.map(note=><li key={note}>{note}</li>)}</ul>{guidance.operationalGaps.length>0&&<p className="field-hint"><strong>Pengembangan lanjutan:</strong> {guidance.operationalGaps.join("; ")}.</p>}</>}</div>
    {getFieldSections(resource).map(section=><section className="form-section-card" key={section.title}><div className="form-section-heading"><strong>{section.title}</strong><span>{section.fields.length} field</span></div>{section.note&&<p className="field-hint">{section.note}</p>}{section.applicability&&<p className="field-hint"><strong>Penerapan:</strong> {section.applicability}</p>}{section.regulatoryBasis&&<p className="field-hint"><strong>Rujukan:</strong> {section.regulatoryBasis.map((basis,index)=><a key={basis.url} href={basis.url} target="_blank" rel="noreferrer">{basis.label}{index<section.regulatoryBasis!.length-1?", ":""}</a>)}</p>}<div className="form-grid">{section.fields.map(field=><label className={field.type==="address"||field.type==="textarea"||field.type==="json"?"form-field form-field-wide":"form-field"} key={field.key}>{field.label}{field.required?" *":""}
-    {field.type==="relation"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih {field.label.toLowerCase()}</option>{(lookups[field.source??""]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select>
+    {field.type==="relation"?<><select required={field.required} disabled={lookupLoading.includes(field.source??"")||Boolean(lookupErrors[field.source??""])||(lookups[field.source??""]??[]).length===0} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">{lookupLoading.includes(field.source??"")?"Memuat pilihan…":lookupErrors[field.source??""]?"Pilihan gagal dimuat":(lookups[field.source??""]??[]).length===0?"Belum ada data referensi":`Pilih ${field.label.toLowerCase()}`}</option>{(lookups[field.source??""]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select>{lookupErrors[field.source??""]&&<small className="field-hint">Daftar referensi tidak dapat dimuat: {lookupErrors[field.source??""]}. Periksa izin baca dan koneksi modul sumber.</small>}{!lookupLoading.includes(field.source??"")&&!lookupErrors[field.source??""]&&(lookups[field.source??""]??[]).length===0&&<small className="field-hint">Buat data pada modul sumber terlebih dahulu sebelum memilih relasi ini.</small>}</>
     :field.type==="select"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih</option>{(field.options??[]).map(o=><option key={o} value={o}>{o.replaceAll("_"," ")}</option>)}</select>
     :field.type==="checkbox"?<input type="checkbox" checked={Boolean(form[field.key])} onChange={e=>setForm(p=>({...p,[field.key]:e.target.checked}))}/>
     :field.type==="address"?<div className="form-grid address-form-grid">{ADDRESS_FIELDS.map(([addressKey,addressLabel])=><span className="address-subfield" key={addressKey}><small>{addressLabel}</small><input value={parseAddress(form[field.key])[addressKey]??""} onChange={e=>setForm(p=>({...p,[field.key]:JSON.stringify({...parseAddress(p[field.key]),[addressKey]:e.target.value})}))} maxLength={addressKey==="street"?240:addressKey==="countryCode"?2:80}/></span>)}</div>
