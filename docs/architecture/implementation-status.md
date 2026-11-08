@@ -7,7 +7,7 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 - Target: Neon project `frosty-cherry-92983148`, Development branch `br-proud-paper-b312lfxi`, database `neondb`.
 - The live catalog contains 67 tables with `organization_id`; all 67 have RLS enabled and forced.
 - The live migration ledger is recorded through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction, with a transaction-scoped advisory lock and SHA-256 checksums recorded from the exact repository files.
-- Neon Function `pondokapi` Development deployment #42 is completed on Node.js 24. The preceding Development deployment workflow passed liveness and readiness checks. Readiness confirms database connectivity, not complete schema or business-workflow acceptance.
+- Neon Function `pondokapi` Development deployment #43 is completed on Node.js 24. The preceding Development deployment workflow passed liveness and readiness checks. Readiness confirms database connectivity, not complete schema or business-workflow acceptance.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; the identity-document API must remain fail-closed until secure key provisioning, recoverable backup and rotation are prepared.
 - There are currently zero organizations, memberships, student profiles and HR employees. No fabricated tenant or personal records have been seeded.
 - PR #125 (Development live-audit documentation) was merged as `57b8f36`; its CI foundation job passed.
@@ -60,3 +60,12 @@ A module is not operationally complete until it has:
 ## Release statement
 
 PONDOK OS has a functioning Development deployment foundation, broad tenant RLS coverage and migration ledger through 0026. It is **not ready for live institutional operations**. Identity-key provisioning, real institution onboarding, two-tenant API acceptance and role-based end-to-end UAT remain outstanding.
+
+
+## Live module-contract audit (2026-11-08)
+
+- The workspace declares 44 module resources. The API exposes 42 generic tenant-scoped resources plus two dedicated handlers for encrypted student identity documents and encrypted student health profiles.
+- All 45 distinct read/write permission keys referenced by the workspace resource declarations exist in `core.permissions` and are granted to both global institution-owner and institution-admin role templates on Development. Guardian-authority verification remains a separate permission and route.
+- The Development catalog currently has one active company Super Administrator, but zero organizations, memberships, activation requests and activation tokens. The sample DEMO/PILOT institution has not been activated; tenant creation must use the authenticated Central Command approval/activation flow.
+- The current Development `pondokapi` Function deployment is #43 (Node.js 24, completed). Its environment still does not contain `STUDENT_IDENTITY_ENCRYPTION_KEY`; identity-document operations must remain fail-closed.
+- This contract audit confirms route/resource and permission wiring only. It does not prove authenticated browser workflows, data persistence under a tenant, two-tenant API isolation, or institution UAT.
