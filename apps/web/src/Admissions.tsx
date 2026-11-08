@@ -322,6 +322,6 @@ export default function Admissions({ organizationId, permissions }: Props) {
         </tbody></table></div>
       </div>}
     </div>}
-    <p className="ppdb-footnote">Konversi pendaftar diterima menjadi profil santri kini tersedia bagi petugas dengan izin seleksi dan pembuatan data santri. Unggah/verifikasi dokumen, penjadwalan tes, daftar ulang, dan pembayaran masih memerlukan modul tersendiri. Alur lengkap tetap harus diuji sebelum dinyatakan operasional penuh.</p>
+    <p className="ppdb-footnote">Konversi pendaftar diterima membuat profil santri dan menautkan kontak wali utama. Hubungan wali yang dinyatakan pemohon bukan bukti kewenangan hukum: status wali sah dan izin penjemputan tetap nonaktif sampai petugas memverifikasi bukti secara terpisah. Persetujuan komunikasi dimulai dari status menunggu. Unggah/verifikasi dokumen, penjadwalan tes, daftar ulang, dan pembayaran masih memerlukan modul tersendiri.</p>
   </section>;
 }
