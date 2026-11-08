@@ -170,7 +170,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
       if (!scoped.value) { reply(res, 503, { error: "platform_erp_unavailable" }); return true; }
-      if ("item" in scoped.value && !scoped.value.item) { reply(res, 404, { error: isLead ? "lead_not_found" : "customer_not_found" }); return true; }
+      if (scoped.value && typeof scoped.value === "object" && "item" in scoped.value && !scoped.value.item) { reply(res, 404, { error: isLead ? "lead_not_found" : "customer_not_found" }); return true; }
       reply(res, 200, { data: scoped.value });
     } catch (error) {
       reply(res, errorCode(error) === "42P01" ? 503 : 500, { error: "platform_erp_read_failed" });
