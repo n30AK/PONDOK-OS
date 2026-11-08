@@ -31,6 +31,10 @@ Never put the generated value in Git, frontend `VITE_*` variables, browser stora
 
 The health API is permission-gated by `academic.students.health.read` and `academic.students.health.write`. The `health_officer` system role receives only basic student lookup and health permissions; it does not receive payroll, identity-document, or general HR access. Institution owners/admins retain governance access.
 
+## Guardian legal-authority verification
+
+Ordinary student/guardian relationship CRUD must not set legal-guardian or pickup-authority flags. Migration 0026 adds the dedicated `academic.students.guardians.verify` permission and an audit-backed verification action. Only institution owner/admin system roles receive this permission by default. The verifier must record an evidence note; the audit event records the authority flags and the fact that evidence was supplied, but never copies the evidence note itself. A relationship outside its effective date range cannot be verified. Re-check the source documents and applicable custody/authorization instrument; a family relationship label alone is not sufficient proof.
+
 ## Required operational controls before real data import
 
 Migration 0018 is applied on Development; migration 0019 also forces RLS on the membership authority table. Verify RLS on every tenant-owned table before importing real data.

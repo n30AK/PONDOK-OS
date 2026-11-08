@@ -175,3 +175,13 @@ test("validates complete student master, educator profiles and temporal organiza
     startsOn: "2026-07-01", isPrimary: false
   }), null);
 });
+
+test("legal guardian and pickup authority cannot be set through ordinary relationship CRUD", () => {
+  assert.equal(validateModuleRecordInput("student-guardians", {
+    studentId: uuid, guardianId: uuid, relationshipCode: "ibu", isPrimary: true,
+    isLegalGuardian: true, canPickupStudent: true
+  }), "unsupported_field");
+  assert.equal(validateModuleRecordInput("student-guardians", {
+    studentId: uuid, guardianId: uuid, relationshipCode: "ibu", verificationNote: "Sudah diperiksa"
+  }), "unsupported_field");
+});
