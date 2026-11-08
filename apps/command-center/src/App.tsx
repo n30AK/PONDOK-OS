@@ -163,7 +163,7 @@ function OperationalTransactionForms({domain,datasets,onSaved}:{domain:string;da
  </section>;
 }
 
-type OperationalDataset = { key: string; title: string; rows: Array<Record<string, unknown>>; returned: number };
+type OperationalDataset = { key: string; title: string; rows: Array<Record<string, unknown>>; returned: number; lookupOnly?: boolean };
 function OperationalDataWorkspace({ domain }: { domain: string }) {
   const [datasets, setDatasets] = useState<OperationalDataset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,7 +204,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
     <div className="toolbar"><input aria-label="Cari data domain" placeholder="Cari pada seluruh tabel domain ini…" value={query} onChange={(event) => setQuery(event.target.value)}/><div className="inline-actions"><span className="muted">{refreshedAt ? "Diperbarui " + refreshedAt : ""}</span><button className="secondary" onClick={() => void load()} disabled={loading}>{loading ? "Memuat…" : "↻ Muat ulang"}</button></div></div>
     {loading && <div className="panel"><p className="muted">Memuat dataset operasional…</p></div>}
     {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? ((domain === "procurement" || domain === "inventory") ? "Skema domain belum tersedia pada Development. Periksa migration ledger dan deployment API; jangan menyimpulkan data tidak ada hanya dari tabel kosong." : "Skema domain belum tersedia pada Development. Periksa migration ledger dan deployment API; jangan menyimpulkan data tidak ada hanya dari tabel kosong.") : error}</div></div>}
-    {!loading && !error && datasets.map((dataset) => {
+    {!loading && !error && datasets.filter((dataset) => !dataset.lookupOnly).map((dataset) => {
       const rows = visibleRows(dataset.rows);
       const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
       return <section className="panel" key={dataset.key}>
