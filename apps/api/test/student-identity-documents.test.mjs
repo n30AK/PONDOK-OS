@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Readable } from "node:stream";
+import { Readable } from "node:stream";\nimport { createCipheriv, randomBytes } from "node:crypto";
 import { handleModuleRecordsRequest } from "../dist/module-records.js";
 
 const userId = "123e4567-e89b-42d3-a456-426614174000";
