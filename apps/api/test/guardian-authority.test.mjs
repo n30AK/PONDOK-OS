@@ -39,10 +39,13 @@ test("guardian authority verification writes evidence and metadata-only audit at
  const update=calls.find(call=>call.sql.includes("WITH updated AS"));
  assert.ok(update);
  assert.equal(update.values[2],evidence);
- const audit=calls.find(call=>call.sql.startsWith("INSERT INTO audit.audit_events"));
- assert.ok(audit);
- assert.equal(JSON.stringify(audit.values).includes(evidence),false);
- assert.equal(audit.values[2],"student.guardian.authority.verify");
+ const auditStart=update.sql.indexOf("INSERT INTO audit.audit_events");
+ assert.ok(auditStart>=0);
+ const auditSql=update.sql.slice(auditStart);
+ assert.ok(auditSql.includes("'student.guardian.authority.verify'"));
+ assert.ok(auditSql.includes("'academic.student_guardians'"));
+ assert.ok(auditSql.includes("'evidenceNoteProvided',true"));
+ assert.equal(auditSql.includes("$3"),false,"evidence note must not enter audit metadata");
  assert.ok(calls.some(call=>call.sql.startsWith("RELEASE SAVEPOINT")));
 });
 
