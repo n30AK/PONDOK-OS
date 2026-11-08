@@ -144,13 +144,13 @@ export function getModuleResourceLabel(key:string):string { return key==="all"?"
 
 function csvCell(value: unknown): string {
  const raw=value===null||value===undefined?"":String(value);
- const safe=/^[=+@\\-\\t\\r]/.test(raw)?"'"+raw:raw;
+ const safe=/^[=+@\-\t\r]/.test(raw)?"'"+raw:raw;
  return '"'+safe.replace(/"/g,'""')+'"';
 }
 function exportRowsCsv(resource:Resource,rows:Row[]) {
  const headers=resource.columns.map(([,label])=>label);
  const keys=resource.columns.map(([key])=>key);
- const csv="\\uFEFF"+[headers.map(csvCell).join(","),...rows.map(row=>keys.map(key=>csvCell(row[key])).join(","))].join("\\r\\n");
+ const csv="\uFEFF"+[headers.map(csvCell).join(","),...rows.map(row=>keys.map(key=>csvCell(row[key])).join(","))].join("\r\n");
  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
  const url=URL.createObjectURL(blob);
  const anchor=document.createElement("a");
