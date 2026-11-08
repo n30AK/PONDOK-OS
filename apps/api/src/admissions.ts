@@ -115,12 +115,23 @@ export async function handleAdmissionsRequest(
     if (error) { reply(res, 422, { error }); return true; }
     try {
       const result = await pool.query(
-        `INSERT INTO admissions.admission_periods
-           (organization_id, campus_id, academic_year_id, period_code, name, opens_at, closes_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::timestamptz, $7::timestamptz)
-         RETURNING id, period_code AS "periodCode", name, opens_at AS "opensAt",
-                   closes_at AS "closesAt", period_status AS status`,
-        [organizationId, body.campusId ?? null, body.academicYearId ?? null, body.periodCode, (body.name as string).trim(), body.opensAt, body.closesAt],
+        `WITH created AS (
+           INSERT INTO admissions.admission_periods
+             (organization_id, campus_id, academic_year_id, period_code, name, opens_at, closes_at)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::timestamptz, $7::timestamptz)
+           RETURNING id, period_code, name, opens_at, closes_at, period_status
+         ), audited AS (
+           INSERT INTO audit.audit_events
+             (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+           SELECT $1::uuid, $8::uuid, 'admissions.period.create', 'admissions.admission_periods',
+                  created.id, jsonb_build_object('periodCode', created.period_code)
+           FROM created RETURNING id
+         )
+         SELECT created.id, created.period_code AS "periodCode", created.name,
+                created.opens_at AS "opensAt", created.closes_at AS "closesAt",
+                created.period_status AS status
+         FROM created CROSS JOIN audited`,
+        [organizationId, body.campusId ?? null, body.academicYearId ?? null, body.periodCode, (body.name as string).trim(), body.opensAt, body.closesAt, userId],
       );
       reply(res, 201, { data: result.rows[0] });
     } catch (reason) {
@@ -135,12 +146,22 @@ export async function handleAdmissionsRequest(
   if (periodOpenMatch && req.method === "POST") {
     if (!tenant.permissions.includes("admissions.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "admissions.periods.manage" }); return true; }
     const result = await pool.query(
-      `UPDATE admissions.admission_periods
-       SET period_status = 'open'
-       WHERE organization_id = $1::uuid AND id = $2::uuid
-         AND period_status = 'draft' AND now() BETWEEN opens_at AND closes_at
-       RETURNING id, period_code AS "periodCode", period_status AS status`,
-      [organizationId, periodOpenMatch[1]],
+      `WITH updated AS (
+         UPDATE admissions.admission_periods
+         SET period_status = 'open'
+         WHERE organization_id = $1::uuid AND id = $2::uuid
+           AND period_status = 'draft' AND now() BETWEEN opens_at AND closes_at
+         RETURNING id, period_code, period_status
+       ), audited AS (
+         INSERT INTO audit.audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         SELECT $1::uuid, $3::uuid, 'admissions.period.open', 'admissions.admission_periods',
+                id, jsonb_build_object('periodCode', period_code)
+         FROM updated RETURNING id
+       )
+       SELECT updated.id, updated.period_code AS "periodCode", updated.period_status AS status
+       FROM updated CROSS JOIN audited`,
+      [organizationId, periodOpenMatch[1], userId],
     );
     if (!result.rows[0]) { reply(res, 409, { error: "period_not_found_or_outside_opening_window" }); return true; }
     reply(res, 200, { data: result.rows[0] }); return true;
@@ -150,11 +171,21 @@ export async function handleAdmissionsRequest(
   if (periodCloseMatch && req.method === "POST") {
     if (!tenant.permissions.includes("admissions.periods.manage")) { reply(res, 403, { error: "permission_required", permission: "admissions.periods.manage" }); return true; }
     const result = await pool.query(
-      `UPDATE admissions.admission_periods
-       SET period_status = 'closed'
-       WHERE organization_id = $1::uuid AND id = $2::uuid AND period_status = 'open'
-       RETURNING id, period_code AS "periodCode", period_status AS status`,
-      [organizationId, periodCloseMatch[1]],
+      `WITH updated AS (
+         UPDATE admissions.admission_periods
+         SET period_status = 'closed'
+         WHERE organization_id = $1::uuid AND id = $2::uuid AND period_status = 'open'
+         RETURNING id, period_code, period_status
+       ), audited AS (
+         INSERT INTO audit.audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         SELECT $1::uuid, $3::uuid, 'admissions.period.close', 'admissions.admission_periods',
+                id, jsonb_build_object('periodCode', period_code)
+         FROM updated RETURNING id
+       )
+       SELECT updated.id, updated.period_code AS "periodCode", updated.period_status AS status
+       FROM updated CROSS JOIN audited`,
+      [organizationId, periodCloseMatch[1], userId],
     );
     if (!result.rows[0]) { reply(res, 409, { error: "period_not_found_or_not_open" }); return true; }
     reply(res, 200, { data: result.rows[0] }); return true;
@@ -189,6 +220,16 @@ export async function handleAdmissionsRequest(
        WHERE a.organization_id = $1::uuid ${statusClause}
        ORDER BY a.created_at DESC LIMIT $${values.length}`, values,
     );
+    try {
+      await pool.query(
+        `INSERT INTO audit.audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         VALUES ($1::uuid, $2::uuid, 'admissions.application.list', 'admissions.applications', NULL, $3::jsonb)`,
+        [organizationId, userId, JSON.stringify({ status: status ?? null, limit, returned: result.rows.length, accessChannel: "workspace" })],
+      );
+    } catch {
+      reply(res, 503, { error: "admissions_read_audit_unavailable" }); return true;
+    }
     reply(res, 200, { data: result.rows, pagination: { limit, returned: result.rows.length } }); return true;
   }
 
@@ -200,20 +241,31 @@ export async function handleAdmissionsRequest(
     if (error) { reply(res, 422, { error }); return true; }
     try {
       const result = await pool.query(
-        `INSERT INTO admissions.applications
-           (organization_id, admission_period_id, application_number, applicant_name,
-            applicant_birth_date, applicant_gender_code, previous_school, desired_program_id,
-            guardian_name, guardian_email, guardian_phone, address, answers)
-         SELECT $1::uuid, p.id, $3, $4, $5::date, $6, $7, $8::uuid, $9, $10, $11, $12::jsonb, $13::jsonb
-         FROM admissions.admission_periods p
-         WHERE p.organization_id = $1::uuid AND p.id = $2::uuid
-           AND p.period_status IN ('draft', 'open')
-         RETURNING id, application_number AS "applicationNumber", applicant_name AS "applicantName",
-                   application_status AS status, created_at AS "createdAt"`,
+        `WITH created AS (
+           INSERT INTO admissions.applications
+             (organization_id, admission_period_id, application_number, applicant_name,
+              applicant_birth_date, applicant_gender_code, previous_school, desired_program_id,
+              guardian_name, guardian_email, guardian_phone, address, answers)
+           SELECT $1::uuid, p.id, $3, $4, $5::date, $6, $7, $8::uuid, $9, $10, $11, $12::jsonb, $13::jsonb
+           FROM admissions.admission_periods p
+           WHERE p.organization_id = $1::uuid AND p.id = $2::uuid
+             AND p.period_status IN ('draft', 'open')
+           RETURNING id, application_number, applicant_name, application_status, created_at
+         ), audited AS (
+           INSERT INTO audit.audit_events
+             (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+           SELECT $1::uuid, $14::uuid, 'admissions.application.create', 'admissions.applications',
+                  id, jsonb_build_object('applicationNumber', application_number)
+           FROM created RETURNING id
+         )
+         SELECT created.id, created.application_number AS "applicationNumber",
+                created.applicant_name AS "applicantName", created.application_status AS status,
+                created.created_at AS "createdAt"
+         FROM created CROSS JOIN audited`,
         [organizationId, body.admissionPeriodId, body.applicationNumber, (body.applicantName as string).trim(),
          body.applicantBirthDate ?? null, body.applicantGenderCode ?? null, body.previousSchool ?? null,
          body.desiredProgramId ?? null, (body.guardianName as string).trim(), body.guardianEmail ?? null,
-         (body.guardianPhone as string).trim(), JSON.stringify(body.address ?? {}), JSON.stringify(body.answers ?? {})],
+         (body.guardianPhone as string).trim(), JSON.stringify(body.address ?? {}), JSON.stringify(body.answers ?? {}), userId],
       );
       if (!result.rows[0]) { reply(res, 422, { error: "admission_period_not_found_or_not_accepting_drafts" }); return true; }
       reply(res, 201, { data: result.rows[0] });
@@ -230,13 +282,24 @@ export async function handleAdmissionsRequest(
     if (!tenant.permissions.includes("admissions.applications.read")) { reply(res, 403, { error: "permission_required", permission: "admissions.applications.read" }); return true; }
     const applicationId = submitMatch[1];
     const result = await pool.query(
-      `UPDATE admissions.applications a SET application_status = 'submitted', submitted_at = now(), updated_at = now()
-       FROM admissions.admission_periods p
-       WHERE a.organization_id = $1::uuid AND a.id = $2::uuid AND a.application_status = 'draft'
-         AND p.organization_id = a.organization_id AND p.id = a.admission_period_id
-         AND p.period_status = 'open' AND now() BETWEEN p.opens_at AND p.closes_at
-       RETURNING a.id, a.application_number AS "applicationNumber", a.application_status AS status, a.submitted_at AS "submittedAt"`,
-      [organizationId, applicationId],
+      `WITH updated AS (
+         UPDATE admissions.applications a SET application_status = 'submitted', submitted_at = now(), updated_at = now()
+         FROM admissions.admission_periods p
+         WHERE a.organization_id = $1::uuid AND a.id = $2::uuid AND a.application_status = 'draft'
+           AND p.organization_id = a.organization_id AND p.id = a.admission_period_id
+           AND p.period_status = 'open' AND now() BETWEEN p.opens_at AND p.closes_at
+         RETURNING a.id, a.application_number, a.application_status, a.submitted_at
+       ), audited AS (
+         INSERT INTO audit.audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         SELECT $1::uuid, $3::uuid, 'admissions.application.submit', 'admissions.applications',
+                id, jsonb_build_object('applicationNumber', application_number)
+         FROM updated RETURNING id
+       )
+       SELECT updated.id, updated.application_number AS "applicationNumber",
+              updated.application_status AS status, updated.submitted_at AS "submittedAt"
+       FROM updated CROSS JOIN audited`,
+      [organizationId, applicationId, userId],
     );
     if (!result.rows[0]) { reply(res, 409, { error: "application_not_draft_or_period_not_open" }); return true; }
     reply(res, 200, { data: result.rows[0] }); return true;
@@ -258,10 +321,16 @@ export async function handleAdmissionsRequest(
          RETURNING id
        ), review AS (
          INSERT INTO admissions.application_reviews (organization_id, application_id, reviewer_id, decision, notes)
-         SELECT $1::uuid, id, $4::uuid, $5, $6 FROM updated RETURNING id
+         SELECT $1::uuid, id, $4::uuid, $5, $6 FROM updated RETURNING id, application_id
+       ), audited AS (
+         INSERT INTO audit.audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         SELECT $1::uuid, $4::uuid, 'admissions.application.review', 'admissions.applications',
+                application_id, jsonb_build_object('decision', $5::text, 'status', $3::text)
+         FROM review RETURNING id
        )
        SELECT u.id, $3::text AS status, r.id AS "reviewId"
-       FROM updated u CROSS JOIN review r`,
+       FROM updated u CROSS JOIN review r CROSS JOIN audited`,
       [organizationId, applicationId, nextStatus, userId, body.decision, body.notes ?? null],
     );
     if (!result.rows[0]) { reply(res, 409, { error: "application_not_found_or_not_reviewable" }); return true; }
@@ -317,11 +386,18 @@ export async function handleAdmissionsRequest(
            FROM candidate c CROSS JOIN created_student s
            WHERE a.organization_id = $1::uuid AND a.id = c.id AND a.linked_student_id IS NULL
            RETURNING a.id AS "applicationId", a.linked_student_id AS "studentId"
+         ), audited AS (
+           INSERT INTO audit.audit_events
+             (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+           SELECT $1::uuid, $5::uuid, 'admissions.application.convert_to_student',
+                  'admissions.applications', linked."applicationId",
+                  jsonb_build_object('studentId', linked."studentId")
+           FROM linked RETURNING id
          )
          SELECT linked."applicationId", linked."studentId", created_student."studentNumber",
                 created_student."legalName", created_student.status AS "studentStatus"
-         FROM linked CROSS JOIN created_student`,
-        [organizationId, enrollMatch[1], body.campusId, (body.studentNumber as string).trim()],
+         FROM linked CROSS JOIN created_student CROSS JOIN audited`,
+        [organizationId, enrollMatch[1], body.campusId, (body.studentNumber as string).trim(), userId],
       );
       if (!result.rows[0]) {
         const existing = await pool.query(
