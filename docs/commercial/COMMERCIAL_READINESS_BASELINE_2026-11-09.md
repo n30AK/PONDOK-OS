@@ -169,3 +169,10 @@ Do not mark the entire platform ready when only selected modules have passed. Co
 - Central Command now has separate **Permintaan Modul** and read-only **Entitlement Registry** pages. The registry returns entitlement, order and redacted lifecycle-event datasets after active Super Admin authorization. It does not mutate entitlement state.
 - The registry SQL was checked read-only against the live Development schema. The Development tables currently contain zero customers, module entitlements and module orders, so no live customer workflow was exercised.
 - No schema, migration, seed, secret, Neon Development write or Neon Production change was made by PR #146. Post-merge deployment workflows have not been independently confirmed in this checkpoint.
+
+
+## Update after PR #147 (2026-11-09)
+
+- PR #147 merged as `5714030418083c43e3800ecfb88c065c6dfaf265`. CI #1301 and Neon Function bundle #229 passed.
+- Added unit tests for the actual `withTenantScope` and `loadTenantContext` helpers: authenticated user/organization context is bound inside a transaction, a user cannot load another organization's membership by changing the selected organization, and transaction-local role/context is cleared before pooled connection reuse.
+- These are automated helper tests using synthetic identities and a query double. The existing disposable-PostgreSQL RLS test separately checks two synthetic tenants at database level. Live API acceptance with two real authenticated users and two actual non-production organizations remains pending; G1 is still blocked.
