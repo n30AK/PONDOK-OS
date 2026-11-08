@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { getAccessToken } from "./auth";
 import { getModuleGuidance } from "./module-catalog";
 
-type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string; onResourceChange?: (key: string) => void };
+type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string; onResourceChange?: (key: string) => void; preview?: boolean };
 type Field = {
   key: string; label: string; type?: "text" | "date" | "datetime-local" | "number" | "textarea" | "select" | "checkbox" | "relation" | "array" | "json" | "address";
   required?: boolean; options?: string[]; source?: string; valueKey?: string; labelKey?: string; hint?: string; max?: number; step?: string;
@@ -71,7 +71,17 @@ const RESOURCES: Resource[] = [
  {key:"purchase-request-lines",label:"Rincian Permintaan Pengadaan",group:"Aset & Pengadaan",endpoint:"purchase-request-lines",read:"procurement.requests.read",write:"procurement.requests.write",fields:[REL("requestId","Nomor permintaan","purchase-requests","request_number"),F("description","Uraian barang / jasa","textarea",true,{max:500}),F("quantity","Jumlah","number",true,{step:"0.001"}),F("estimatedUnitCost","Estimasi harga satuan (IDR)","number",false,{step:"0.01"})],columns:[["request_id","Permintaan ID"],["description","Uraian"],["quantity","Jumlah"],["estimated_unit_cost","Estimasi satuan"]]},
  {key:"purchase-order-lines",label:"Rincian Pesanan Pembelian",group:"Aset & Pengadaan",endpoint:"purchase-order-lines",read:"procurement.orders.manage",write:"procurement.orders.manage",fields:[REL("purchaseOrderId","Nomor pesanan","purchase-orders","order_number"),F("description","Uraian barang / jasa","textarea",true,{max:500}),F("quantity","Jumlah","number",true,{step:"0.001"}),F("unitCost","Harga satuan (IDR)","number",true,{step:"0.01"})],columns:[["purchase_order_id","Pesanan ID"],["description","Uraian"],["quantity","Jumlah"],["unit_cost","Harga satuan"]]},
  {key:"asset-events",label:"Riwayat Pergerakan & Pemeliharaan Aset",group:"Aset & Pengadaan",endpoint:"asset-events",read:"assets.register.read",write:"assets.register.write",fields:[REL("assetId","Aset","assets","asset_name"),F("eventType","Jenis peristiwa","select",true,{options:["assigned","moved","maintenance","disposed","status_changed","audited"]}),F("eventData","Detail peristiwa (JSON)","json",false,{hint:"Catat lokasi/penanggung jawab/tindakan secara ringkas; jangan masukkan data pribadi yang tidak diperlukan."}),F("occurredAt","Waktu peristiwa","datetime-local")],columns:[["asset_id","Aset ID"],["event_type","Peristiwa"],["event_data","Detail"],["occurred_at","Waktu"]]},
- {key:"purchase-orders",label:"Pesanan Pembelian",group:"Aset & Pengadaan",endpoint:"purchase-orders",read:"procurement.orders.manage",write:"procurement.orders.manage",fields:[REL("supplierId","Pemasok","suppliers","supplier_name"),REL("requestId","Permintaan terkait","purchase-requests","request_number",false),F("orderNumber","Nomor pesanan","text",true),F("orderedOn","Tanggal pesanan","date"),F("expectedOn","Estimasi penerimaan","date"),F("totalAmount","Nilai total (IDR)","number",false,{step:"0.01"})],columns:[["order_number","Nomor"],["supplier_id","Pemasok ID"],["ordered_on","Tanggal"],["expected_on","Estimasi"],["total_amount","Total"],["order_status","Status"]]}
+ {key:"purchase-orders",label:"Pesanan Pembelian",group:"Aset & Pengadaan",endpoint:"purchase-orders",read:"procurement.orders.manage",write:"procurement.orders.manage",fields:[REL("supplierId","Pemasok","suppliers","supplier_name"),REL("requestId","Permintaan terkait","purchase-requests","request_number",false),F("orderNumber","Nomor pesanan","text",true),F("orderedOn","Tanggal pesanan","date"),F("expectedOn","Estimasi penerimaan","date"),F("totalAmount","Nilai total (IDR)","number",false,{step:"0.01"})],columns:[["order_number","Nomor"],["supplier_id","Pemasok ID"],["ordered_on","Tanggal"],["expected_on","Estimasi"],["total_amount","Total"],["order_status","Status"]]},
+
+ {key:"admission-periods",label:"Periode Penerimaan Santri (PPDB)",group:"PPDB & Penerimaan",endpoint:"admission-periods",read:"admissions.periods.read",write:"admissions.periods.manage",fields:[F("periodCode","Kode periode","text",true),F("name","Nama gelombang","text",true),F("opensAt","Mulai pendaftaran","datetime-local",true),F("closesAt","Batas pendaftaran","datetime-local",true),F("academicYearId","Tahun ajaran","text"),F("quota","Kuota","number"),F("status","Status","select",true,{options:["draft","open","closed","archived"]})],columns:[["period_code","Kode"],["name","Gelombang"],["opens_at","Mulai"],["closes_at","Batas"],["quota","Kuota"],["status","Status"]]},
+ {key:"admission-applications",label:"Formulir & Seleksi Calon Santri",group:"PPDB & Penerimaan",endpoint:"admission-applications",read:"admissions.applications.read",write:"admissions.applications.review",fields:[REL("periodId","Periode PPDB","admission-periods","name"),F("applicationNumber","Nomor pendaftaran","text",true),F("applicantName","Nama calon santri","text",true),F("birthDate","Tanggal lahir","date"),F("previousSchool","Asal sekolah","text"),F("guardianName","Nama wali","text",true),F("guardianPhone","Telepon wali","text",true),F("address","Alamat lengkap","address"),F("selectionResult","Keputusan seleksi","select",false,{options:["pending","accepted","waitlisted","rejected","needs_information"]})],columns:[["application_number","Nomor"],["applicant_name","Calon santri"],["guardian_name","Wali"],["guardian_phone","Kontak wali"],["selection_result","Keputusan"]]},
+ {key:"finance-accounts",label:"Bagan Akun & Kode Rekening",group:"Keuangan & Akuntansi",endpoint:"finance-accounts",read:"finance.accounts.read",write:"finance.accounts.write",fields:[F("accountCode","Kode akun","text",true),F("accountName","Nama akun","text",true),F("accountType","Kelompok akun","select",true,{options:["asset","liability","equity","income","expense"]}),F("parentCode","Kode akun induk","text"),F("normalBalance","Saldo normal","select",true,{options:["debit","credit"]}),F("isActive","Aktif","checkbox")],columns:[["account_code","Kode"],["account_name","Nama akun"],["account_type","Kelompok"],["normal_balance","Saldo normal"],["is_active","Aktif"]]},
+ {key:"finance-periods",label:"Periode Buku & Anggaran",group:"Keuangan & Akuntansi",endpoint:"finance-periods",read:"finance.journals.read",write:"finance.periods.manage",fields:[F("code","Kode periode","text",true),F("name","Nama periode","text",true),F("startsOn","Tanggal mulai","date",true),F("endsOn","Tanggal akhir","date",true),F("budgetAmount","Pagu anggaran (IDR)","number",false,{step:"0.01"}),F("status","Status","select",true,{options:["draft","open","closed"]})],columns:[["code","Kode"],["name","Periode"],["starts_on","Mulai"],["ends_on","Selesai"],["budget_amount","Anggaran"],["status","Status"]]},
+ {key:"finance-journals",label:"Jurnal Umum & Posting",group:"Keuangan & Akuntansi",endpoint:"finance-journals",read:"finance.journals.read",write:"finance.journals.write",fields:[F("entryNumber","Nomor jurnal","text",true),F("entryDate","Tanggal jurnal","date",true),F("description","Uraian transaksi","textarea",true),F("debitAccount","Akun debit","text",true),F("creditAccount","Akun kredit","text",true),F("amount","Nilai (IDR)","number",true,{step:"0.01"}),F("attachmentRef","Referensi bukti","text")],columns:[["entry_number","Nomor"],["entry_date","Tanggal"],["description","Uraian"],["debit_account","Debit"],["credit_account","Kredit"],["amount","Nilai"],["status","Status"]]},
+ {key:"inventory-items",label:"Master Barang & Persediaan",group:"Inventaris & Gudang",endpoint:"inventory-items",read:"inventory.items.read",write:"inventory.items.write",fields:[F("itemCode","Kode barang","text",true),F("itemName","Nama barang","text",true),F("category","Kategori","text",true),F("unitCode","Satuan","text",true),F("minimumStock","Stok minimum","number"),F("unitCost","Harga perolehan (IDR)","number"),F("isActive","Aktif","checkbox")],columns:[["item_code","Kode"],["item_name","Nama barang"],["category","Kategori"],["unit_code","Satuan"],["on_hand","Stok"],["minimum_stock","Batas minimum"]]},
+ {key:"inventory-warehouses",label:"Gudang & Lokasi Penyimpanan",group:"Inventaris & Gudang",endpoint:"inventory-warehouses",read:"inventory.items.read",write:"inventory.items.write",fields:[F("warehouseCode","Kode gudang","text",true),F("warehouseName","Nama gudang","text",true),F("campusName","Kampus","text"),F("location","Lokasi","textarea"),F("custodian","Penanggung jawab","text"),F("isActive","Aktif","checkbox")],columns:[["warehouse_code","Kode"],["warehouse_name","Nama gudang"],["campus_name","Kampus"],["location","Lokasi"],["custodian","Penanggung jawab"]]},
+ {key:"inventory-movements",label:"Penerimaan, Pengeluaran & Mutasi Stok",group:"Inventaris & Gudang",endpoint:"inventory-movements",read:"inventory.movements.read",write:"inventory.movements.write",fields:[F("itemCode","Kode barang","text",true),F("warehouseCode","Kode gudang","text",true),F("movementType","Jenis mutasi","select",true,{options:["receipt","issue","transfer_in","transfer_out","adjustment","return"]}),F("quantity","Jumlah","number",true,{step:"0.001"}),F("occurredAt","Tanggal transaksi","datetime-local",true),F("referenceNumber","Nomor dokumen","text"),F("notes","Catatan","textarea")],columns:[["item_code","Barang"],["warehouse_code","Gudang"],["movement_type","Jenis"],["quantity","Jumlah"],["occurred_at","Tanggal"],["reference_number","Dokumen"]]}
+
 ];
 
 function toLabel(value: unknown): string {
@@ -112,7 +122,7 @@ function toFormValue(field:Field,row:Row):string|boolean{
 
 export function getModuleResourceLabel(key:string):string { return key==="all"?"Semua Modul":RESOURCES.find(resource=>resource.key===key)?.label??"Modul"; }
 
-function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange}:Props) {
+function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange,preview=false}:Props) {
  const available=RESOURCES;
  const groups=useMemo(()=>Array.from(new Set(["Semua Modul","Master Data",...available.map(r=>r.group)])),[available]);
  const requestedGroup=initialResourceKey==="all"?"Semua Modul":RESOURCES.find(r=>r.key===initialResourceKey)?.group;
@@ -138,13 +148,13 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  const [guardianLegal,setGuardianLegal]=useState(false);
  const [guardianPickup,setGuardianPickup]=useState(false);
  const [guardianEvidence,setGuardianEvidence]=useState("");
- const canVerifyGuardian=permissions.includes("academic.students.guardians.verify");
+ const canVerifyGuardian=preview||permissions.includes("academic.students.guardians.verify");
  const resourcesInGroup=group==="Semua Modul"?available:group==="Master Data"?available.filter(r=>MASTER_DATA_KEYS.has(r.key)):available.filter(r=>r.group===group);
  const resource=resourcesInGroup.find(r=>r.key===resourceKey)??(group==="Semua Modul"?resourcesInGroup[0]:undefined);
  const requestedResource=RESOURCES.find(r=>r.key===initialResourceKey);
  const requestedLabel=group==="Semua Modul"?"Semua Modul":requestedResource?.label??group;
  const guidance=resource?getModuleGuidance(resource.key):undefined;
- const canWrite=Boolean(resource&&permissions.includes(resource.write));
+ const canWrite=Boolean(resource&&(preview||permissions.includes(resource.write)));
  const request=useCallback(async<T,>(endpoint:string,init:RequestInit={}):Promise<T>=>{
   const token=await getAccessToken();
   const response=await fetch(`${API_BASE}/v1/modules/${endpoint}`,{...init,headers:{authorization:`Bearer ${token}`,"x-organization-id":organizationId,...(init.body?{"content-type":"application/json"}:{}),...init.headers}});
@@ -153,14 +163,33 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   return body as T;
  },[organizationId]);
  const load=useCallback(async()=>{
+  if(preview){
+   if(!resource){setRows([]);setBusy(false);return;}
+   const demo:Row={id:"DEMO-ONLY-001"};
+   for(const [column] of resource.columns){
+    if(column==="status"||column.endsWith("_status"))demo[column]="contoh";
+    else if(column.includes("date")||column.includes("_on")||column.includes("at"))demo[column]="2026-01-15";
+    else if(column.includes("amount")||column.includes("quantity")||column.includes("quota")||column.includes("stock"))demo[column]=3;
+    else if(column.includes("active"))demo[column]=true;
+    else if(column.includes("name")||column.includes("description")||column.includes("title"))demo[column]="Contoh data — bukan data nyata";
+    else demo[column]="DEMO-001";
+   }
+   setRows([demo]);setBusy(false);setError("");return;
+  }
   if(!resource || !permissions.includes(resource.read)){setRows([]);setBusy(false);return;}
   setBusy(true);setError("");
   try{const result=await request<{data:Row[]}>(resource.endpoint);setRows(result.data??[]);}
   catch(e){setError(e instanceof Error?e.message:"Gagal memuat data modul.");}
   finally{setBusy(false);}
- },[request,resource,permissions]);
+ },[request,resource,permissions,preview]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{
+  if(preview){
+   if(!resource){setLookups({});return;}
+   const sources=Array.from(new Set(resource.fields.filter(f=>f.type==="relation"&&f.source).map(f=>f.source!)));
+   setLookups(Object.fromEntries(sources.map(source=>[source,[{id:"DEMO-ONLY-001",label:"Contoh relasi (data sintetis)"}]])));
+   return;
+  }
   if(!resource || !permissions.includes(resource.read)){setLookups({});return;}
   let active=true;
   const sources=Array.from(new Set(resource.fields.filter(f=>f.type==="relation"&&f.source).map(f=>f.source!)));
@@ -176,7 +205,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
    }catch{return [source,[]] as const;}
   })).then(entries=>{if(active)setLookups(Object.fromEntries(entries));});
   return()=>{active=false;};
- },[organizationId,request,resource,permissions]);
+ },[organizationId,request,resource,permissions,preview]);
  useEffect(()=>{setForm({});setShowForm(false);setEditingRow(null);setGuardianVerificationRow(null);},[resourceKey]);
  const beginEdit=(row:Row)=>{
   if(!resource||!canWrite||!row.id)return;
@@ -186,6 +215,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  };
  const submit=async(event:FormEvent)=>{
   event.preventDefault();if(!resource)return;
+  if(preview){setNotice("Mode pratinjau: formulir dapat diperiksa, tetapi tidak ada data yang dikirim atau disimpan.");setShowForm(false);return;}
   setBusy(true);setError("");setNotice("");
   try{
    const payload:Record<string,unknown>={};
@@ -210,6 +240,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  };
  const verifyGuardian=async()=>{
   if(!guardianVerificationRow?.id)return;
+  if(preview){setNotice("Pratinjau verifikasi saja. Tidak ada kewenangan wali yang diubah.");setGuardianVerificationRow(null);return;}
   if(guardianEvidence.trim().length<12){setError("Catatan bukti verifikasi minimal 12 karakter.");return;}
   setBusy(true);setError("");setNotice("");
   try{
@@ -233,9 +264,9 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   return toLabel(value);
  };
  if(!resource)return <div className="table-card"><h2>{requestedLabel}</h2><p className="muted">Pilih salah satu menu modul untuk melanjutkan.</p></div>;
- if(!permissions.includes(resource.read))return <div className="table-card"><h2>{resource.label}</h2><p className="muted">Menu ini tersedia, tetapi akun Anda belum memiliki izin baca <strong>{resource.read}</strong>. Hubungi administrator institusi untuk meminta akses. Data tetap dilindungi oleh pemeriksaan izin di server.</p></div>;
+ if(!preview&&!permissions.includes(resource.read))return <div className="table-card"><h2>{resource.label}</h2><p className="muted">Menu ini tersedia, tetapi akun Anda belum memiliki izin baca <strong>{resource.read}</strong>. Hubungi administrator institusi untuk meminta akses. Data tetap dilindungi oleh pemeriksaan izin di server.</p></div>;
  return <section className="operations-panel">
-  <div className="operations-heading"><div><div className="eyebrow">MODUL INSTITUSI / {resource.group.toUpperCase()}</div><h2>{resource.label}</h2><p>{guidance?.purpose??"Kelola data sesuai konteks modul dan hak akses organisasi."}</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
+  <div className="operations-heading"><div><div className="eyebrow">{preview?"PRATINJAU • DATA SINTETIS":"MODUL INSTITUSI"} / {resource.group.toUpperCase()}</div><h2>{resource.label}</h2><p>{guidance?.purpose??"Kelola data sesuai konteks modul dan hak akses organisasi."}</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
   <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=g==="Semua Modul"?available[0]:g==="Master Data"?available.find(r=>MASTER_DATA_KEYS.has(r.key)):available.find(r=>r.group===g);if(next){setResourceKey(next.key);internalSelection.current=initialResourceKey!==(g==="Semua Modul"?"all":next.key);onResourceChange?.(g==="Semua Modul"?"all":next.key);}}}>{g}</button>)}</div>
   <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>{setResourceKey(e.target.value);internalSelection.current=initialResourceKey!==e.target.value;onResourceChange?.(e.target.value);}}>{resourcesInGroup.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
   {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
@@ -258,6 +289,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
    <div className="form-actions"><button type="button" className="outline-button" onClick={()=>{setShowForm(false);setEditingRow(null);setForm({});}}>Batal</button><button className="primary" disabled={busy}>{busy?"Menyimpan…":editingRow?"Simpan perubahan":"Simpan data"}</button></div>
   </form>}
   {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<th>Aksi</th>}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<td>{resource.key==="library-loans"&&canWrite?<>{row.loan_status==="open"&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{void (async()=>{setBusy(true);setError("");setNotice("");try{await request(`library-loans/${encodeURIComponent(String(row.id))}/return`,{method:"POST"});setNotice("Buku berhasil dikembalikan dan stok diperbarui.");await load();}catch(e){setError(e instanceof Error?e.message:"Gagal memproses pengembalian.");}finally{setBusy(false);}})();}}>Kembalikan</button>}{row.loan_status!=="open"&&<span>{toLabel(row.loan_status)}</span>}</>:<>{canWrite&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>beginEdit(row)}>Koreksi</button>}{resource.key==="student-guardians"&&canVerifyGuardian&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{setGuardianVerificationRow(row);setGuardianLegal(Boolean(row.is_legal_guardian));setGuardianPickup(Boolean(row.can_pickup_student));setGuardianEvidence("");setError("");setNotice("");}}>Verifikasi kewenangan</button>}</>}</td>}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length+((canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))?1:0)} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
+  {preview&&<div className="alert warning">MODE PRATINJAU — semua record dan relasi yang terlihat adalah data sintetis. Formulir hanya untuk memeriksa struktur; tidak ada penyimpanan ke database.</div>}
   <p className="operations-footnote">PONDOK OS tidak menggantikan EMIS/SIMTREN atau sistem resmi Kementerian Agama. Nomor izin, NSP, status legal, dan dokumen persetujuan harus diverifikasi melalui kanal instansi berwenang.</p>
  </section>;
 }
