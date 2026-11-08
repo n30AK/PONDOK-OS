@@ -19,7 +19,8 @@ A controlled pilot may be prepared only after the pilot-entry gates in section 7
 ### Platform and data foundations
 
 - Development implementation-status snapshot records 67 organization-owned tables with RLS ENABLE and FORCE.
-- The same snapshot records migration ledger through 0026 on Development.
+- A direct read-only Development query on 9 November 2026 reconfirmed 67/67 organization-owned tables with RLS ENABLE and FORCE, 26 migration ledger entries, and zero rows in organizations, organization memberships, student profiles, HR employees, platform customers, module entitlements and module orders.
+- The same live inspection confirmed `core.organization_memberships` itself has RLS ENABLE + FORCE with platform-controlled insert and self/active-tenant or Super Admin read policies. This does not replace the pending two-tenant API isolation test.
 - The implementation-status audit records 45 distinct read/write permission keys referenced by 44 module resources.
 - The workspace/API contract records 44 module resources: 42 generic tenant-scoped resources plus dedicated encrypted student identity-document and health-profile handlers.
 - Development snapshot records zero organizations, memberships, student profiles, and HR employees; no fabricated tenant or personal records have been seeded.
