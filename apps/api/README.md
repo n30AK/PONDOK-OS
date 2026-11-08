@@ -35,7 +35,7 @@ Each protected operation must verify identity, active organization membership or
 - Development branch: `br-proud-paper-b312lfxi`.
 - Function: `pondokapi`, deployment #42, Node.js 24.
 - Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced.
-- Live migration ledger: through 0023. Migrations 0024–0026 are pending on Development.
+- Live migration ledger: through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction with an advisory lock; source-file SHA-256 checksums are recorded.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; identity-document operations must remain fail-closed until securely provisioned.
 - No organizations, memberships, student profiles or HR employees exist yet.
 - Live two-tenant API acceptance and institution UAT are pending.
@@ -56,7 +56,7 @@ Run `pnpm db:migrate` only after:
 
 The runner serializes execution with a PostgreSQL advisory lock, verifies SHA-256 checksums, and applies each migration in its own transaction. Never run it against Production as part of this project workflow. Do not manually patch schema objects to bypass the migration ledger.
 
-Migrations 0024, 0025 and 0026 are prepared in the repository but are not recorded as applied on Development as of 2026-11-08. Migration 0026 is required by the guardian-authority verification endpoint. Applying these migrations requires explicit approval for Neon Development only.
+Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026-11-08. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
 
 ## Central activation and company administration
 
