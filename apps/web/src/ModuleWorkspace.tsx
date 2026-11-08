@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getAccessToken } from "./auth";
 import { getModuleGuidance } from "./module-catalog";
+import { getStudentFormSections } from "./student-form-metadata";
 
 type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string; onResourceChange?: (key: string) => void; preview?: boolean };
 type Field = {
@@ -84,28 +85,23 @@ const RESOURCES: Resource[] = [
 
 ];
 
-function fieldSection(resource:Resource, field:Field):string {
- const key=field.key.toLowerCase();
- if(resource.key.startsWith("student-")||resource.key==="guardians"||resource.key==="student-guardians"){
-  if(/address|phone|email|contact/.test(key)) return "Alamat & Kontak";
-  if(/guardian|relationship|pickup|authority|parent|family/.test(key)) return "Keluarga & Wali";
-  if(/health|blood|allergy|medical|medication|emergency/.test(key)) return "Kesehatan & Kedaruratan";
-  if(/document|identity|number|issuer|issued|expires/.test(key)) return "Identitas & Dokumen";
-  if(/campus|program|class|academic|entry|school|status/.test(key)) return "Pendidikan & Status";
-  return "Identitas Santri";
+function getFieldSections(resource:Resource):Array<{title:string;fields:Field[];note?:string;classification?:"general"|"restricted";applicability?:string;regulatoryBasis?:Array<{label:string;url:string}>}> {
+ const configured=getStudentFormSections(resource.key,resource.fields.map(field=>field.key));
+ if(configured){
+  return configured.map(section=>({...section,fields:section.fields.map(key=>resource.fields.find(field=>field.key===key)).filter((field):field is Field=>Boolean(field))}));
  }
- if(/contract|salary|payroll|tax|bpjs|leave|attendance|employee|educator|position|department|manager|assignment/.test(key)) return "Kepegawaian & Penugasan";
- if(/account|amount|budget|debit|credit|fund|payment|invoice|journal|period/.test(key)) return "Keuangan & Periode";
- if(/item|stock|warehouse|quantity|movement|unit|supplier|purchase|asset/.test(key)) return "Barang, Lokasi & Transaksi";
- if(/document|attachment|evidence|decision|verification|approval|reference/.test(key)) return "Dokumen & Verifikasi";
- if(/date|time|starts|ends|status|active|type|category|code/.test(key)) return "Periode & Klasifikasi";
- if(/address|phone|email|contact|location/.test(key)) return "Alamat & Kontak";
- if(/description|notes|instruction|summary|history|data|detail/.test(key)) return "Keterangan & Riwayat";
- return "Informasi Utama";
-}
-function getFieldSections(resource:Resource):Array<{title:string;fields:Field[]}> {
  const sections=new Map<string,Field[]>();
- for(const field of resource.fields){const title=fieldSection(resource,field);sections.set(title,[...(sections.get(title)??[]),field]);}
+ for(const field of resource.fields){
+  const key=field.key.toLowerCase();
+  const title=/contract|salary|payroll|tax|bpjs|leave|attendance|employee|educator|position|department|manager|assignment/.test(key)?"Kepegawaian & Penugasan"
+   :/account|amount|budget|debit|credit|fund|payment|invoice|journal|period/.test(key)?"Keuangan & Periode"
+   :/item|stock|warehouse|quantity|movement|unit|supplier|purchase|asset/.test(key)?"Barang, Lokasi & Transaksi"
+   :/document|attachment|evidence|decision|verification|approval|reference/.test(key)?"Dokumen & Verifikasi"
+   :/date|time|starts|ends|status|active|type|category|code/.test(key)?"Periode & Klasifikasi"
+   :/address|phone|email|contact|location/.test(key)?"Alamat & Kontak"
+   :/description|notes|instruction|summary|history|data|detail/.test(key)?"Keterangan & Riwayat":"Informasi Utama";
+  sections.set(title,[...(sections.get(title)??[]),field]);
+ }
  return [...sections.entries()].map(([title,fields])=>({title,fields}));
 }
 function toLabel(value: unknown): string {
@@ -309,7 +305,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   </form>}
   {showForm&&resource&&canWrite&&<form className="student-form operations-form" onSubmit={submit}>
    <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{guidance?.purpose??(editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren.")}</p>{guidance&&<><p><strong>Alur data:</strong> {guidance.lifecycle}</p><p><strong>Klasifikasi:</strong> {guidance.classification.toUpperCase()} · <strong>Acuan:</strong> {guidance.regulatoryRefs.join(", ")}</p><ul className="field-hint">{guidance.formNotes.map(note=><li key={note}>{note}</li>)}</ul>{guidance.operationalGaps.length>0&&<p className="field-hint"><strong>Pengembangan lanjutan:</strong> {guidance.operationalGaps.join("; ")}.</p>}</>}</div>
-   {getFieldSections(resource).map(section=><section className="form-section-card" key={section.title}><div className="form-section-heading"><strong>{section.title}</strong><span>{section.fields.length} field</span></div><div className="form-grid">{section.fields.map(field=><label className={field.type==="address"||field.type==="textarea"||field.type==="json"?"form-field form-field-wide":"form-field"} key={field.key}>{field.label}{field.required?" *":""}
+   {getFieldSections(resource).map(section=><section className="form-section-card" key={section.title}><div className="form-section-heading"><strong>{section.title}</strong><span>{section.fields.length} field</span></div>{section.note&&<p className="field-hint">{section.note}</p>}{section.applicability&&<p className="field-hint"><strong>Penerapan:</strong> {section.applicability}</p>}{section.regulatoryBasis&&<p className="field-hint"><strong>Rujukan:</strong> {section.regulatoryBasis.map((basis,index)=><a key={basis.url} href={basis.url} target="_blank" rel="noreferrer">{basis.label}{index<section.regulatoryBasis!.length-1?", ":""}</a>)}</p>}<div className="form-grid">{section.fields.map(field=><label className={field.type==="address"||field.type==="textarea"||field.type==="json"?"form-field form-field-wide":"form-field"} key={field.key}>{field.label}{field.required?" *":""}
     {field.type==="relation"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih {field.label.toLowerCase()}</option>{(lookups[field.source??""]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select>
     :field.type==="select"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih</option>{(field.options??[]).map(o=><option key={o} value={o}>{o.replaceAll("_"," ")}</option>)}</select>
     :field.type==="checkbox"?<input type="checkbox" checked={Boolean(form[field.key])} onChange={e=>setForm(p=>({...p,[field.key]:e.target.checked}))}/>
