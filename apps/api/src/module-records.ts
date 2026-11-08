@@ -370,9 +370,161 @@ async function handleStudentHealthProfiles(
   }
 }
 
+
+type StudentIdentityDocumentRow = {
+  [column: string]: any;
+  id: string; student_id: string; document_type: string;
+  document_number_ciphertext: Buffer; encryption_key_version: string;
+  issuer: string | null; issued_on: string | null; expires_on: string | null;
+  verified_at: Date | null; created_at: Date; legal_name?: string;
+};
+
+function getStudentIdentityKey(): { key: Buffer; version: string } | null {
+  const encoded = process.env.STUDENT_IDENTITY_ENCRYPTION_KEY ?? "";
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) return null;
+  return { key, version: process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION ?? "v1" };
+}
+
+function serializeStudentIdentityDocument(row: StudentIdentityDocumentRow, key: Buffer): Record<string, unknown> {
+  return {
+    id: row.id, student_id: row.student_id, legal_name: row.legal_name ?? null,
+    document_type: row.document_type,
+    document_number: decryptHealthValue(row.document_number_ciphertext, key),
+    issuer: row.issuer, issued_on: row.issued_on, expires_on: row.expires_on,
+    verified_at: row.verified_at, created_at: row.created_at
+  };
+}
+
+async function handleStudentIdentityDocuments(
+  req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">,
+  userId: string, organizationId: string, url: URL
+): Promise<void> {
+  const tenant = await loadTenantContext(pool, userId, organizationId);
+  if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return; }
+  const write = req.method !== "GET";
+  const requiredPermission = write ? "academic.students.identity.write" : "academic.students.identity.read";
+  if (!tenant.permissions.includes(requiredPermission)) {
+    reply(res, 403, { error: "permission_required", permission: requiredPermission }); return;
+  }
+  const crypto = getStudentIdentityKey();
+  if (!crypto) {
+    reply(res, 503, { error: "student_identity_encryption_not_configured", required: "STUDENT_IDENTITY_ENCRYPTION_KEY (base64-encoded 32-byte key)" }); return;
+  }
+  const keyVersion = crypto.version;
+  if (req.method === "GET") {
+    const studentId = url.searchParams.get("studentId");
+    if (studentId && !UUID.test(studentId)) { reply(res, 400, { error: "valid_student_id_required" }); return; }
+    const result = await pool.query<StudentIdentityDocumentRow>(
+      `SELECT d.id, d.student_id, d.document_type, d.document_number_ciphertext,
+        d.encryption_key_version, d.issuer, d.issued_on, d.expires_on, d.verified_at,
+        d.created_at, s.legal_name
+       FROM academic.student_identity_documents d
+       JOIN academic.student_profiles s ON s.organization_id=d.organization_id AND s.id=d.student_id
+       WHERE d.organization_id=$1::uuid AND ($2::uuid IS NULL OR d.student_id=$2::uuid)
+       ORDER BY s.legal_name, d.document_type LIMIT 200`,
+      [organizationId, studentId]
+    );
+    try {
+      for (const row of result.rows) if (row.encryption_key_version !== keyVersion) throw new Error("student_identity_key_version_mismatch");
+      const data = result.rows.map(row => serializeStudentIdentityDocument(row, crypto.key));
+      if (result.rows.length > 0) {
+        await pool.query(
+          `INSERT INTO audit.audit_events
+            (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+           SELECT $1::uuid, $2::uuid, 'student.identity_document.read',
+                  'academic.student_identity_documents', accessed.resource_id,
+                  jsonb_build_object('encryptionKeyVersion', $3::text, 'accessChannel', 'workspace')
+             FROM unnest($4::text[]) AS accessed(resource_id)`,
+          [organizationId, userId, keyVersion, result.rows.map(row => row.id)]
+        );
+      }
+      reply(res, 200, { data });
+    } catch {
+      reply(res, 503, { error: "student_identity_read_or_audit_failed" });
+    }
+    return;
+  }
+  if (req.method !== "POST" && req.method !== "PATCH") {
+    res.setHeader("allow", "GET, POST, PATCH"); reply(res, 405, { error: "method_not_allowed" }); return;
+  }
+  const body = await readJson(req);
+  if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return; }
+  const allowed = new Set(["studentId", "documentType", "documentNumber", "issuer", "issuedOn", "expiresOn"]);
+  if (Object.keys(body).some(key => !allowed.has(key))) { reply(res, 422, { error: "unsupported_identity_document_field" }); return; }
+  const types = new Set(["nik", "kk", "nisn", "passport", "birth_certificate", "other"]);
+  if (body.documentType !== undefined && !types.has(String(body.documentType))) { reply(res, 422, { error: "invalid_document_type" }); return; }
+  if (body.documentNumber !== undefined && (typeof body.documentNumber !== "string" || body.documentNumber.trim().length < 1 || body.documentNumber.length > 128)) {
+    reply(res, 422, { error: "invalid_document_number" }); return;
+  }
+  if (body.issuer !== undefined && body.issuer !== null && (typeof body.issuer !== "string" || body.issuer.length > 180)) { reply(res, 422, { error: "invalid_issuer" }); return; }
+  for (const key of ["issuedOn", "expiresOn"]) if (body[key] !== undefined && body[key] !== null && body[key] !== "" && (typeof body[key] !== "string" || !validDate(body[key] as string))) {
+    reply(res, 422, { error: `invalid_${key}` }); return;
+  }
+  const issuedOn = typeof body.issuedOn === "string" ? body.issuedOn : null;
+  const expiresOn = typeof body.expiresOn === "string" ? body.expiresOn : null;
+  if (issuedOn && expiresOn && expiresOn < issuedOn) { reply(res, 422, { error: "expiry_before_issue_date" }); return; }
+  const recordId = url.searchParams.get("id");
+  await pool.query("SAVEPOINT student_identity_write");
+  try {
+    let result;
+    if (req.method === "POST") {
+      const studentId = typeof body.studentId === "string" ? body.studentId : "";
+      if (!UUID.test(studentId)) { await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 422, { error: "valid_student_id_required" }); return; }
+      if (!types.has(String(body.documentType)) || typeof body.documentNumber !== "string" || !body.documentNumber.trim()) {
+        await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 422, { error: "document_type_and_number_required" }); return;
+      }
+      const encrypted = encryptHealthValue(body.documentNumber.trim(), crypto.key);
+      result = await pool.query<StudentIdentityDocumentRow>(
+        `INSERT INTO academic.student_identity_documents
+          (organization_id, student_id, document_type, document_number_ciphertext, encryption_key_version, issuer, issued_on, expires_on)
+         VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7::date,$8::date)
+         RETURNING id, student_id, document_type, document_number_ciphertext, encryption_key_version, issuer, issued_on, expires_on, verified_at, created_at`,
+        [organizationId, studentId, body.documentType, encrypted, keyVersion, body.issuer ?? null, issuedOn, expiresOn]
+      );
+    } else {
+      if (!recordId || !UUID.test(recordId)) { await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 400, { error: "valid_record_id_required" }); return; }
+      const existing = await pool.query<{ encryption_key_version: string }>(
+        "SELECT encryption_key_version FROM academic.student_identity_documents WHERE organization_id=$1::uuid AND id=$2::uuid",
+        [organizationId, recordId]
+      );
+      if (!existing.rows.length) { await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 404, { error: "record_not_found" }); return; }
+      if (existing.rows[0]!.encryption_key_version !== keyVersion) { await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 503, { error: "student_identity_key_version_mismatch" }); return; }
+      const columns: Array<[string, string, unknown]> = [];
+      if (body.documentType !== undefined) columns.push(["document_type", "documentType", body.documentType]);
+      if (body.documentNumber !== undefined) columns.push(["document_number_ciphertext", "documentNumber", encryptHealthValue(body.documentNumber, crypto.key)]);
+      if (body.issuer !== undefined) columns.push(["issuer", "issuer", body.issuer]);
+      if (body.issuedOn !== undefined) columns.push(["issued_on", "issuedOn", issuedOn]);
+      if (body.expiresOn !== undefined) columns.push(["expires_on", "expiresOn", expiresOn]);
+      if (!columns.length) { await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 400, { error: "no_mutable_fields" }); return; }
+      const sets = columns.map(([column], index) => `${column}=${index+1}`);
+      sets.push(`encryption_key_version=${columns.length+1}`);
+      result = await pool.query<StudentIdentityDocumentRow>(
+        `UPDATE academic.student_identity_documents SET ${sets.join(",")}
+         WHERE organization_id=${columns.length+2}::uuid AND id=${columns.length+3}::uuid
+         RETURNING id, student_id, document_type, document_number_ciphertext, encryption_key_version, issuer, issued_on, expires_on, verified_at, created_at`,
+        [...columns.map(([, , value]) => value), keyVersion, organizationId, recordId]
+      );
+    }
+    const row = result.rows[0];
+    if (!row) { await pool.query("ROLLBACK TO SAVEPOINT student_identity_write"); await pool.query("RELEASE SAVEPOINT student_identity_write"); reply(res, 404, { error: "record_not_found" }); return; }
+    await pool.query(
+      "INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)",
+      [organizationId, userId, "student.identity_document.write", "academic.student_identity_documents", row.id, JSON.stringify({ fields: req.method === "POST" ? ["documentType", "documentNumber", "issuer", "issuedOn", "expiresOn"] : Object.keys(body).filter(key => key !== "studentId"), encryptionKeyVersion: keyVersion })]
+    );
+    await pool.query("RELEASE SAVEPOINT student_identity_write");
+    reply(res, req.method === "POST" ? 201 : 200, { data: serializeStudentIdentityDocument(row, crypto.key) });
+  } catch (reason) {
+    await pool.query("ROLLBACK TO SAVEPOINT student_identity_write").catch(() => undefined);
+    await pool.query("RELEASE SAVEPOINT student_identity_write").catch(() => undefined);
+    const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as {code:unknown}).code) : "";
+    reply(res, code === "23503" ? 422 : code === "23505" ? 409 : 500, { error: code === "23503" ? "related_record_not_found_in_tenant" : code === "23505" ? "duplicate_record" : "student_identity_write_failed" });
+  }
+}
+
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
-  if (url.pathname === "/v1/modules/student-health-profiles") {
+  if (url.pathname === "/v1/modules/student-identity-documents") {\n    await handleStudentIdentityDocuments(req, res, pool, userId, organizationId, url);\n    return true;\n  }\n  if (url.pathname === "/v1/modules/student-health-profiles") {
     await handleStudentHealthProfiles(req, res, pool, userId, organizationId, url);
     return true;
   }
