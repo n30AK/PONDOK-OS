@@ -187,7 +187,7 @@ Rujukan awal untuk legal mapping (wajib diperiksa kembali terhadap naskah konsol
 - PMA 30/2020 tentang Pendirian dan Penyelenggaraan Pesantren.
 - PMA 31/2020 tentang Pendidikan Pesantren.
 - PMA 32/2020 bila lembaga menyelenggarakan Ma'had Aly.
-- Untuk satuan pendidikan formal di bawah Kemendikdasmen: UU 20/2003, PP 57/2021 jo. PP 4/2022, serta standar isi/kurikulum dan aturan teknis jenjang yang berlaku pada tahun ajaran.
+- Untuk satuan pendidikan formal di bawah Kemendikdasmen: UU 20/2003, PP 57/2021 jo. PP 4/2022, serta aturan teknis jenjang yang berlaku pada tahun ajaran. Sebagai contoh aturan terbaru yang perlu dipetakan per jenjang: Permendikdasmen 12/2025 tentang Standar Isi, Permendikdasmen 21/2025 tentang Standar Tenaga Kependidikan, dan Permendikdasmen 1/2026 tentang Standar Proses (berlaku 5 Januari 2026).
 - Perpres 82/2021 tentang Pendanaan Penyelenggaraan Pesantren.
 - UU 27/2022 tentang Pelindungan Data Pribadi; PP 71/2019 tentang Penyelenggaraan Sistem dan Transaksi Elektronik.
 - UU 35/2014 tentang perubahan atas UU Perlindungan Anak dan peraturan perlindungan anak terkait.
