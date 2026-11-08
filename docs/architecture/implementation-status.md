@@ -85,3 +85,6 @@ PONDOK OS and Central Command remain **not ready for general commercial release*
 
 A generic initial-record form or a green CI job is not a completed domain workflow. Pilot and commercial claims must be restricted to the exact modules and deployment modes that have passed UAT and operational acceptance.
 - Direct read-only Development verification on 2026-11-09 reconfirmed 67/67 tenant-owned tables with RLS ENABLE + FORCE and 26 migration records. The same query found zero organizations, organization memberships, student profiles, HR employees, platform customers, module entitlements and module orders. `core.organization_memberships` itself has RLS ENABLE + FORCE with explicit platform-controlled insert and self/active-tenant or Super Admin read policies; live two-tenant API acceptance remains pending.
+
+
+- PR #146 merged as `c5694cd24f36a34cf89e210bbeb2b7e7f1f55e15`. CI #1299 and Neon Function bundle #227 passed before merge. The change adds a Super Admin-only, read-only registry for module entitlements, module orders and redacted lifecycle events, and separates it from the module-request approval queue. It does not enable entitlement mutations or complete commercial provisioning. No database writes or migrations were performed.
