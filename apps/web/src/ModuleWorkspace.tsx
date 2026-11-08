@@ -194,7 +194,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   finally{setBusy(false);}
  };
  const visibleRows=rows.slice(0,100);
- const displayCell=(column:string,value:unknown)=>{
+ const displayCell=(column:string,value:unknown)=>{\n  if(resource?.key==="student-identity-documents"&&column==="document_number"&&typeof value==="string")return value.length>4?`••••••••${value.slice(-4)}`:"••••";
   const field=resource?.fields.find(item=>item.type==="relation"&&item.key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`)===column);
   if(field&&typeof value==="string"){
    const option=(lookups[field.source??""]??[]).find(item=>item.id===value);
