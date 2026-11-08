@@ -198,6 +198,66 @@ test("encrypts student health fields before persistence and keeps audit metadata
   }
 });
 
+test("audits each student health record before returning decrypted data", async () => {
+  const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  const previousVersion = process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = "test-v1";
+  const calls = [];
+  const pool = { async query(sql, values = []) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.health.read"])] };
+    if (sql.includes("FROM academic.student_health_profiles hp")) return { rows: [{
+      id: recordId, student_id: userId, blood_group_ciphertext: null, allergy_data_ciphertext: null,
+      medical_history_ciphertext: null, medication_data_ciphertext: null,
+      emergency_instructions_ciphertext: null, encryption_key_version: "test-v1",
+      created_at: new Date(), updated_at: new Date()
+    }] };
+    if (sql.startsWith("INSERT INTO audit.audit_events")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  try {
+    const res = responseDouble();
+    await handleModuleRecordsRequest(request("GET", "/v1/modules/student-health-profiles"), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 200);
+    const audit = calls.find(call => call.sql.startsWith("INSERT INTO audit.audit_events"));
+    assert.ok(audit);
+    assert.ok(audit.sql.includes("student.health_profile.read"));
+    assert.deepEqual(audit.values, [organizationId, userId, "test-v1", [recordId]]);
+    assert.equal(JSON.stringify(audit.values).includes("medical_history"), false);
+  } finally {
+    if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
+    if (previousVersion === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = previousVersion;
+  }
+});
+
+test("does not disclose student health data when the access audit fails", async () => {
+  const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  const previousVersion = process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = "test-v1";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.health.read"])] };
+    if (sql.includes("FROM academic.student_health_profiles hp")) return { rows: [{
+      id: recordId, student_id: userId, blood_group_ciphertext: null, allergy_data_ciphertext: null,
+      medical_history_ciphertext: null, medication_data_ciphertext: null,
+      emergency_instructions_ciphertext: null, encryption_key_version: "test-v1",
+      created_at: new Date(), updated_at: new Date()
+    }] };
+    if (sql.startsWith("INSERT INTO audit.audit_events")) throw new Error("audit unavailable");
+    throw new Error("unexpected query: " + sql);
+  }};
+  try {
+    const res = responseDouble();
+    await handleModuleRecordsRequest(request("GET", "/v1/modules/student-health-profiles"), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 503);
+    assert.deepEqual(JSON.parse(res.body), { error: "student_health_read_or_audit_failed" });
+  } finally {
+    if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
+    if (previousVersion === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = previousVersion;
+  }
+});
+
 test("student health records require the dedicated permission before any sensitive query", async () => {
   let queryCount = 0;
   const pool = { async query(sql) {
