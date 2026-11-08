@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
+import { canReadStudentOptions, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -218,4 +218,23 @@ test("validates student and guardian relationship date windows", () => {
     campusId: uuid, studentNumber: "SAN-003", legalName: "Santri Contoh",
     birthDate: "2010-01-01", entryDate: "2009-12-31"
   }), "invalid_student_lifecycle_dates");
+});
+
+
+test("student relation options are available to roles that can read the referencing module", () => {
+  for (const permission of [
+    "academic.students.read",
+    "academic.enrollments.read",
+    "academic.attendance.read",
+    "boarding.rooms.manage",
+    "boarding.assignments.manage",
+    "boarding.leave.read",
+    "boarding.incidents.read",
+    "library.loans.read",
+    "library.loans.write"
+  ]) {
+    assert.equal(canReadStudentOptions([permission]), true, `${permission} should allow the minimal student lookup`);
+  }
+  assert.equal(canReadStudentOptions(["finance.journals.read"]), false);
+  assert.equal(canReadStudentOptions([]), false);
 });
