@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getAccessToken } from "./auth";
-import { MASTER_DATA_CATALOG, getModuleGuidance } from "./module-catalog";
+import { getModuleGuidance } from "./module-catalog";
 
 type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string; onResourceChange?: (key: string) => void };
 type Field = {
@@ -14,7 +14,16 @@ type Resource = {
 type Row = Record<string, unknown>;
 type Lookup = { id: string; label: string };
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const MASTER_DATA_KEYS = new Set(MASTER_DATA_CATALOG.flatMap((item) => item.existingResources));
+// Keep the "Master Data Santri" workspace strictly scoped to student and guardian records.
+// The catalog also describes institution, employee, academic, and other master data; flattening
+// every catalog descriptor here caused unrelated resources to appear under the student menu.
+const MASTER_DATA_KEYS = new Set([
+  "student-details",
+  "student-identity-documents",
+  "student-health-profiles",
+  "guardians",
+  "student-guardians",
+]);
 
 const F = (key:string,label:string,type:Field["type"]="text",required=false,extra:Partial<Field>={}):Field=>({key,label,type,required,...extra});
 const REL = (key:string,label:string,source:string,labelKey:string,required=true):Field=>F(key,label,"relation",required,{source,labelKey});
