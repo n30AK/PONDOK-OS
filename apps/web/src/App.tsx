@@ -60,6 +60,7 @@ export default function App() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationChoice[]>([]);
   const [screen, setScreen] = useState<Screen>("overview");
+  const [previewMode, setPreviewMode] = useState(false);
   const [moduleResource, setModuleResource] = useState("academic-years");
   const [operationsArea, setOperationsArea] = useState<OperationsArea>("finance");
   const [email, setEmail] = useState("");
@@ -122,8 +123,19 @@ export default function App() {
 
   // Workspace and Central Command are separate applications. Never redirect
   // this application based on platform role; tenant access is resolved below.
-  const openModule = (resourceKey: string) => { setModuleResource(resourceKey); setScreen("modules"); setError(""); setNotice(""); };
-  const openOperations = (area: OperationsArea) => { setOperationsArea(area); setScreen("operations"); setError(""); setNotice(""); };
+  const openModule = (resourceKey: string) => { setModuleResource(resourceKey); setScreen("modules"); if (!tenant) setPreviewMode(true); setError(""); setNotice(""); };
+  const openOperations = (area: OperationsArea) => {
+    if (!tenant) {
+      const previewResource: Record<OperationsArea,string> = { finance: "finance-accounts", inventory: "inventory-items", hr: "employees" };
+      openModule(previewResource[area]);
+      return;
+    }
+    setOperationsArea(area); setScreen("operations"); setError(""); setNotice("");
+  };
+  const openAdmissions = () => {
+    if (!tenant) { openModule("admission-periods"); return; }
+    setScreen("admissions"); setError(""); setNotice("");
+  };
 
   const chooseOrganization = async (orgId: string) => {
     setBusy(true); setError(""); setNotice("");
@@ -410,9 +422,9 @@ export default function App() {
     <aside className="sidebar">
       <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>PONDOK OS</strong><small>INSTITUTION WORKSPACE</small></div></div>
       <div className="side-label">MENU UTAMA</div>
-      <button type="button" className={screen === "overview" ? "nav-item active" : "nav-item"} onClick={() => { setScreen("overview"); setError(""); }}><span>⌂</span> Ringkasan</button>
+      <button type="button" className={screen === "overview" ? "nav-item active" : "nav-item"} onClick={() => { setPreviewMode(false); setScreen("overview"); setError(""); }}><span>⌂</span> Ringkasan</button>
       <button type="button" className={screen === "modules" && moduleResource === "student-details" ? "nav-item active" : "nav-item"} onClick={() => openModule("student-details")}><span>♙</span> Master Data Santri</button>
-      <button type="button" className={screen === "admissions" ? "nav-item active" : "nav-item"} onClick={() => { setScreen("admissions"); setError(""); setNotice(""); }}><span>✳</span> PPDB</button>
+      <button type="button" className={screen === "admissions" ? "nav-item active" : "nav-item"} onClick={openAdmissions}><span>✳</span> PPDB</button>
       <div className="side-label second">PENDIDIKAN & KESANTRIAN</div>
       <button type="button" className={screen === "modules" && ["academic-years","academic-terms","programs","subjects","classes","enrollments","attendance-sessions","attendance-records","academic-class-subjects","guardians","student-guardians"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("academic-years")}><span>▦</span> Akademik & Kurikulum</button>
       <button type="button" className={screen === "modules" && ["dormitories","boarding-rooms","boarding-beds","boarding-assignments","leave-requests","incidents"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("dormitories")}><span>⌂</span> Asrama & Kesantrian</button>
@@ -434,7 +446,7 @@ export default function App() {
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
-        {!tenant ? !platformAccessChecked ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">MEMERIKSA AKSES</div><h1>Memverifikasi sesi dan hak akses…</h1><p>Mohon tunggu. Formulir aktivasi tidak akan ditampilkan sebelum status akun berhasil diverifikasi.</p></div></section> : platformAccessError ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div><h1>Sesi belum dapat diverifikasi</h1><div className="alert error">{platformAccessError}</div><p className="muted">Jangan kirim permohonan aktivasi lembaga saat status hak akses akun belum berhasil diperiksa. Data lembaga Anda tidak perlu diisi ulang.</p><button type="button" className="primary" onClick={() => window.location.reload()}>Coba periksa kembali</button></div></section> : <><section className="welcome-card">
+        {!tenant && !previewMode ? !platformAccessChecked ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">MEMERIKSA AKSES</div><h1>Memverifikasi sesi dan hak akses…</h1><p>Mohon tunggu. Formulir aktivasi tidak akan ditampilkan sebelum status akun berhasil diverifikasi.</p></div></section> : platformAccessError ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div><h1>Sesi belum dapat diverifikasi</h1><div className="alert error">{platformAccessError}</div><p className="muted">Jangan kirim permohonan aktivasi lembaga saat status hak akses akun belum berhasil diperiksa. Data lembaga Anda tidak perlu diisi ulang.</p><button type="button" className="primary" onClick={() => window.location.reload()}>Coba periksa kembali</button></div></section> : <><section className="welcome-card">
           <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1>
             {busy ? <p>Memuat daftar pesantren dan hak akses Anda…</p> : organizations.length > 1 ? <>
               <p>Akun Anda terhubung ke beberapa pesantren. Pilih pesantren untuk membuka ruang kerja.</p>
@@ -446,9 +458,9 @@ export default function App() {
             {error && <div className="alert error">{error}</div>}
           </div><div className="welcome-art"><div className="art-circle"><div className="art-building">⌂</div><span>PONDOK<br />OS</span></div></div>
         </section>{!isSuperAdmin && <InstitutionActivation />}</> : <>
-          <div className="page-heading"><div><div className="eyebrow">PONDOK OS / {tenant.organizationId.slice(0, 8).toUpperCase()}</div><h1>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "Manajemen PPDB" : "Ringkasan Pesantren"}</h1><p>{screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Ruang kerja khusus untuk data, formulir, alur persetujuan, dan pencatatan modul ini." : screen === "operations" ? "Data operasional yang ditampilkan mengikuti hak akses akun." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
+          <div className="page-heading"><div><div className="eyebrow">{previewMode ? "PONDOK OS / PRATINJAU PRODUK" : `PONDOK OS / ${tenant?.organizationId.slice(0, 8).toUpperCase()}`}</div><h1>{previewMode ? getModuleResourceLabel(moduleResource) : screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "Manajemen PPDB" : "Ringkasan Pesantren"}</h1><p>{previewMode ? "Jelajahi struktur menu, formulir, dan rancangan alur kerja menggunakan data contoh lokal." : screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Ruang kerja khusus untuk data, formulir, alur persetujuan, dan pencatatan modul ini." : screen === "operations" ? "Data operasional yang ditampilkan mengikuti hak akses akun." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
           {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Menu kerja</span><b>▦</b></div><strong>15</strong><small>Pintasan menu pesantren tersedia sesuai hak akses</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan tenant</span><b>◇</b></div><strong>{tenant.security.status === "protected" ? "Terverifikasi" : "Perlu pemeriksaan"}</strong><small>{tenant.security.protectedTables} dari {tenant.security.tenantTables} tabel memiliki RLS aktif dan dipaksa</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div><button className="text-button" onClick={() => openModule("all")}>Lihat semua modul →</button></div><div className="module-grid">{modules.map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? openModule("academic-years") : item.key === "admissions" ? setScreen("admissions") : item.key === "finance" ? openOperations("finance") : item.key === "inventory" ? openOperations("inventory") : item.key === "library" ? openModule("library-catalog") : item.key === "hr" ? openOperations("hr") : item.key === "cms" ? openModule("cms-pages") : item.key === "boarding" ? openModule("dormitories") : item.key === "crm" ? openModule("contacts") : openModule("campuses")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
-          {screen === "modules" && <ModuleWorkspace organizationId={tenant.organizationId} permissions={tenant.permissions} initialResourceKey={moduleResource} onResourceChange={setModuleResource} />}
+          {screen === "modules" && <ModuleWorkspace organizationId={tenant?.organizationId ?? "preview-only"} permissions={tenant?.permissions ?? []} initialResourceKey={moduleResource} onResourceChange={setModuleResource} preview={previewMode} />}
           {screen === "operations" && <Operations organizationId={tenant.organizationId} permissions={tenant.permissions} initialArea={operationsArea} />}
           {screen === "admissions" && <Admissions organizationId={tenant.organizationId} permissions={tenant.permissions} />}
           {screen === "students" && <section className="table-card"><div className="table-toolbar"><div><h2>Daftar santri</h2><p>{students.length} data ditampilkan (maksimal 100)</p></div><button className="primary" onClick={() => setShowCreate((value) => !value)}>＋ Tambah santri</button></div>
@@ -456,7 +468,7 @@ export default function App() {
             <div className="table-wrap"><table><thead><tr><th>Nomor induk</th><th>Nama santri</th><th>Tanggal lahir</th><th>Program</th><th>Tempat tinggal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{students.map((student) => <tr key={student.id}><td className="mono">{student.studentNumber}</td><td><strong>{student.legalName}</strong>{student.preferredName && <small className="cell-sub">{student.preferredName}</small>}</td><td>{student.birthDate ? new Date(student.birthDate).toLocaleDateString("id-ID") : "—"}</td><td>{student.profileData?.educationTrack ?? "—"}</td><td>{student.profileData?.boardingStatus ?? "—"}</td><td><span className="status-chip">{student.status}</span></td><td>{tenant?.permissions.includes("academic.students.update") && <button type="button" className="outline-button" onClick={() => beginEditStudent(student)}>Ubah</button>}</td></tr>)}{students.length === 0 && <tr><td colSpan={7} className="empty-state">{busy ? "Memuat data…" : "Belum ada data santri. Tambahkan data pertama untuk memulai."}</td></tr>}</tbody></table></div>
           </section>}
         </>}
-        <footer className="footer">PONDOK OS <span>•</span> Secure institution workspace <span>•</span> v0.1 foundation <SupportLink /></footer>
+        <footer className="footer">PONDOK OS <span>•</span> {previewMode ? "Pratinjau lokal · data contoh sintetis · tanpa penyimpanan" : "Secure institution workspace"} <span>•</span> v0.1 foundation <SupportLink /></footer>
       </div>
     </main>
   </div>;
