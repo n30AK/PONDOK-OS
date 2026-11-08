@@ -60,10 +60,15 @@ test("fails closed when identity document access audit cannot be written", async
   const previousVersion=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION;
   process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=Buffer.alloc(32,7).toString("base64");
   process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION="identity-test-v1";
+  const key=Buffer.alloc(32,7);
+  const iv=randomBytes(12);
+  const cipher=createCipheriv("aes-256-gcm",key,iv);
+  const encrypted=Buffer.concat([cipher.update(Buffer.from(JSON.stringify("3201010101010001"))),cipher.final()]);
+  const ciphertext=Buffer.concat([Buffer.from([1]),iv,cipher.getAuthTag(),encrypted]);
   const pool={async query(sql) {
     if(sql.includes("FROM core.organization_memberships")) return {rows:[tenantRow(["academic.students.identity.read"])]};
     if(sql.includes("FROM academic.student_identity_documents d")) return {rows:[{
-      id:recordId,student_id:userId,document_type:"nik",document_number_ciphertext:Buffer.alloc(40),
+      id:recordId,student_id:userId,document_type:"nik",document_number_ciphertext:ciphertext,
       encryption_key_version:"identity-test-v1",issuer:null,issued_on:null,expires_on:null,
       verified_at:null,created_at:new Date(),legal_name:"Santri Uji"
     }]};
