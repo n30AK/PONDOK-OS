@@ -185,3 +185,37 @@ test("legal guardian and pickup authority cannot be set through ordinary relatio
     studentId: uuid, guardianId: uuid, relationshipCode: "ibu", verificationNote: "Sudah diperiksa"
   }), "unsupported_field");
 });
+
+
+test("validates structured Indonesian student and guardian addresses", () => {
+  const validAddress = {
+    street: "Jl. Pendidikan No. 1", rt: "001", rw: "002",
+    village: "Sukamaju", district: "Cibinong", city: "Bogor",
+    province: "Jawa Barat", postalCode: "16911", countryCode: "ID"
+  };
+  assert.equal(validateModuleRecordInput("student-details", {
+    campusId: uuid, studentNumber: "SAN-001", legalName: "Santri Contoh",
+    currentAddress: validAddress
+  }), null);
+  assert.equal(validateModuleRecordInput("student-details", {
+    campusId: uuid, studentNumber: "SAN-002", legalName: "Santri Contoh",
+    permanentAddress: { ...validAddress, countryCode: "IDN" }
+  }), "invalid_permanentAddress");
+  assert.equal(validateModuleRecordInput("guardians", {
+    displayName: "Wali Contoh", address: { ...validAddress, unverifiedExtra: "do not accept" }
+  }), "invalid_address");
+  assert.equal(validateModuleRecordInput("guardians", {
+    displayName: "Wali Contoh", address: { street: 42 }
+  }), "invalid_address");
+});
+
+test("validates student and guardian relationship date windows", () => {
+  assert.equal(validateModuleRecordInput("student-guardians", {
+    studentId: uuid, guardianId: uuid, relationshipCode: "ibu",
+    validFrom: "2026-12-01", validUntil: "2026-11-30"
+  }), "invalid_date_range");
+  assert.equal(validateModuleRecordInput("student-details", {
+    campusId: uuid, studentNumber: "SAN-003", legalName: "Santri Contoh",
+    birthDate: "2010-01-01", entryDate: "2009-12-31"
+  }), "invalid_student_lifecycle_dates");
+});
