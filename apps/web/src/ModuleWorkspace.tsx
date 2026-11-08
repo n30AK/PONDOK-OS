@@ -160,6 +160,8 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  const [lookups,setLookups]=useState<Record<string,Lookup[]>>({});
  const [form,setForm]=useState<Record<string,string|boolean>>({});
  const [editingRow,setEditingRow]=useState<Row|null>(null);
+ const [detailRow,setDetailRow]=useState<Row|null>(null);
+ const [showSensitiveDetail,setShowSensitiveDetail]=useState(false);
  const [showForm,setShowForm]=useState(false);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
@@ -226,7 +228,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   })).then(entries=>{if(active)setLookups(Object.fromEntries(entries));});
   return()=>{active=false;};
  },[organizationId,request,resource,permissions,preview]);
- useEffect(()=>{setForm({});setShowForm(false);setEditingRow(null);setGuardianVerificationRow(null);},[resourceKey]);
+ useEffect(()=>{setForm({});setShowForm(false);setEditingRow(null);setDetailRow(null);setShowSensitiveDetail(false);setGuardianVerificationRow(null);},[resourceKey]);
  const beginEdit=(row:Row)=>{
   if(!resource||!canWrite||!row.id)return;
   setEditingRow(row);
@@ -274,6 +276,19 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   finally{setBusy(false);}
  };
  const visibleRows=rows.slice(0,100);
+ const fieldColumn=(key:string)=>key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`);
+ const detailValue=(field:Field,row:Row)=>{
+  const value=row[field.key]??row[fieldColumn(field.key)];
+  if(value===undefined||value===null||value==="")return "—";
+  if(resource?.key==="student-identity-documents"&&field.key==="documentNumber"&&typeof value==="string")return value.length>4?`••••••••${value.slice(-4)}`:"••••";
+  if(resource?.key==="student-health-profiles"&&["allergyData","medicalHistory","medicationData","emergencyInstructions"].includes(field.key)&&!showSensitiveDetail)return "•••••••• (terbatas)";
+  if(field.type==="relation"&&typeof value==="string"){
+   const option=(lookups[field.source??""]??[]).find(item=>item.id===value);
+   if(option)return option.label;
+  }
+  if(typeof value==="object")return JSON.stringify(value);
+  return String(value);
+ };
  const displayCell=(column:string,value:unknown)=>{
   if(resource?.key==="student-identity-documents"&&column==="document_number"&&typeof value==="string")return value.length>4?`••••••••${value.slice(-4)}`:"••••";
   const field=resource?.fields.find(item=>item.type==="relation"&&item.key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`)===column);
@@ -316,7 +331,17 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
    </label>)}</div></section>)}
    <div className="form-actions"><button type="button" className="outline-button" onClick={()=>{setShowForm(false);setEditingRow(null);setForm({});}}>Batal</button><button className="primary" disabled={busy}>{busy?"Menyimpan…":editingRow?"Simpan perubahan":"Simpan data"}</button></div>
   </form>}
-  {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<th>Aksi</th>}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<td>{resource.key==="library-loans"&&canWrite?<>{row.loan_status==="open"&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{void (async()=>{setBusy(true);setError("");setNotice("");try{await request(`library-loans/${encodeURIComponent(String(row.id))}/return`,{method:"POST"});setNotice("Buku berhasil dikembalikan dan stok diperbarui.");await load();}catch(e){setError(e instanceof Error?e.message:"Gagal memproses pengembalian.");}finally{setBusy(false);}})();}}>Kembalikan</button>}{row.loan_status!=="open"&&<span>{toLabel(row.loan_status)}</span>}</>:<>{canWrite&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>beginEdit(row)}>Koreksi</button>}{resource.key==="student-guardians"&&canVerifyGuardian&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{setGuardianVerificationRow(row);setGuardianLegal(Boolean(row.is_legal_guardian));setGuardianPickup(Boolean(row.can_pickup_student));setGuardianEvidence("");setError("");setNotice("");}}>Verifikasi kewenangan</button>}</>}</td>}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length+((canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))?1:0)} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
+  {detailRow&&resource&&<section className="record-detail-card" aria-label="Detail record">
+   <div className="record-detail-heading"><div><span className="module-page-kicker">DETAIL RECORD</span><h3>{resource.label}</h3><small>ID: {String(detailRow.id??"—")}</small></div><button type="button" className="outline-button" onClick={()=>{setDetailRow(null);setShowSensitiveDetail(false);}}>Tutup detail</button></div>
+   {resource.key==="student-health-profiles"&&<div className="alert warning">Informasi kesehatan termasuk data pribadi spesifik. Konten disamarkan secara default dan hanya ditampilkan atas tindakan eksplisit petugas berizin.</div>}
+   {resource.key==="student-identity-documents"&&<div className="alert warning">Nomor dokumen identitas selalu dimasking pada tampilan detail. Verifikasi dokumen dilakukan melalui prosedur khusus.</div>}
+   {resource.key==="student-health-profiles"&&<button type="button" className="outline-button" onClick={()=>setShowSensitiveDetail(value=>!value)}>{showSensitiveDetail?"Samarkan informasi kesehatan":"Tampilkan informasi kesehatan terbatas"}</button>}
+   <dl className="record-detail-grid">{resource.fields.map(field=><div className="record-detail-field" key={field.key}><dt>{field.label}</dt><dd>{detailValue(field,detailRow)}</dd></div>)}
+    {["created_at","updated_at","verified_at"].filter(key=>detailRow[key]!==undefined&&detailRow[key]!==null).map(key=><div className="record-detail-field" key={key}><dt>{toLabel(key)}</dt><dd>{String(detailRow[key])}</dd></div>)}
+   </dl>
+   <p className="operations-footnote">Detail mengikuti izin baca resource ini. Akses data identitas dan kesehatan tetap dibatasi oleh API dan dicatat pada audit akses khusus.</p>
+  </section>}
+  {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div><small>Gunakan Detail untuk memeriksa satu record.</small></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<th>Aksi</th>}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<td>{resource.key==="library-loans"&&canWrite?<>{row.loan_status==="open"&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{void (async()=>{setBusy(true);setError("");setNotice("");try{await request(`library-loans/${encodeURIComponent(String(row.id))}/return`,{method:"POST"});setNotice("Buku berhasil dikembalikan dan stok diperbarui.");await load();}catch(e){setError(e instanceof Error?e.message:"Gagal memproses pengembalian.");}finally{setBusy(false);}})();}}>Kembalikan</button>}{row.loan_status!=="open"&&<span>{toLabel(row.loan_status)}</span>}</>:<><button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{setDetailRow(row);setShowSensitiveDetail(false);}}>Detail</button>{canWrite&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>beginEdit(row)}>Koreksi</button>}{resource.key==="student-guardians"&&canVerifyGuardian&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{setGuardianVerificationRow(row);setGuardianLegal(Boolean(row.is_legal_guardian));setGuardianPickup(Boolean(row.can_pickup_student));setGuardianEvidence("");setError("");setNotice("");}}>Verifikasi kewenangan</button>}</>}</td>}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length+((canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))?1:0)} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
   {preview&&<div className="alert warning">MODE PRATINJAU — semua record dan relasi yang terlihat adalah data sintetis. Formulir hanya untuk memeriksa struktur; tidak ada penyimpanan ke database.</div>}
   <p className="operations-footnote">PONDOK OS tidak menggantikan EMIS/SIMTREN atau sistem resmi Kementerian Agama. Nomor izin, NSP, status legal, dan dokumen persetujuan harus diverifikasi melalui kanal instansi berwenang.</p>
    </div>

@@ -79,3 +79,13 @@
 .operations-form .form-actions{padding:12px 0}
 @media(max-width:900px){.module-page-layout{grid-template-columns:1fr}.module-page-nav{position:relative;top:auto;max-height:260px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}.module-page-nav-title{grid-column:1/-1}.module-page-nav-group{min-width:0}.module-page-toolbar{align-items:flex-start}}
 @media(max-width:560px){.module-page-nav{grid-template-columns:1fr 1fr;padding:10px}.module-page-toolbar{flex-direction:column}.module-page-toolbar .primary{width:100%}.form-grid{grid-template-columns:1fr}.form-field-wide{grid-column:auto}}
+
+.record-detail-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 16px;min-width:0}
+.record-detail-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.record-detail-heading h3{font:800 15px Manrope;color:#244b3d;margin:5px 0}
+.record-detail-heading small{font-size:10px;color:#859189;overflow-wrap:anywhere}
+.record-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 0}
+.record-detail-field{min-width:0;border:1px solid #edf1ed;border-radius:8px;padding:10px 12px}
+.record-detail-field dt{font-size:9px;font-weight:800;color:#7c8a81;margin-bottom:6px}
+.record-detail-field dd{font-size:11px;line-height:1.55;color:#304b3d;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:560px){.record-detail-grid{grid-template-columns:1fr}.record-detail-heading{align-items:flex-start;flex-direction:column}.record-detail-heading .outline-button{width:100%}}
