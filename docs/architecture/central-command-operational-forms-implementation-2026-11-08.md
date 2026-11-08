@@ -50,3 +50,11 @@ Existing live datasets are supplemented with limited lookup lists for customers,
 - No production branch, production data, production secret, or production deployment is modified.
 - No sample records are inserted into the shared Development database.
 - A successful build does not establish business workflow completion. Each write path still requires authenticated end-to-end UAT and negative authorization tests before operational rollout.
+
+
+## Additional validation notes
+
+- Foreign-key lookup datasets are marked as lookup-only and are not duplicated in the operational record tables.
+- Support ticket customer/installation references and warranty claim customer/installation/agreement references are checked for consistency server-side.
+- Warranty claims require an active warranty agreement. Agent task payloads accept only a small allowlist of diagnostic parameters; requests expire and remain pending approval.
+- Report-only workspaces continue to advertise read-only capability; write capability is reported per domain rather than globally.
