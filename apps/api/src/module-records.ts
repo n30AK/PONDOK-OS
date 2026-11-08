@@ -524,7 +524,11 @@ async function handleStudentIdentityDocuments(
 
 export async function handleModuleRecordsRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
-  if (url.pathname === "/v1/modules/student-identity-documents") {\n    await handleStudentIdentityDocuments(req, res, pool, userId, organizationId, url);\n    return true;\n  }\n  if (url.pathname === "/v1/modules/student-health-profiles") {
+  if (url.pathname === "/v1/modules/student-identity-documents") {
+    await handleStudentIdentityDocuments(req, res, pool, userId, organizationId, url);
+    return true;
+  }
+  if (url.pathname === "/v1/modules/student-health-profiles") {
     await handleStudentHealthProfiles(req, res, pool, userId, organizationId, url);
     return true;
   }
