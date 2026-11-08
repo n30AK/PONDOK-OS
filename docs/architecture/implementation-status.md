@@ -88,3 +88,5 @@ A generic initial-record form or a green CI job is not a completed domain workfl
 
 
 - PR #146 merged as `c5694cd24f36a34cf89e210bbeb2b7e7f1f55e15`. CI #1299 and Neon Function bundle #227 passed before merge. The change adds a Super Admin-only, read-only registry for module entitlements, module orders and redacted lifecycle events, and separates it from the module-request approval queue. It does not enable entitlement mutations or complete commercial provisioning. No database writes or migrations were performed.
+
+- PR #147 merged as `5714030418083c43e3800ecfb88c065c6dfaf265`. CI #1301 and Neon Function bundle #229 passed. Added unit tests for `withTenantScope` and `loadTenantContext`, including cross-organization denial and transaction-local context cleanup. This improves automated API helper coverage but does not replace live API acceptance with two real users/organizations.
