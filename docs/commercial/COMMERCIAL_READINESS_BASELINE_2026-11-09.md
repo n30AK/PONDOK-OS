@@ -59,7 +59,7 @@ The existing 23-menu audit identifies these material gaps:
 - Billing has invoice/payment and double-entry posting foundations, but tax configuration, credit/debit notes, refunds, recurring billing, dunning, aging, receipts and bank reconciliation remain incomplete.
 - Accounting lacks complete manual journal controls, reversal, trial balance, GL drill-down, financial statements and bank reconciliation.
 - Customer registry lacks full legal entity, authorized signatory, multiple branch/site, billing profile and customer 360 lifecycle.
-- The menu labelled **Module Entitlements** currently displays the module-request approval queue. It is not a complete entitlement manager. The separate `platform.module_entitlements` and `platform.module_orders` lifecycle require an authorized workflow and audit integration.
+- PR #146 corrected the prior menu mismatch: the request approval queue is now labelled **Permintaan Modul**, and a separate **Entitlement Registry** provides a Super Admin-only, read-only view of entitlements, orders and redacted lifecycle events. It intentionally exposes no grant/suspend/resume/revoke actions. The full order, approval, billing and provisioning lifecycle remains incomplete.
 - Procurement, inventory, HRD, support, fleet, backup, warranty, documents and internal operations have data foundations and some initial-record forms. Initial record creation is not the same as approval, fulfilment, posting, resolution, restore, or other lifecycle completion.
 - Reports and compliance are not complete report-generation or compliance-management systems.
 - Agent runtime/dispatch must remain disabled until tool allowlists, scoped permissions, sandboxing, budget controls, approval UX, audit, evaluation, stop/kill switch and rollback are proven.
@@ -161,3 +161,18 @@ A module cannot be marked operational or included in a commercial package until 
 Until G0–G5 are evidenced, describe the product as **Development / controlled pilot preparation**, not commercial-ready. A successful build, green health endpoint, menu, database table, generic CRUD form, or demo dataset is not proof of commercial readiness.
 
 Do not mark the entire platform ready when only selected modules have passed. Commercial packages must identify exactly which modules and deployment modes are accepted, and which are still roadmap or pilot-only.
+
+
+## Update after PR #146 (2026-11-09)
+
+- PR #146 merged as `c5694cd24f36a34cf89e210bbeb2b7e7f1f55e15`. CI #1299 completed successfully across migration checks, RLS, workspace typecheck/build, Pages checks, Neon Function bundle, container build/smoke tests and unit tests; Neon Function bundle #227 also passed.
+- Central Command now has separate **Permintaan Modul** and read-only **Entitlement Registry** pages. The registry returns entitlement, order and redacted lifecycle-event datasets after active Super Admin authorization. It does not mutate entitlement state.
+- The registry SQL was checked read-only against the live Development schema. The Development tables currently contain zero customers, module entitlements and module orders, so no live customer workflow was exercised.
+- No schema, migration, seed, secret, Neon Development write or Neon Production change was made by PR #146. Post-merge deployment workflows have not been independently confirmed in this checkpoint.
+
+
+## Update after PR #147 (2026-11-09)
+
+- PR #147 merged as `5714030418083c43e3800ecfb88c065c6dfaf265`. CI #1301 and Neon Function bundle #229 passed.
+- Added unit tests for the actual `withTenantScope` and `loadTenantContext` helpers: authenticated user/organization context is bound inside a transaction, a user cannot load another organization's membership by changing the selected organization, and transaction-local role/context is cleared before pooled connection reuse.
+- These are automated helper tests using synthetic identities and a query double. The existing disposable-PostgreSQL RLS test separately checks two synthetic tenants at database level. Live API acceptance with two real authenticated users and two actual non-production organizations remains pending; G1 is still blocked.
