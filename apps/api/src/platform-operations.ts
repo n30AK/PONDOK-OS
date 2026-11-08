@@ -75,8 +75,81 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
 }
 function code(error: unknown): string { return typeof error === "object" && error !== null && "code" in error ? String((error as { code: unknown }).code) : ""; }
 
+
+type WriteSpec = { table:string; fields:string[]; required:string[]; actor?:string; fixed?:Record<string,unknown> };
+const writeSpecs:Record<string,Record<string,WriteSpec>> = {
+ procurement:{
+  vendors:{table:"vendors",fields:["vendor_code","legal_name","display_name","tax_id","email","phone","website","address","payment_terms_days","currency","notes"],required:["vendor_code","legal_name","display_name","address"],actor:"created_by",fixed:{status:"draft",risk_level:"unassessed"}},
+  requisitions:{table:"purchase_requisitions",fields:["requisition_number","department","purpose","required_on","currency","estimated_total"],required:["requisition_number","purpose"],actor:"requested_by",fixed:{status:"draft"}},
+  rfqs:{table:"request_for_quotations",fields:["rfq_number","requisition_id","title","instructions","currency","closes_at"],required:["rfq_number","requisition_id","title"],actor:"created_by",fixed:{status:"draft"}},
+  purchaseOrders:{table:"purchase_orders",fields:["po_number","vendor_id","requisition_id","currency","expected_on"],required:["po_number","vendor_id"],actor:"created_by",fixed:{status:"draft"}}
+ },
+ inventory:{
+  warehouses:{table:"warehouses",fields:["warehouse_code","warehouse_name","address","manager_user_id"],required:["warehouse_code","warehouse_name","address"],fixed:{status:"active"}},
+  assets:{table:"fixed_assets",fields:["asset_code","asset_name","category","serial_number","acquisition_date","acquisition_cost","residual_value","useful_life_months","warehouse_id"],required:["asset_code","asset_name","category","acquisition_date","acquisition_cost","useful_life_months"],actor:"created_by",fixed:{status:"draft",depreciation_method:"straight_line"}},
+  transfers:{table:"stock_transfers",fields:["transfer_number","source_warehouse_id","destination_warehouse_id"],required:["transfer_number","source_warehouse_id","destination_warehouse_id"],actor:"requested_by",fixed:{status:"requested"}}
+ },
+ hrd:{
+  departments:{table:"company_departments",fields:["department_code","department_name","parent_department_id","manager_employee_id","cost_center"],required:["department_code","department_name"],fixed:{status:"active"}},
+  employees:{table:"company_employees",fields:["employee_number","legal_name","preferred_name","work_email","work_phone","employment_type","hire_date"],required:["employee_number","legal_name","employment_type","hire_date"],actor:"created_by",fixed:{employment_status:"draft"}},
+  leave:{table:"company_leave_requests",fields:["request_number","employee_id","leave_type","starts_on","ends_on","requested_days","reason"],required:["request_number","employee_id","leave_type","starts_on","ends_on","requested_days"],fixed:{status:"submitted"}},
+  payrollPeriods:{table:"company_payroll_periods",fields:["period_code","starts_on","ends_on","payment_date"],required:["period_code","starts_on","ends_on"],fixed:{status:"draft"}}
+ },
+ internal:{
+  budgets:{table:"internal_budgets",fields:["budget_code","department_id","fiscal_year","fiscal_period","currency","allocated_amount"],required:["budget_code","fiscal_year","fiscal_period","allocated_amount"],fixed:{status:"draft",revised_amount:0}},
+  expenses:{table:"internal_expense_claims",fields:["claim_number","employee_id","department_id","expense_date","category","description","amount","currency","document_id"],required:["claim_number","employee_id","expense_date","category","description","amount"],fixed:{status:"draft"}}
+ },
+ documents:{registry:{table:"document_registry",fields:["document_number","document_type","title","description","classification","related_entity_type","related_entity_id","checksum_sha256","size_bytes","retention_until"],required:["document_number","document_type","title"],actor:"created_by",fixed:{status:"draft"}}},
+ support:{
+  cases:{table:"support_cases",fields:["case_number","customer_id","installation_id","subject","description","severity","assigned_to","sla_due_at"],required:["case_number","subject","description","severity"],fixed:{status:"open",source_channel:"manual"}},
+  incidents:{table:"installation_incidents",fields:["incident_number","installation_id","support_case_id","severity","title","summary","root_cause","impact_summary","first_seen_at"],required:["incident_number","installation_id","severity","title","summary","first_seen_at"],fixed:{status:"detected"}}
+ },
+ fleet:{installations:{table:"installations",fields:["customer_id","installation_code","display_name","deployment_mode","environment","app_version","connector_version"],required:["customer_id","installation_code","display_name","deployment_mode"],fixed:{status:"pending_enrollment",telemetry_policy:{}}}},
+ backup:{policies:{table:"backup_policies",fields:["installation_id","policy_name","backup_scope","frequency","retention_days","target_type","target_reference","offsite_copy_required","immutable_copy_required","recovery_point_objective_minutes","recovery_time_objective_minutes"],required:["installation_id","policy_name","backup_scope","frequency","retention_days","target_type","target_reference"],fixed:{encryption_required:true,checksum_required:true,is_enabled:false}}},
+ warranty:{claims:{table:"warranty_claims",fields:["claim_number","warranty_id","customer_id","installation_id","support_case_id","incident_id","subject","fault_description","severity"],required:["claim_number","warranty_id","customer_id","installation_id","subject","fault_description","severity"],fixed:{status:"submitted"}}},
+ agents:{remoteJobs:{table:"remote_jobs",fields:["installation_id","job_type","safety_class","idempotency_key","expires_at"],required:["installation_id","job_type","safety_class","idempotency_key","expires_at"],actor:"requested_by",fixed:{status:"pending_approval",request_payload:{}}}}
+};
+async function createOperationalRecord(req:IncomingMessage,res:ServerResponse,pool:TenantDatabase,userId:string,domain:string,dataset:string):Promise<void>{
+ const spec=writeSpecs[domain]?.[dataset]; if(!spec){reply(res,404,{error:"operational_form_not_found"});return;}
+ const chunks:Buffer[]=[];let size=0;
+ for await(const chunk of req){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=part.length;if(size>32768){reply(res,413,{error:"payload_too_large"});return;}chunks.push(part);}
+ let raw:unknown;try{raw=JSON.parse(Buffer.concat(chunks).toString("utf8"));}catch{reply(res,400,{error:"invalid_json"});return;}
+ const body=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw as Record<string,unknown>:null;
+ const values=body?.values&&typeof body.values==="object"&&!Array.isArray(body.values)?body.values as Record<string,unknown>:null;
+ if(!values){reply(res,422,{error:"values_required"});return;}
+ const unknown=Object.keys(values).filter(k=>!spec.fields.includes(k));
+ if(unknown.length){reply(res,422,{error:"unknown_fields",fields:unknown});return;}
+ const missing=spec.required.filter(k=>values[k]===undefined||values[k]===null||values[k]==="");
+ if(missing.length){reply(res,422,{error:"required_fields_missing",fields:missing});return;}
+ for(const [key,value] of Object.entries(values)){
+  if(typeof value==="string"&&value.length>5000||typeof value==="number"&&!Number.isFinite(value)||typeof value==="object"&&value!==null&&(Array.isArray(value)||key!=="address")||typeof value==="function"){reply(res,422,{error:"invalid_field_value"});return;}
+ }
+ if(domain==="agents"&&(![0,1,2,3].includes(Number(values.safety_class))||!["health_check","collect_redacted_diagnostics","restart_allowlisted_service","rebuild_cache","other"].includes(String(values.job_type)))){reply(res,422,{error:"unsafe_agent_job_request"});return;}
+ const entries:Array<[string,unknown]>=Object.entries({...spec.fixed,...values});if(spec.actor)entries.push([spec.actor,userId]);
+ const columns=entries.map(x=>x[0]);const params=entries.map(x=>x[1]);const placeholders=entries.map((_,i)=>"$"+(i+1));
+ if(!pool.connect){reply(res,503,{error:"platform_transaction_unavailable"});return;}
+ const client=await pool.connect() as Client;let active=false;
+ try{
+  await client.query("BEGIN");active=true;
+  const admin=await client.query<{allowed:boolean}>("SELECT EXISTS(SELECT 1 FROM platform.super_admins WHERE user_id=$1::uuid AND status='active') AS allowed",[userId]);
+  if(admin.rows[0]?.allowed!==true){await client.query("ROLLBACK");active=false;reply(res,403,{error:"platform_super_admin_required"});return;}
+  await client.query("SELECT set_config('app.user_id',$1,true)",[userId]);await client.query("SET LOCAL ROLE pondok_platform_runtime");
+  const inserted=await client.query<{id:string}>("INSERT INTO platform."+spec.table+" ("+columns.join(",")+") VALUES ("+placeholders.join(",")+") RETURNING id",params);
+  const id=inserted.rows[0]?.id;if(!id)throw new Error("operational_insert_failed");
+  await client.query("INSERT INTO platform.audit_events (actor_user_id,action,resource_type,resource_id,metadata) VALUES ($1::uuid,$2,$3,$4,$5::jsonb)",[userId,domain+"."+dataset+".created",spec.table,id,JSON.stringify({fieldNames:columns})]);
+  await client.query("COMMIT");active=false;reply(res,201,{data:{id,domain,dataset,status:spec.fixed?.status??null}});
+ }catch(error){
+  if(active)await client.query("ROLLBACK").catch(()=>undefined);
+  const ecode=typeof error==="object"&&error!==null&&"code" in error?String((error as {code:unknown}).code):"";
+  if(ecode==="23505")reply(res,409,{error:"duplicate_record_code"});else if(ecode==="23503")reply(res,422,{error:"referenced_record_not_found"});else if(["23514","22P02","22007","22003"].includes(ecode))reply(res,422,{error:"field_constraint_violation"});else if(ecode==="42P01"||ecode==="3F000")reply(res,503,{error:"operational_schema_unavailable"});else reply(res,500,{error:"operational_record_create_failed"});
+ }finally{client.release();}
+}
+
 export async function handlePlatformOperationsRequest(req: IncomingMessage, res: ServerResponse, pool: TenantDatabase, userId: string): Promise<boolean> {
-  const match = new URL(req.url ?? "/", "http://localhost").pathname.match(/^\/v1\/platform\/erp\/operations\/([a-z-]+)$/);
+  const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  const writeMatch = path.match(/^\/v1\/platform\/erp\/operations\/([a-z-]+)\/([A-Za-z]+)$/);
+  if (writeMatch && req.method === "POST") { await createOperationalRecord(req, res, pool, userId, writeMatch[1]!, writeMatch[2]!); return true; }
+  const match = path.match(/^\/v1\/platform\/erp\/operations\/([a-z-]+)$/);
   if (!match) return false;
   if (req.method !== "GET") { res.setHeader("allow", "GET"); reply(res, 405, { error: "method_not_allowed" }); return true; }
   const domain = match[1]!;
