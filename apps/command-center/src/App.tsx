@@ -186,7 +186,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
   const visibleRows = (rows: Array<Record<string, unknown>>) => rows.filter((row) => !query.trim() || Object.values(row).some((value) => display(value).toLowerCase().includes(query.trim().toLowerCase())));
   const exportCsv = (dataset: OperationalDataset) => {
     const rows = visibleRows(dataset.rows);
-    const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!).filter((column) => column !== "id") : [];
+    const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
     const cell = (value: unknown) => {
       let text = display(value);
       if (/^[=+@\-\t\r]/.test(text)) text = "'" + text;
@@ -207,7 +207,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
     {error && <div className="alert warning"><b>{error === "domain_schema_not_deployed" ? "Schema belum diterapkan pada Development" : "Data belum dapat dimuat"}</b><div>{error === "domain_schema_not_deployed" ? ((domain === "procurement" || domain === "inventory") ? "Skema domain belum tersedia pada Development. Periksa migration ledger dan deployment API; jangan menyimpulkan data tidak ada hanya dari tabel kosong." : "Skema domain belum tersedia pada Development. Periksa migration ledger dan deployment API; jangan menyimpulkan data tidak ada hanya dari tabel kosong.") : error}</div></div>}
     {!loading && !error && datasets.filter((dataset) => !dataset.lookupOnly).map((dataset) => {
       const rows = visibleRows(dataset.rows);
-      const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!) : [];
+      const columns = dataset.rows.length ? Object.keys(dataset.rows[0]!).filter((column) => column !== "id") : [];
       return <section className="panel" key={dataset.key}>
         <div className="panel-title"><div><h2>{dataset.title}</h2><p>{rows.length} dari {dataset.returned} record · maksimum 100 terbaru</p></div>{dataset.rows.length > 0 && <button className="secondary" onClick={() => exportCsv(dataset)}>Ekspor CSV</button>}</div>
         {rows.length === 0 ? <Empty text={query ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada data operasional yang tercatat."}/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
