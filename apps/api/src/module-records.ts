@@ -266,9 +266,25 @@ async function handleStudentHealthProfiles(
       for (const row of result.rows) {
         if (row.encryption_key_version !== keyVersion) throw new Error("student_health_key_version_mismatch");
       }
-      reply(res, 200, { data: result.rows.map(row => serializeHealthRow(row, crypto.key)) });
+      const data = result.rows.map(row => serializeHealthRow(row, crypto.key));
+      // Health records are restricted data: write an access event for every
+      // returned record before disclosing any decrypted value to the caller.
+      if (result.rows.length > 0) {
+        await pool.query(
+          `INSERT INTO audit.audit_events
+            (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+           SELECT $1::uuid, $2::uuid, 'student.health_profile.read',
+                  'academic.student_health_profiles', accessed.resource_id,
+                  jsonb_build_object('encryptionKeyVersion', $3::text, 'accessChannel', 'workspace')
+             FROM unnest($4::text[]) AS accessed(resource_id)`,
+          [organizationId, userId, keyVersion, result.rows.map(row => row.id)]
+        );
+      }
+      reply(res, 200, { data });
     } catch {
-      reply(res, 503, { error: "student_health_decryption_failed_check_key_version" });
+      // Fail closed: do not disclose decrypted health data when its access
+      // audit cannot be written or the configured key cannot decrypt it.
+      reply(res, 503, { error: "student_health_read_or_audit_failed" });
     }
     return;
   }
