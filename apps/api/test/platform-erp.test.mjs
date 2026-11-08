@@ -68,3 +68,45 @@ test("lead creation writes the lead and an audit event in one transaction",async
   assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")));
   assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
+
+
+test("executive metrics return aggregated commercial and operations counts to Super Admin",async()=>{
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.includes('AS "totalCustomers"')) return {rows:[{
+      totalCustomers:4,activeCustomers:2,activeSubscriptions:3,outstandingInvoices:2,
+      onlineInstallations:5,degradedInstallations:1,offlineInstallations:2,
+      openSupportCases:3,backupFailuresLast30Days:1,asOf:"2026-11-09T00:00:00.000Z"
+    }]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/executive-metrics"),res,pool,userId);
+  assert.equal(res.status,200);
+  const metrics=JSON.parse(res.body).data;
+  assert.equal(metrics.totalCustomers,4);
+  assert.equal(metrics.activeSubscriptions,3);
+  assert.equal(metrics.outstandingInvoices,2);
+  assert.equal(metrics.offlineInstallations,2);
+  assert.equal(metrics.backupFailuresLast30Days,1);
+  assert.equal(Object.hasOwn(metrics,"customerNames"),false);
+  assert.ok(calls.some(x=>x.sql==="SET LOCAL ROLE pondok_platform_runtime"));
+  assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+
+test("executive metrics are denied to non Super Admin before platform data is read",async()=>{
+  const {pool,calls}=poolWithClient(async()=>({rows:[{allowed:false}]}));
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/executive-metrics"),res,pool,userId);
+  assert.equal(res.status,403);
+  assert.ok(!calls.some(x=>x.sql.includes("AS \"totalCustomers\"")));
+  assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
+});
+
+test("executive metrics endpoint is read-only",async()=>{
+  const {pool,calls}=poolWithClient(async()=>({rows:[{allowed:true}]}));
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/executive-metrics","POST",{}),res,pool,userId);
+  assert.equal(res.status,405);
+  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT EXISTS")));
+});

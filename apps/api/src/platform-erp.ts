@@ -96,7 +96,8 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
   const customerId = path.match(/^\/v1\/platform\/erp\/customers\/([0-9a-f-]{36})$/i)?.[1];
   const isLead = path === "/v1/platform/erp/leads" || Boolean(leadId);
   const isCustomer = path === "/v1/platform/erp/customers" || Boolean(customerId);
-  if (!isLead && !isCustomer) return false;
+  const isMetrics = path === "/v1/platform/erp/executive-metrics";
+  if (!isLead && !isCustomer && !isMetrics) return false;
   if ((leadId && !UUID.test(leadId)) || (customerId && !UUID.test(customerId))) { reply(res, 400, { error: "invalid_resource_id" }); return true; }
 
   if (req.method === "GET") {
@@ -105,6 +106,25 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     try {
       const scoped = await withAdmin(pool, userId, async (client) => {
+        if (isMetrics) {
+          const result = await client.query(
+            `SELECT
+               (SELECT count(*)::int FROM platform.customers) AS "totalCustomers",
+               (SELECT count(*)::int FROM platform.customers WHERE status='active') AS "activeCustomers",
+               (SELECT count(*)::int FROM platform.subscriptions
+                 WHERE status IN ('trial','active','grace') AND (ends_at IS NULL OR ends_at >= now())) AS "activeSubscriptions",
+               (SELECT count(*)::int FROM platform.invoices WHERE status IN ('issued','partially_paid','overdue')) AS "outstandingInvoices",
+               (SELECT count(*)::int FROM platform.installations WHERE status='online') AS "onlineInstallations",
+               (SELECT count(*)::int FROM platform.installations WHERE status='degraded') AS "degradedInstallations",
+               (SELECT count(*)::int FROM platform.installations WHERE status='offline') AS "offlineInstallations",
+               (SELECT count(*)::int FROM platform.support_cases WHERE status IN ('open','assigned','in_progress','waiting_customer')) AS "openSupportCases",
+               (SELECT count(*)::int FROM platform.backup_runs
+                 WHERE created_at >= now() - interval '30 days'
+                   AND (status='failed' OR verification_status='failed' OR restore_test_status='failed')) AS "backupFailuresLast30Days",
+               now() AS "asOf"`,
+          );
+          return result.rows[0] ?? null;
+        }
         if (isLead) {
           if (leadId) {
             const result = await client.query(
@@ -150,7 +170,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
       if (!scoped.value) { reply(res, 503, { error: "platform_erp_unavailable" }); return true; }
-      if ("item" in scoped.value && !scoped.value.item) { reply(res, 404, { error: isLead ? "lead_not_found" : "customer_not_found" }); return true; }
+      if (scoped.value && typeof scoped.value === "object" && "item" in scoped.value && !scoped.value.item) { reply(res, 404, { error: isLead ? "lead_not_found" : "customer_not_found" }); return true; }
       reply(res, 200, { data: scoped.value });
     } catch (error) {
       reply(res, errorCode(error) === "42P01" ? 503 : 500, { error: "platform_erp_read_failed" });
@@ -158,7 +178,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
     return true;
   }
 
-  if (req.method === "POST" && !leadId && !customerId) {
+  if (req.method === "POST" && !leadId && !customerId && !isMetrics) {
     const body = await readJson(req);
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const invalid = isLead ? validateLeadInput(body) : validateCustomerInput(body);
