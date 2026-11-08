@@ -12,55 +12,70 @@ Authenticated routes require:
 - `PORT`: optional, defaults to 3001.
 - `CORS_ALLOWED_ORIGINS`: comma-separated exact browser origins for deployed clients.
 
-Never commit populated environment files or print database URLs in logs.
+Never commit populated environment files or print database URLs in logs. Never mix Auth URLs and database URLs from different Neon branches.
 
 ## Implemented endpoint groups
 
 - `GET /health/live`: process liveness.
-- `GET /health/ready`: database readiness.
+- `GET /health/ready`: database connectivity readiness; this does not prove schema completeness or business workflow acceptance.
 - `GET /v1/tenant/context`: verify Neon JWT, active organization membership, and resolve server-side roles/permissions.
-- `/v1/academic/*`: student list/create endpoints.
-- `/v1/finance/*`: chart of accounts, fiscal periods, journal draft creation/listing, posting and period close.
+- `/v1/academic/*`: student and academic foundation endpoints.
+- `/v1/finance/*`: chart of accounts, fiscal periods and journal workflows.
 - `/v1/inventory/*`: item, warehouse and stock movement operations.
-- `/v1/hr/*`: employee and payroll period/run workflows, approval and payment transitions.
+- `/v1/hr/*`: employee and payroll period/run workflows.
 - `/v1/sync/*`: authenticated device and pending event inbox foundation.
+- `/v1/modules/*`: tenant-scoped module resources, including student identity/health and guardian-authority verification routes where their schema and secrets are available.
+- `/v1/platform/*`: company Central Command and activation-control routes.
 
-Each protected operation verifies identity, active organization membership and the required permission. Tenant-owned queries also include organization scope. Authenticated tenant handlers run on one checked-out PostgreSQL connection and set `app.user_id` and `app.organization_id` with transaction-local scope.
+Each protected operation must verify identity, active organization membership or platform Super Admin authority, and the required permission. Tenant-owned queries must include organization scope. Authenticated tenant handlers use a checked-out PostgreSQL connection and transaction-local tenant context; runtime database roles are restricted to prevent owner-level RLS bypass.
+
+## Development deployment snapshot (2026-11-08)
+
+- Neon project: `frosty-cherry-92983148`.
+- Development branch: `br-proud-paper-b312lfxi`.
+- Function: `pondokapi`, deployment #42, Node.js 24.
+- Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced.
+- Live migration ledger: through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction with an advisory lock; source-file SHA-256 checksums are recorded.
+- `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; identity-document operations must remain fail-closed until securely provisioned.
+- No organizations, memberships, student profiles or HR employees exist yet.
+- Live two-tenant API acceptance and institution UAT are pending.
+
+The Development deployment workflow and deployment script are scoped to the Development project/branch. Do not repoint them to Production as part of routine work. Production branch `br-late-cherry-b3uqtuvh` must remain untouched.
 
 ## Database row-level security
 
-Migration `0013_tenant_row_level_security.sql` enables and forces RLS for 59 organization-owned tables across 15 schema groups. Policies require both the selected organization and an active membership for the verified API user. CI tests the policies using a restricted non-owner PostgreSQL role, including cross-tenant read/write denial and first-bootstrap writes under FORCE RLS.
-
-**Development status (2026-11-03):** migrations 0013 and 0014 have been applied and verified on Neon Development. The API is deployed as Neon Function deployment #4 (Node.js 24); `/health/live` and `/health/ready` both pass. Authenticated tenant transactions execute `SET LOCAL ROLE pondok_runtime` before setting tenant context, preventing the `neondb_owner` BYPASSRLS connection from bypassing tenant policies. Production remains untouched. Live sign-in/bootstrap and two-tenant API acceptance are still pending.
-
-The table `core.organization_memberships` is intentionally excluded as the membership authority to avoid recursive policy evaluation. The API resolves membership using the verified JWT subject and selected organization. Direct database access to this table remains a separate hardening boundary.
-
-## Legacy bootstrap (disabled)
-
-`POST /v1/bootstrap/organization` now returns HTTP 410 and cannot create an institution. The old `PONDOK_BOOTSTRAP_TOKEN_SHA256` environment variable is no longer required by the API. The historical CLI bootstrap script is retained only for repository archaeology and must not be used for new institution onboarding. See [First institution activation](../../docs/runbooks/first-install.md) for the approval-based flow.
+The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carrying `organization_id`. This is a database catalog result, not a substitute for API-level authorization testing. CI exercises RLS behavior against disposable PostgreSQL; live two-tenant API acceptance still requires two independently authenticated users and two actual non-production organizations.
 
 ## Migrations
 
-Run `pnpm db:migrate` only after checking the target connection string and reconciling any manually applied schema objects with `core.schema_migrations`. The runner serializes execution, verifies SHA-256 checksums, and applies each migration in its own transaction. For a branch moving to migration 0013, deploy the matching API build first.
+Run `pnpm db:migrate` only after:
+1. Confirming the exact target is the approved Development branch.
+2. Reviewing the ordered migration files and checksums.
+3. Reconciling manually applied objects with `core.schema_migrations`.
+4. Confirming a recoverable backup/restore point and an approved execution window.
 
+The runner serializes execution with a PostgreSQL advisory lock, verifies SHA-256 checksums, and applies each migration in its own transaction. Never run it against Production as part of this project workflow. Do not manually patch schema objects to bypass the migration ledger.
+
+Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026-11-08. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
 
 ## Central activation and company administration
 
-The distribution model is centralized SaaS with company approval. New institutions submit an authenticated activation request; the request does not create a tenant or membership. A company Super Administrator approves or rejects it through the Central Command workspace.
+The distribution model uses company approval. New institutions submit an authenticated activation request; the request does not itself create a tenant or membership. A company Super Administrator approves or rejects it through Central Command.
 
 - `GET /v1/platform/admin/me`: reports whether the authenticated user has an active company Super Admin grant.
-- `POST /v1/platform/activation-requests`: submits an institution request bound to the authenticated user and requires the contact email to match that user's verified, unbanned Neon Auth account.
+- `POST /v1/platform/activation-requests`: submits an institution request bound to the authenticated user.
 - `GET /v1/platform/activation-requests/mine`: lists the caller's own requests.
 - `GET /v1/platform/admin/activation-requests`: lists requests for company operators.
-- `POST /v1/platform/admin/activation-requests/:id/approve`: approves a pending request and returns a 256-bit random activation token exactly once. The database stores only its SHA-256 digest. Token is user-bound and expires after 24 hours.
+- `POST /v1/platform/admin/activation-requests/:id/approve`: approves a pending request and returns a one-time activation token; the database stores its SHA-256 digest.
 - `POST /v1/platform/admin/activation-requests/:id/reject`: rejects a pending request with a recorded reason.
-- `POST /v1/platform/activate`: redeems the token for its bound user and creates the organization, owner membership, main campus, owner role and audit event in one transaction.
+- `POST /v1/platform/activate`: redeems the user-bound token and creates the organization, owner membership, main campus, owner role and audit event in one transaction.
 
+Tenant creation requires the institution's actual details and an authorized Super Administrator. Never create fake tenants, memberships, students, guardians or employees for demonstration. The operator account `akviso` is not a tenant member and must not be granted a tenant role.
 
-Platform handlers use the separate `pondok_platform_runtime` NOLOGIN/NOBYPASSRLS role. They check Super Admin membership before switching roles, set the verified `app.user_id` transaction-locally, and rely on platform RLS for applicant/admin boundaries. Tenant creation is performed under this restricted role; campus, membership-role and tenant-audit inserts remain protected by the existing tenant RLS policies.
+## Student identity encryption
 
-The first Super Administrator is deliberately not self-assigned. After migration 0016 is separately approved and applied to Development, provision the first company account out-of-band using the controlled procedure in [Central activation architecture](../../docs/architecture/central-activation-control-plane.md). Verify the Neon Auth UUID, verified email and unbanned account first. No Production changes are part of this rollout.
+The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode from base64 to exactly 32 bytes. The key is not currently present in the Development Function environment. Do not enable identity-document writes until secure secret provisioning, recoverable encrypted backup and rotation/recovery procedures are in place. Never put key material in source control, logs or chat.
 
-The current operator workflow reveals the raw activation token once in the authenticated Super Admin console for delivery through an approved company channel. Automated email delivery, licensing/billing workflows, distribution version management, support impersonation and tenant monitoring are later control-plane phases; they are not claimed as implemented by this activation slice.
+## Readiness boundary
 
-Migration `0016_central_activation_control_plane.sql` is a prepared migration only. It has not been applied to Neon Development or Production. The API currently requires the database schema to be present before platform endpoints can work; until then the portal reports that the control plane is not installed.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
