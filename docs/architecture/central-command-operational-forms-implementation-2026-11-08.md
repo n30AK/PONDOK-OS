@@ -58,3 +58,4 @@ Existing live datasets are supplemented with limited lookup lists for customers,
 - Support ticket customer/installation references and warranty claim customer/installation/agreement references are checked for consistency server-side.
 - Warranty claims require an active warranty agreement. Agent task payloads accept only a small allowlist of diagnostic parameters; requests expire and remain pending approval.
 - Report-only workspaces continue to advertise read-only capability; write capability is reported per domain rather than globally.
+- This branch is validated by the full CI workflow before any merge or deployment; the separate Function bundle smoke test alone is not sufficient.
