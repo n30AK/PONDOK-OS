@@ -173,7 +173,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const result = await request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean }>("/v1/platform/erp/operations/" + domain);
+      const result = await request<{ domain: string; datasets: OperationalDataset[]; readOnly: boolean; writeEnabled: boolean }>("/v1/platform/erp/operations/" + domain);
       setDatasets(result.datasets ?? []);
       setRefreshedAt(new Date().toLocaleString("id-ID"));
     } catch (reason) {
@@ -199,7 +199,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
     document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
   };
   return <section className="enterprise-workspace">
-    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>Data aktual dari database Development. Form transaksi tersedia sesuai konteks; catatan awal/draft melalui API tervalidasi dan audit. Persetujuan, pembayaran, upload privat, dispatch remote, dan restore tetap dibatasi sesuai alur keselamatan.</span></div>
+    <div className="enterprise-status"><b>SUMBER DATA LIVE · DEVELOPMENT</b><span>{opForms[domain]?.length ? "Data aktual dari database Development. Form khusus membuat catatan awal/draft melalui API tervalidasi dan audit. Persetujuan, pembayaran, upload privat, dispatch remote, dan restore tetap dibatasi." : "Data aktual dari database Development. Workspace laporan ini bersifat baca-saja; ekspor hanya mencakup data yang diizinkan API."}</span></div>
     <OperationalTransactionForms domain={domain} datasets={datasets} onSaved={() => void load()}/>
     <div className="toolbar"><input aria-label="Cari data domain" placeholder="Cari pada seluruh tabel domain ini…" value={query} onChange={(event) => setQuery(event.target.value)}/><div className="inline-actions"><span className="muted">{refreshedAt ? "Diperbarui " + refreshedAt : ""}</span><button className="secondary" onClick={() => void load()} disabled={loading}>{loading ? "Memuat…" : "↻ Muat ulang"}</button></div></div>
     {loading && <div className="panel"><p className="muted">Memuat dataset operasional…</p></div>}
@@ -212,7 +212,7 @@ function OperationalDataWorkspace({ domain }: { domain: string }) {
         {rows.length === 0 ? <Empty text={query ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada data operasional yang tercatat."}/> : <div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}</tr></thead><tbody>{rows.map((row,index) => <tr key={String(row.id ?? index)}>{columns.map((column) => <td key={column}>{display(row[column])}</td>)}</tr>)}</tbody></table></div>}
       </section>;
     })}
-    {!loading && !error && <p className="muted">Form di atas membuat catatan awal sesuai batas skema. Tindakan lanjutan seperti approval, pembayaran, mutasi stok, upload privat, dispatch agent, dan restore tetap memerlukan workflow khusus, otorisasi, serta audit.</p>}
+    {!loading && !error && <p className="muted">{opForms[domain]?.length ? "Form di atas membuat catatan awal sesuai batas skema. Tindakan lanjutan seperti approval, pembayaran, mutasi stok, upload privat, dispatch agent, dan restore tetap memerlukan workflow khusus, otorisasi, serta audit." : "Data laporan ditampilkan tanpa tindakan transaksi. Untuk menambah atau mengubah sumber laporan, gunakan modul operasional terkait."}</p>}
   </section>;
 }
 export default function App() {
