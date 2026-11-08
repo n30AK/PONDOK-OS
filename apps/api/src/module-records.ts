@@ -566,7 +566,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
            INSERT INTO audit.audit_events
              (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
            SELECT $5::uuid,$4::uuid,'student.guardian.authority.verify',
-                  'academic.student_guardians',id,
+                  'academic.student_guardians',id::text,
                   jsonb_build_object('isLegalGuardian',is_legal_guardian,
                                      'canPickupStudent',can_pickup_student,
                                      'evidenceNoteProvided',true)
