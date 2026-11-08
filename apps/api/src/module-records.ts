@@ -68,6 +68,17 @@ function validDate(value: string): boolean {
   const [y,m,d] = value.split("-").map(Number); const date = new Date(Date.UTC(y ?? 0,(m ?? 1)-1,d ?? 0));
   return date.getUTCFullYear()===y && date.getUTCMonth()===(m ?? 1)-1 && date.getUTCDate()===d;
 }
+function validateAddress(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const allowed = new Set(["street", "rt", "rw", "village", "district", "city", "province", "postalCode", "countryCode"]);
+  for (const [key, part] of Object.entries(value as Record<string, unknown>)) {
+    if (!allowed.has(key) || typeof part !== "string") return false;
+    const max = key === "street" ? 240 : key === "countryCode" ? 2 : key === "postalCode" ? 16 : 100;
+    if (part.length > max) return false;
+    if (key === "countryCode" && part !== "" && !/^[A-Za-z]{2}$/.test(part)) return false;
+  }
+  return true;
+}
 function validate(fields: Resource["fields"], body: Json, partial = false): string | null {
   for (const key of Object.keys(body)) if (!fields[key]) return "unsupported_field";
   for (const [key, field] of Object.entries(fields)) {
@@ -81,11 +92,14 @@ function validate(fields: Resource["fields"], body: Json, partial = false): stri
     if (field.kind === "boolean" && typeof value !== "boolean") return `invalid_${key}`;
     if (field.kind === "array" && (!Array.isArray(value) || value.length > 30 || value.some((item) => typeof item !== "string" || item.length > 120))) return `invalid_${key}`;
     if (field.kind === "json" && (typeof value !== "object" || Array.isArray(value))) return `invalid_${key}`;
+    if (field.kind === "json" && ["address", "currentAddress", "permanentAddress"].includes(key) && !validateAddress(value)) return `invalid_${key}`;
     if ((!field.kind || field.kind === "text") && (typeof value !== "string" || value.length > (field.max ?? 500))) return `invalid_${key}`;
     if (field.values && (typeof value !== "string" || !field.values.includes(value))) return `invalid_${key}`;
   }
   if (body.email && typeof body.email === "string" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) return "invalid_email";
   if (body.startsOn && body.endsOn && String(body.startsOn) > String(body.endsOn)) return "invalid_date_range";
+  if (body.validFrom && body.validUntil && String(body.validUntil) < String(body.validFrom)) return "invalid_date_range";
+  if (body.birthDate && body.entryDate && String(body.entryDate) < String(body.birthDate)) return "invalid_student_lifecycle_dates";
   if (body.opensAt && body.closesAt && Date.parse(String(body.opensAt)) >= Date.parse(String(body.closesAt))) return "invalid_date_range";
   if (body.requestedFrom && body.requestedUntil && Date.parse(String(body.requestedUntil)) <= Date.parse(String(body.requestedFrom))) return "invalid_date_range";
   if (body.orderedOn && body.expectedOn && String(body.expectedOn) < String(body.orderedOn)) return "invalid_date_range";
