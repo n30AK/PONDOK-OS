@@ -84,6 +84,30 @@ const RESOURCES: Resource[] = [
 
 ];
 
+function fieldSection(resource:Resource, field:Field):string {
+ const key=field.key.toLowerCase();
+ if(resource.key.startsWith("student-")||resource.key==="guardians"||resource.key==="student-guardians"){
+  if(/address|phone|email|contact/.test(key)) return "Alamat & Kontak";
+  if(/guardian|relationship|pickup|authority|parent|family/.test(key)) return "Keluarga & Wali";
+  if(/health|blood|allergy|medical|medication|emergency/.test(key)) return "Kesehatan & Kedaruratan";
+  if(/document|identity|number|issuer|issued|expires/.test(key)) return "Identitas & Dokumen";
+  if(/campus|program|class|academic|entry|school|status/.test(key)) return "Pendidikan & Status";
+  return "Identitas Santri";
+ }
+ if(/contract|salary|payroll|tax|bpjs|leave|attendance|employee|educator|position|department|manager|assignment/.test(key)) return "Kepegawaian & Penugasan";
+ if(/account|amount|budget|debit|credit|fund|payment|invoice|journal|period/.test(key)) return "Keuangan & Periode";
+ if(/item|stock|warehouse|quantity|movement|unit|supplier|purchase|asset/.test(key)) return "Barang, Lokasi & Transaksi";
+ if(/document|attachment|evidence|decision|verification|approval|reference/.test(key)) return "Dokumen & Verifikasi";
+ if(/date|time|starts|ends|status|active|type|category|code/.test(key)) return "Periode & Klasifikasi";
+ if(/address|phone|email|contact|location/.test(key)) return "Alamat & Kontak";
+ if(/description|notes|instruction|summary|history|data|detail/.test(key)) return "Keterangan & Riwayat";
+ return "Informasi Utama";
+}
+function getFieldSections(resource:Resource):Array<{title:string;fields:Field[]}> {
+ const sections=new Map<string,Field[]>();
+ for(const field of resource.fields){const title=fieldSection(resource,field);sections.set(title,[...(sections.get(title)??[]),field]);}
+ return [...sections.entries()].map(([title,fields])=>({title,fields}));
+}
 function toLabel(value: unknown): string {
  if (value===null||value===undefined||value==="") return "—";
  if (typeof value==="boolean") return value?"Ya":"Tidak";
@@ -267,8 +291,16 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  if(!preview&&!permissions.includes(resource.read))return <div className="table-card"><h2>{resource.label}</h2><p className="muted">Menu ini tersedia, tetapi akun Anda belum memiliki izin baca <strong>{resource.read}</strong>. Hubungi administrator institusi untuk meminta akses. Data tetap dilindungi oleh pemeriksaan izin di server.</p></div>;
  return <section className="operations-panel">
   <div className="operations-heading"><div><div className="eyebrow">{preview?"PRATINJAU • DATA SINTETIS":"MODUL INSTITUSI"} / {resource.group.toUpperCase()}</div><h2>{resource.label}</h2><p>{guidance?.purpose??"Kelola data sesuai konteks modul dan hak akses organisasi."}</p></div><button className="outline-button" disabled={busy} onClick={()=>void load()}>{busy?"Memuat…":"↻ Muat ulang"}</button></div>
-  <div className="module-group-tabs">{groups.map(g=><button key={g} className={group===g?"operation-tab active":"operation-tab"} onClick={()=>{setGroup(g);const next=g==="Semua Modul"?available[0]:g==="Master Data"?available.find(r=>MASTER_DATA_KEYS.has(r.key)):available.find(r=>r.group===g);if(next){setResourceKey(next.key);internalSelection.current=initialResourceKey!==(g==="Semua Modul"?"all":next.key);onResourceChange?.(g==="Semua Modul"?"all":next.key);}}}>{g}</button>)}</div>
-  <div className="operations-actions"><label>Menu kerja<select value={resourceKey} onChange={e=>{setResourceKey(e.target.value);internalSelection.current=initialResourceKey!==e.target.value;onResourceChange?.(e.target.value);}}>{resourcesInGroup.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
+  <div className="module-page-layout">
+   <aside className="module-page-nav" aria-label="Navigasi halaman modul">
+    <div className="module-page-nav-title">DAFTAR HALAMAN</div>
+    {groups.filter(g=>g!=="Semua Modul").map(g=><div className="module-page-nav-group" key={g}>
+     <div className="module-page-nav-group-title">{g}</div>
+     {available.filter(r=>g==="Master Data"?MASTER_DATA_KEYS.has(r.key):r.group===g).map(r=><button type="button" key={r.key} className={resourceKey===r.key?"module-page-nav-link active":"module-page-nav-link"} onClick={()=>{setGroup(g);setResourceKey(r.key);setShowForm(false);setEditingRow(null);internalSelection.current=initialResourceKey!==r.key;onResourceChange?.(r.key);}}>{r.label}</button>)}
+    </div>)}
+   </aside>
+   <div className="module-page-content">
+    <div className="module-page-toolbar"><div><span className="module-page-kicker">HALAMAN KERJA</span><strong>{resource.label}</strong><small>{resource.group} · {resource.fields.length} elemen data</small></div>{canWrite&&<button className="primary" onClick={()=>{if(showForm){setShowForm(false);setEditingRow(null);setForm({});}else{setEditingRow(null);setForm({});setShowForm(true);}}}>{showForm?"Tutup formulir":"+ Tambah data"}</button>}</div>
   {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
   {resource.key==="student-guardians"&&guardianVerificationRow&&canVerifyGuardian&&<form className="student-form operations-form" onSubmit={event=>{event.preventDefault();void verifyGuardian();}}>
    <div className="form-context"><strong>Verifikasi kewenangan wali</strong><p>Relasi santri–wali: {String(guardianVerificationRow.relationship_code??"")}. Periksa dokumen sumber dan dasar kewenangan sebelum menyimpan keputusan.</p></div>
@@ -277,7 +309,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   </form>}
   {showForm&&resource&&canWrite&&<form className="student-form operations-form" onSubmit={submit}>
    <div className="form-context"><strong>{editingRow?"Koreksi: ":""}{resource.label}</strong><p>{guidance?.purpose??(editingRow?"Perubahan dibatasi pada kolom yang diizinkan dan dicatat dalam audit trail.":"Isi sesuai dokumen sumber dan kebijakan pesantren.")}</p>{guidance&&<><p><strong>Alur data:</strong> {guidance.lifecycle}</p><p><strong>Klasifikasi:</strong> {guidance.classification.toUpperCase()} · <strong>Acuan:</strong> {guidance.regulatoryRefs.join(", ")}</p><ul className="field-hint">{guidance.formNotes.map(note=><li key={note}>{note}</li>)}</ul>{guidance.operationalGaps.length>0&&<p className="field-hint"><strong>Pengembangan lanjutan:</strong> {guidance.operationalGaps.join("; ")}.</p>}</>}</div>
-   <div className="form-grid">{resource.fields.map(field=><label key={field.key}>{field.label}{field.required?" *":""}
+   {getFieldSections(resource).map(section=><section className="form-section-card" key={section.title}><div className="form-section-heading"><strong>{section.title}</strong><span>{section.fields.length} field</span></div><div className="form-grid">{section.fields.map(field=><label className={field.type==="address"||field.type==="textarea"||field.type==="json"?"form-field form-field-wide":"form-field"} key={field.key}>{field.label}{field.required?" *":""}
     {field.type==="relation"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih {field.label.toLowerCase()}</option>{(lookups[field.source??""]??[]).map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select>
     :field.type==="select"?<select required={field.required} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))}><option value="">Pilih</option>{(field.options??[]).map(o=><option key={o} value={o}>{o.replaceAll("_"," ")}</option>)}</select>
     :field.type==="checkbox"?<input type="checkbox" checked={Boolean(form[field.key])} onChange={e=>setForm(p=>({...p,[field.key]:e.target.checked}))}/>
@@ -285,12 +317,14 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
     :field.type==="textarea"||field.type==="json"?<textarea value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))} required={field.required} maxLength={field.max} rows={field.type==="json"?3:4}/>
     :<input type={field.type==="array"?"text":field.type??"text"} value={String(form[field.key]??"")} onChange={e=>setForm(p=>({...p,[field.key]:e.target.value}))} required={field.required} maxLength={field.max} step={field.step} min={field.type==="number"?"0":undefined}/>}
     {field.hint&&<small className="field-hint">{field.hint}</small>}
-   </label>)}</div>
+   </label>)}</div></section>)}
    <div className="form-actions"><button type="button" className="outline-button" onClick={()=>{setShowForm(false);setEditingRow(null);setForm({});}}>Batal</button><button className="primary" disabled={busy}>{busy?"Menyimpan…":editingRow?"Simpan perubahan":"Simpan data"}</button></div>
   </form>}
   {resource&&<article className="table-card operation-table"><div className="table-toolbar"><div><h3>{resource.label}</h3><p>{rows.length} record ditemukan · maksimal 100 ditampilkan</p></div></div><div className="table-wrap"><table><thead><tr>{resource.columns.map(([,label])=><th key={label}>{label}</th>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<th>Aksi</th>}</tr></thead><tbody>{visibleRows.map((row,index)=><tr key={String(row.id??index)}>{resource.columns.map(([key])=><td key={key}>{displayCell(key,row[key])}</td>)}{(canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))&&<td>{resource.key==="library-loans"&&canWrite?<>{row.loan_status==="open"&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{void (async()=>{setBusy(true);setError("");setNotice("");try{await request(`library-loans/${encodeURIComponent(String(row.id))}/return`,{method:"POST"});setNotice("Buku berhasil dikembalikan dan stok diperbarui.");await load();}catch(e){setError(e instanceof Error?e.message:"Gagal memproses pengembalian.");}finally{setBusy(false);}})();}}>Kembalikan</button>}{row.loan_status!=="open"&&<span>{toLabel(row.loan_status)}</span>}</>:<>{canWrite&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>beginEdit(row)}>Koreksi</button>}{resource.key==="student-guardians"&&canVerifyGuardian&&<button type="button" className="outline-button" disabled={!row.id||busy} onClick={()=>{setGuardianVerificationRow(row);setGuardianLegal(Boolean(row.is_legal_guardian));setGuardianPickup(Boolean(row.can_pickup_student));setGuardianEvidence("");setError("");setNotice("");}}>Verifikasi kewenangan</button>}</>}</td>}</tr>)}{visibleRows.length===0&&<tr><td colSpan={resource.columns.length+((canWrite||(resource.key==="student-guardians"&&canVerifyGuardian))?1:0)} className="empty-state">{busy?"Memuat…":"Belum ada data. Gunakan formulir untuk menambahkan record pertama."}</td></tr>}</tbody></table></div></article>}
   {preview&&<div className="alert warning">MODE PRATINJAU — semua record dan relasi yang terlihat adalah data sintetis. Formulir hanya untuk memeriksa struktur; tidak ada penyimpanan ke database.</div>}
   <p className="operations-footnote">PONDOK OS tidak menggantikan EMIS/SIMTREN atau sistem resmi Kementerian Agama. Nomor izin, NSP, status legal, dan dokumen persetujuan harus diverifikasi melalui kanal instansi berwenang.</p>
+   </div>
+  </div>
  </section>;
 }
 export default ModuleWorkspace;
