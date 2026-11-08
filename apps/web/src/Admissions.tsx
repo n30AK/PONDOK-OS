@@ -67,7 +67,7 @@ export default function Admissions({ organizationId, permissions }: Props) {
   const [applicationForm, setApplicationForm] = useState({
     admissionPeriodId: "", applicationNumber: "", applicantName: "", applicantBirthDate: "",
     applicantGenderCode: "unspecified", previousSchool: "", guardianName: "",
-    guardianPhone: "", guardianEmail: "", province: "", regency: "", district: "",
+    guardianPhone: "", guardianEmail: "", guardianRelationship: "", province: "", regency: "", district: "",
     educationTrack: "muadalah", boardingInterest: "mukim", motivation: ""
   });
 
@@ -157,14 +157,15 @@ export default function Admissions({ organizationId, permissions }: Props) {
           answers: {
             educationTrack: applicationForm.educationTrack,
             boardingInterest: applicationForm.boardingInterest,
-            motivation: applicationForm.motivation || null
+            motivation: applicationForm.motivation || null,
+            guardianRelationship: applicationForm.guardianRelationship
           }
         })
       });
       setShowApplicationForm(false);
       setApplicationForm((previous) => ({
         ...previous, applicationNumber: "", applicantName: "", applicantBirthDate: "",
-        previousSchool: "", guardianName: "", guardianPhone: "", guardianEmail: "",
+        previousSchool: "", guardianName: "", guardianPhone: "", guardianEmail: "", guardianRelationship: "",
         province: "", regency: "", district: "", motivation: ""
       }));
       setNotice("Draft pendaftaran berhasil dibuat.");
@@ -277,10 +278,11 @@ export default function Admissions({ organizationId, permissions }: Props) {
           <label>Jenis kelamin<select value={applicationForm.applicantGenderCode} onChange={(event) => setApplicationForm((p) => ({ ...p, applicantGenderCode: event.target.value }))}><option value="unspecified">Tidak disebutkan</option><option value="male">Laki-laki</option><option value="female">Perempuan</option></select></label>
           <label>Asal sekolah<input value={applicationForm.previousSchool} onChange={(event) => setApplicationForm((p) => ({ ...p, previousSchool: event.target.value }))} maxLength={180} /></label>
         </div></div>
-        <div className="form-section"><h3>Orang tua / wali</h3><p>Kontak wali dipakai untuk komunikasi resmi penerimaan.</p><div className="form-grid">
+        <div className="form-section"><h3>Orang tua / wali</h3><p>Kontak wali dipakai untuk komunikasi resmi penerimaan. Hubungan ini merupakan pernyataan pemohon; status wali sah dan kewenangan penjemputan tetap harus diverifikasi terpisah.</p><div className="form-grid">
           <label>Nama wali<input value={applicationForm.guardianName} onChange={(event) => setApplicationForm((p) => ({ ...p, guardianName: event.target.value }))} required maxLength={180} /></label>
           <label>Nomor telepon wali<input type="tel" value={applicationForm.guardianPhone} onChange={(event) => setApplicationForm((p) => ({ ...p, guardianPhone: event.target.value }))} required maxLength={32} /></label>
           <label>Email wali<input type="email" value={applicationForm.guardianEmail} onChange={(event) => setApplicationForm((p) => ({ ...p, guardianEmail: event.target.value }))} maxLength={254} /></label>
+          <label>Hubungan wali dengan calon santri<select value={applicationForm.guardianRelationship} onChange={(event) => setApplicationForm((p) => ({ ...p, guardianRelationship: event.target.value }))} required><option value="">Pilih hubungan</option><option value="father">Ayah</option><option value="mother">Ibu</option><option value="grandparent">Kakek / nenek</option><option value="legal_guardian">Wali sah (pernyataan pemohon)</option><option value="relative">Kerabat</option><option value="other">Lainnya</option><option value="unknown">Belum diketahui</option></select></label>
           <label>Provinsi<input value={applicationForm.province} onChange={(event) => setApplicationForm((p) => ({ ...p, province: event.target.value }))} maxLength={500} /></label>
           <label>Kabupaten/kota<input value={applicationForm.regency} onChange={(event) => setApplicationForm((p) => ({ ...p, regency: event.target.value }))} maxLength={500} /></label>
           <label>Kecamatan<input value={applicationForm.district} onChange={(event) => setApplicationForm((p) => ({ ...p, district: event.target.value }))} maxLength={500} /></label>
