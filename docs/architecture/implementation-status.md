@@ -6,7 +6,7 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 
 - Target: Neon project `frosty-cherry-92983148`, Development branch `br-proud-paper-b312lfxi`, database `neondb`.
 - The live catalog contains 67 tables with `organization_id`; all 67 have RLS enabled and forced.
-- The live migration ledger is recorded through 0023. Migrations 0024, 0025 and 0026 are present in the repository but are **not applied** to Development.
+- The live migration ledger is recorded through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction, with a transaction-scoped advisory lock and SHA-256 checksums recorded from the exact repository files.
 - Neon Function `pondokapi` Development deployment #42 is completed on Node.js 24. The preceding Development deployment workflow passed liveness and readiness checks. Readiness confirms database connectivity, not complete schema or business-workflow acceptance.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; the identity-document API must remain fail-closed until secure key provisioning, recoverable backup and rotation are prepared.
 - There are currently zero organizations, memberships, student profiles and HR employees. No fabricated tenant or personal records have been seeded.
@@ -21,14 +21,14 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 | Core tenant schema | Core organization, campus, membership, role, permission, settings and audit foundations exist | No real tenant exists; first institution requires actual details and authorized Super Admin activation |
 | Tenant authorization | Live catalog reports 67/67 organization-owned tables with ENABLE + FORCE RLS | API-level two-tenant isolation with two independent real test identities remains pending |
 | Central Command | Activation request, Super Admin approval and token-based first-tenant activation foundations exist | First real institution onboarding and complete company operations remain pending |
-| Student master data | Student profile, structured address, guardian relationship, health profile and encrypted identity-document API foundations exist | Migrations 0026 pending; identity encryption key absent; complete document vault, guardian consent, lifecycle and live UAT pending |
+| Student master data | Student profile, structured address, guardian relationship, health profile and encrypted identity-document API foundations exist | Migration 0026 is applied; identity encryption key absent; complete document vault, guardian consent, lifecycle and live UAT pending |
 | PPDB | Period/application lifecycle and metadata-only audit foundations exist | Secure document storage, checklist, selection/interview, guardian portal, registration/payment and UAT pending |
 | Academic | Initial student/class/educator foundations exist | Curriculum configuration, scheduling, attendance correction, assessment, report cards, promotion and end-to-end workflows incomplete |
 | Boarding / kesantrian | Initial dormitory, room, bed, assignment, leave and incident resources exist | Approval, safeguarding case handling, check-in/out, escalation and privacy acceptance incomplete |
 | Finance/accounting | Chart of accounts, fiscal periods, journal draft/list, balanced-posting guard, period close and immutable posted journal foundations exist | Full posting UI, statements, budgets, cash/bank reconciliation and complete finance UAT pending |
-| Inventory/procurement | Inventory item/warehouse/stock movement foundations exist; migration 0024 adds platform procurement/asset foundation | 0024 pending on Development; receiving/issue/transfer, stock opname, valuation and procurement workflow UI incomplete |
-| HR/payroll | Employee, payroll period/run, approval/payment foundations exist; migration 0025 adds Central Command company HR/payroll/document metadata | 0025 pending on Development; attendance, leave, formula/tax validation, payslips and full processing UI incomplete |
-| Guardian authority | Dedicated verification endpoint and migration 0026 are in repository; endpoint fails closed when schema is missing | Apply 0026 to Development only after explicit approval; verify permissions, audit and live workflow |
+| Inventory/procurement | Inventory item/warehouse/stock movement foundations exist; migration 0024 adds platform procurement/asset foundation | 0024 is applied on Development; receiving/issue/transfer, stock opname, valuation and procurement workflow UI incomplete |
+| HR/payroll | Employee, payroll period/run, approval/payment foundations exist; migration 0025 adds Central Command company HR/payroll/document metadata | 0025 is applied on Development; attendance, leave, formula/tax validation, payslips and full processing UI incomplete |
+| Guardian authority | Dedicated verification endpoint and migration 0026 are deployed in code and applied to Development; schema and permissions verified | Live authenticated guardian verification and audit workflow UAT pending |
 | Library | Catalog/copy/loan resources and issue/return foundation exist | Quota, renewal, overdue, policy and reporting workflows incomplete |
 | CMS / announcements | Initial page and announcement workspaces exist | Editorial approval, publishing, version history and public rendering incomplete |
 | CRM / alumni / donors | Initial contact, interaction and donor-pledge resources exist | Consent ledger, communication controls, accounting integration and full lifecycle incomplete |
@@ -38,8 +38,8 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 
 ## Migration and security blockers
 
-1. Development migration ledger stops at 0023. Migrations 0024–0026 must be reviewed, preflighted and applied in order to Development only after explicit authorization.
-2. Before migration, reconcile all manually created schema objects against the migration ledger. Use the repository migration runner so advisory locking, per-migration transactions and SHA-256 checksum checks remain active.
+1. Development migration ledger now records 0024–0026. Their exact repository-file SHA-256 checksums are recorded; the three changes were committed atomically under an advisory lock after preflight.
+2. Future schema changes must use the repository migration runner and preserve checksum validation, locking and ordered application.
 3. Do not apply any migration to Production. Never paste database URLs, API keys or encryption key material into chat, source control or logs.
 4. Provision `STUDENT_IDENTITY_ENCRYPTION_KEY` only through an approved secret-management path. It must decode from base64 to exactly 32 bytes. Establish an encrypted recoverable backup and rotation/recovery procedure before enabling writes.
 5. Verify API permissions and RLS using two independent tenant identities and organizations; catalog RLS checks alone are not sufficient.
@@ -59,4 +59,4 @@ A module is not operationally complete until it has:
 
 ## Release statement
 
-PONDOK OS has a functioning Development deployment foundation and broad tenant RLS coverage. It is **not ready for live institutional operations**. Migrations 0024–0026, identity-key provisioning, real institution onboarding, two-tenant API acceptance and role-based end-to-end UAT remain outstanding.
+PONDOK OS has a functioning Development deployment foundation, broad tenant RLS coverage and migration ledger through 0026. It is **not ready for live institutional operations**. Identity-key provisioning, real institution onboarding, two-tenant API acceptance and role-based end-to-end UAT remain outstanding.
