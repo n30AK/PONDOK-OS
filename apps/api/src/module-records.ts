@@ -41,7 +41,7 @@ const RESOURCES: Record<string, Resource> = {
   "purchase-requests": { table: "procurement.purchase_requests", actorColumn: "requested_by", permission: "procurement.requests.read", writePermission: "procurement.requests.write", fields: { campusId:{column:"campus_id",kind:"uuid"}, requestNumber:{column:"request_number",required:true,max:48}, requestDate:{column:"request_date",kind:"date"}, requiredBy:{column:"required_by",kind:"date"}, purpose:{column:"purpose",required:true,max:1000} } },
   "academic-class-subjects": { table: "academic.class_subjects", permission: "academic.classes.read", writePermission: "academic.classes.write", fields: { classGroupId:{column:"class_group_id",kind:"uuid",required:true}, subjectId:{column:"subject_id",kind:"uuid",required:true}, weeklyPeriods:{column:"weekly_periods",kind:"number",minValue:1,maxValue:30,integer:true} } },
   "guardians": { table: "academic.guardians", permission: "academic.students.read", writePermission: "academic.students.create", fields: { displayName:{column:"display_name",required:true,max:180}, relationshipDefault:{column:"relationship_default",max:40}, phonePrimary:{column:"phone_primary",max:32}, phoneAlternate:{column:"phone_alternate",max:32}, email:{column:"email",max:254}, occupation:{column:"occupation",max:120}, address:{column:"address",kind:"json"}, preferredContactChannel:{column:"preferred_contact_channel",max:24,values:["whatsapp","phone","email","letter","none"]}, consentStatus:{column:"consent_status",max:24,values:["pending","granted","withdrawn","not_required"]} } },
-  "student-guardians": { table: "academic.student_guardians", permission: "academic.students.read", writePermission: "academic.students.update", fields: { studentId:{column:"student_id",kind:"uuid",required:true}, guardianId:{column:"guardian_id",kind:"uuid",required:true}, relationshipCode:{column:"relationship_code",required:true,max:40}, isPrimary:{column:"is_primary",kind:"boolean"}, isLegalGuardian:{column:"is_legal_guardian",kind:"boolean"}, isEmergencyContact:{column:"is_emergency_contact",kind:"boolean"}, canPickupStudent:{column:"can_pickup_student",kind:"boolean"}, validFrom:{column:"valid_from",kind:"date"}, validUntil:{column:"valid_until",kind:"date"}, verificationNote:{column:"verification_note",max:500} } },
+  "student-guardians": { table: "academic.student_guardians", permission: "academic.students.read", writePermission: "academic.students.update", fields: { studentId:{column:"student_id",kind:"uuid",required:true}, guardianId:{column:"guardian_id",kind:"uuid",required:true}, relationshipCode:{column:"relationship_code",required:true,max:40}, isPrimary:{column:"is_primary",kind:"boolean"}, isEmergencyContact:{column:"is_emergency_contact",kind:"boolean"}, validFrom:{column:"valid_from",kind:"date"}, validUntil:{column:"valid_until",kind:"date"} } },
   "employees": { table: "hr.employees", permission: "hr.employees.read", writePermission: "hr.employees.write", fields: { campusId:{column:"campus_id",kind:"uuid"}, employeeNumber:{column:"employee_number",required:true,max:48}, legalName:{column:"legal_name",required:true,max:180}, preferredName:{column:"preferred_name",max:180}, email:{column:"email",max:254}, phone:{column:"phone",max:32}, joinedOn:{column:"joined_on",kind:"date",required:true}, employmentStatus:{column:"employment_status",max:24,values:["active","on_leave","resigned","terminated","retired"]} } },
   "hr-departments": { table: "hr.departments", permission: "hr.organization.read", writePermission: "hr.organization.write", fields: { departmentCode:{column:"department_code",required:true,max:32}, departmentName:{column:"department_name",required:true,max:120}, parentDepartmentId:{column:"parent_department_id",kind:"uuid"}, headEmployeeId:{column:"head_employee_id",kind:"uuid"}, campusId:{column:"campus_id",kind:"uuid"}, effectiveFrom:{column:"effective_from",kind:"date"}, effectiveUntil:{column:"effective_until",kind:"date"}, isActive:{column:"is_active",kind:"boolean"} } },
   "hr-positions": { table: "hr.positions", permission: "hr.organization.read", writePermission: "hr.organization.write", fields: { positionCode:{column:"position_code",required:true,max:32}, positionName:{column:"position_name",required:true,max:120}, departmentId:{column:"department_id",kind:"uuid"}, parentPositionId:{column:"parent_position_id",kind:"uuid"}, jobFamily:{column:"job_family",max:100}, positionLevel:{column:"position_level",kind:"number",minValue:1,maxValue:20,integer:true}, jobDescription:{column:"job_description",max:3000}, approvalScope:{column:"approval_scope",kind:"json"}, isActive:{column:"is_active",kind:"boolean"} } },
@@ -530,6 +530,63 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   }
   if (url.pathname === "/v1/modules/student-health-profiles") {
     await handleStudentHealthProfiles(req, res, pool, userId, organizationId, url);
+    return true;
+  }
+  const guardianVerifyMatch = url.pathname.match(/^\/v1\/modules\/student-guardians\/([0-9a-f-]{36})\/verify$/i);
+  if (guardianVerifyMatch) {
+    if (req.method !== "POST") { res.setHeader("allow", "POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
+    const tenant = await loadTenantContext(pool,userId,organizationId);
+    if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
+    if (!tenant.permissions.includes("academic.students.guardians.verify")) {
+      reply(res,403,{error:"permission_required",permission:"academic.students.guardians.verify"}); return true;
+    }
+    const relationId = guardianVerifyMatch[1] ?? "";
+    if (!UUID.test(relationId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
+    const body = await readJson(req);
+    if (!body) { reply(res,400,{error:"invalid_json_or_body_too_large"}); return true; }
+    if (Object.keys(body).some(key=>!["isLegalGuardian","canPickupStudent","verificationNote"].includes(key))) {
+      reply(res,422,{error:"unsupported_guardian_verification_field"}); return true;
+    }
+    if (typeof body.isLegalGuardian !== "boolean" || typeof body.canPickupStudent !== "boolean" ||
+        typeof body.verificationNote !== "string" || body.verificationNote.trim().length < 12 || body.verificationNote.length > 500) {
+      reply(res,422,{error:"guardian_verification_requires_explicit_authority_flags_and_evidence_note"}); return true;
+    }
+    await pool.query("SAVEPOINT guardian_authority_verify");
+    try {
+      const result = await pool.query(
+        `WITH updated AS (
+           UPDATE academic.student_guardians
+           SET is_legal_guardian=$1::boolean, can_pickup_student=$2::boolean,
+               verification_note=$3, verified_at=now(), verified_by=$4::uuid
+           WHERE organization_id=$5::uuid AND id=$6::uuid
+             AND valid_from<=CURRENT_DATE AND (valid_until IS NULL OR valid_until>=CURRENT_DATE)
+           RETURNING id, student_id, guardian_id, is_legal_guardian, can_pickup_student, is_emergency_contact,
+                     verified_at, verified_by, valid_from, valid_until
+         ), audited AS (
+           INSERT INTO audit.audit_events
+             (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+           SELECT $5::uuid,$4::uuid,'student.guardian.authority.verify',
+                  'academic.student_guardians',id,
+                  jsonb_build_object('isLegalGuardian',is_legal_guardian,
+                                     'canPickupStudent',can_pickup_student,
+                                     'evidenceNoteProvided',true)
+           FROM updated RETURNING id
+         )
+         SELECT updated.* FROM updated CROSS JOIN audited`,
+        [body.isLegalGuardian,body.canPickupStudent,body.verificationNote.trim(),userId,organizationId,relationId]
+      );
+      if (!result.rows[0]) {
+        await pool.query("ROLLBACK TO SAVEPOINT guardian_authority_verify");
+        await pool.query("RELEASE SAVEPOINT guardian_authority_verify");
+        reply(res,404,{error:"active_guardian_relationship_not_found"}); return true;
+      }
+      await pool.query("RELEASE SAVEPOINT guardian_authority_verify");
+      reply(res,200,{data:result.rows[0]});
+    } catch {
+      await pool.query("ROLLBACK TO SAVEPOINT guardian_authority_verify").catch(()=>undefined);
+      await pool.query("RELEASE SAVEPOINT guardian_authority_verify").catch(()=>undefined);
+      reply(res,503,{error:"guardian_authority_verification_failed"});
+    }
     return true;
   }
   const returnMatch = url.pathname.match(/^\/v1\/modules\/library-loans\/([0-9a-f-]{36})\/return$/i);
