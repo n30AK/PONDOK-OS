@@ -66,8 +66,9 @@ export function validateApplicationInput(value: Json): string | null {
   const allowedAddress = new Set(["street", "province", "regency", "district", "village", "postalCode"]);
   if (Object.keys(address).some((key) => !allowedAddress.has(key)) || Object.values(address).some((v) => v !== null && (typeof v !== "string" || v.length > 500))) return "invalid_address_fields";
   const answers = (value.answers ?? {}) as Json;
-  const allowedAnswers = new Set(["educationTrack", "boardingInterest", "motivation", "otherInformation"]);
+  const allowedAnswers = new Set(["educationTrack", "boardingInterest", "motivation", "otherInformation", "guardianRelationship"]);
   if (Object.keys(answers).some((key) => !allowedAnswers.has(key)) || Object.values(answers).some((v) => v !== null && (typeof v !== "string" || v.length > 1000))) return "invalid_application_answers";
+  if (answers.guardianRelationship !== undefined && !["father", "mother", "grandparent", "legal_guardian", "relative", "other", "unknown"].includes(String(answers.guardianRelationship))) return "invalid_guardian_relationship";
   return null;
 }
 
@@ -368,6 +369,7 @@ export async function handleAdmissionsRequest(
                     'guardianName', left(c.guardian_name, 160),
                     'guardianPhone', c.guardian_phone,
                     'guardianEmail', c.guardian_email,
+                    'guardianRelation', CASE WHEN c.answers->>'guardianRelationship' IN ('father','mother','grandparent','legal_guardian','relative','other','unknown') THEN c.answers->>'guardianRelationship' ELSE 'unknown' END,
                     'province', left(c.address->>'province', 100),
                     'regency', left(c.address->>'regency', 100),
                     'district', left(c.address->>'district', 100),
@@ -380,23 +382,46 @@ export async function handleAdmissionsRequest(
                   'applicant'
            FROM candidate c
            RETURNING id, student_number AS "studentNumber", legal_name AS "legalName", status
-         ), linked AS (
-           UPDATE admissions.applications a
-           SET linked_student_id = s.id, updated_at = now()
-           FROM candidate c CROSS JOIN created_student s
-           WHERE a.organization_id = $1::uuid AND a.id = c.id AND a.linked_student_id IS NULL
-           RETURNING a.id AS "applicationId", a.linked_student_id AS "studentId"
-         ), audited AS (
-           INSERT INTO audit.audit_events
-             (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
-           SELECT $1::uuid, $5::uuid, 'admissions.application.convert_to_student',
-                  'admissions.applications', linked."applicationId",
-                  jsonb_build_object('studentId', linked."studentId")
-           FROM linked RETURNING id
-         )
-         SELECT linked."applicationId", linked."studentId", created_student."studentNumber",
-                created_student."legalName", created_student.status AS "studentStatus"
-         FROM linked CROSS JOIN created_student CROSS JOIN audited`,
+         ), created_guardian AS (
+            INSERT INTO academic.guardians
+              (organization_id, display_name, relationship_default, phone_primary, email, address, consent_status)
+            SELECT $1::uuid, left(c.guardian_name, 180),
+                   CASE WHEN c.answers->>'guardianRelationship' IN ('father','mother','grandparent','legal_guardian','relative','other','unknown')
+                        THEN c.answers->>'guardianRelationship' ELSE 'unknown' END,
+                   c.guardian_phone, c.guardian_email, '{}'::jsonb, 'pending'
+            FROM candidate c
+            RETURNING id, relationship_default AS relationship_code
+          ), linked_guardian AS (
+            INSERT INTO academic.student_guardians
+              (organization_id, student_id, guardian_id, relationship_code, is_primary,
+               is_legal_guardian, is_emergency_contact, can_pickup_student)
+            SELECT $1::uuid, s.id, g.id, g.relationship_code, true, false, false, false
+            FROM created_student s CROSS JOIN created_guardian g
+            RETURNING student_id, guardian_id, relationship_code
+          ), linked AS (
+            UPDATE admissions.applications a
+            SET linked_student_id = s.id, updated_at = now()
+            FROM candidate c CROSS JOIN created_student s CROSS JOIN linked_guardian g
+            WHERE a.organization_id = $1::uuid AND a.id = c.id AND a.linked_student_id IS NULL
+              AND g.student_id = s.id
+            RETURNING a.id AS "applicationId", a.linked_student_id AS "studentId",
+                      g.guardian_id AS "guardianId", g.relationship_code AS "guardianRelationshipCode"
+          ), audited AS (
+            INSERT INTO audit.audit_events
+              (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+            SELECT $1::uuid, $5::uuid, 'admissions.application.convert_to_student',
+                   'admissions.applications', linked."applicationId",
+                   jsonb_build_object('studentId', linked."studentId",
+                                      'guardianId', linked."guardianId",
+                                      'guardianRelationshipCode', linked."guardianRelationshipCode",
+                                      'guardianAuthorityVerified', false)
+            FROM linked RETURNING id
+          )
+          SELECT linked."applicationId", linked."studentId", linked."guardianId",
+                 linked."guardianRelationshipCode", false AS "guardianAuthorityVerified",
+                 created_student."studentNumber", created_student."legalName",
+                 created_student.status AS "studentStatus"
+          FROM linked CROSS JOIN created_student CROSS JOIN audited`,
         [organizationId, enrollMatch[1], body.campusId, (body.studentNumber as string).trim(), userId],
       );
       if (!result.rows[0]) {
