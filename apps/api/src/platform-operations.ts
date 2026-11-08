@@ -95,7 +95,7 @@ const writeSpecs:Record<string,Record<string,WriteSpec>> = {
  inventory:{
   warehouses:{table:"warehouses",fields:["warehouse_code","warehouse_name","address","manager_user_id"],required:["warehouse_code","warehouse_name","address"],fixed:{status:"active"}},
   assets:{table:"fixed_assets",fields:["asset_code","asset_name","category","serial_number","acquisition_date","acquisition_cost","residual_value","useful_life_months","warehouse_id"],required:["asset_code","asset_name","category","acquisition_date","acquisition_cost","useful_life_months"],actor:"created_by",fixed:{status:"draft",depreciation_method:"straight_line"}},
-  transfers:{table:"stock_transfers",fields:["transfer_number","source_warehouse_id","destination_warehouse_id"],required:["transfer_number","source_warehouse_id","destination_warehouse_id"],actor:"requested_by",fixed:{status:"requested"}}
+  transfers:{table:"stock_transfers",fields:["transfer_number","source_warehouse_id","destination_warehouse_id"],required:["transfer_number","source_warehouse_id","destination_warehouse_id"],actor:"requested_by",fixed:{status:"draft"}}
  },
  hrd:{
   departments:{table:"company_departments",fields:["department_code","department_name","parent_department_id","manager_employee_id","cost_center"],required:["department_code","department_name"],fixed:{status:"active"}},
