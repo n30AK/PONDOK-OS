@@ -18,24 +18,16 @@
 | Organization memberships | 0 | Live count |
 | Student profiles | 0 | Live count |
 | HR employees | 0 | Live count |
-| Neon Function `pondokapi` | Deployment #42, completed | Neon Function metadata |
+| Neon Function `pondokapi` | Development deployment workflow #45 completed successfully | GitHub Actions deployment run |
 | Function runtime | Node.js 24 | Neon Function metadata |
 | Function environment includes health encryption key | Yes | Environment variable names only |
 | Function environment includes identity encryption key | No | Environment variable names only |
 
-The latest Dev function deployment is #42. The previous Development deployment workflow run #42443473731 completed successfully, including the API liveness and readiness checks. The latest repository CI run #42448692662 and Release Bundle run #42448692609 also completed successfully. CI and bundle tests use disposable PostgreSQL; they are not live tenant acceptance.
+Development API deployment workflow #45 completed successfully. CI and Release Bundle also completed successfully for the relevant main commit. CI and bundle tests use disposable PostgreSQL; they are not live tenant acceptance.
 
 ## Migration ledger gap
 
-The Development migration ledger currently contains versions through 0023. These repository migrations are present on `main` but are not recorded as applied in Development:
-
-- `0024_procurement_inventory_foundation.sql`
-- `0025_company_hr_internal_documents.sql`
-- `0026_guardian_authority_verification.sql`
-
-Live catalog checks confirm that the platform tables introduced by 0024 and 0025 are absent. Migration 0026's `academic.student_guardians.verified_by` column is also absent, and none of 0024–0026 is recorded in `core.schema_migrations`.
-
-Migration 0026 must be applied before the guardian-authority verification endpoint can be considered operational on Development. Do not manually patch the schema outside the migration runner.
+The Development migration ledger now contains **26 applied migrations through 0026**. Migrations 0024, 0025, and 0026 were applied on Development on 2026-11-08 and are recorded in `core.schema_migrations`. The earlier statement that these migrations were pending is superseded. Live schema checks confirm that Procurement/Inventory, company HR/internal documents, and guardian-authority schema objects are present. Future migrations must use the repository migration runner and be applied only after review/approval.
 
 ## Security and operational blockers
 
@@ -47,14 +39,15 @@ Migration 0026 must be applied before the guardian-authority verification endpoi
 
 ## Required next steps
 
-1. Review migrations 0024–0026 and validate their complete ordered application on disposable PostgreSQL.
-2. Obtain explicit approval before applying the prepared migrations to Development. Never apply them to Production.
-3. Provision the identity encryption key through an approved secret-management path. Keep the key out of source control, logs, and chat; retain a recoverable encrypted backup and documented rotation procedure.
-4. Re-deploy the Development Function only after the environment update is safely prepared; verify liveness, readiness, and fail-closed identity-document behavior.
-5. Run API-level two-tenant isolation tests and role/permission tests.
-6. Provision the first real institution through Central Command using its authorized Super Administrator and actual institution details. Do not seed fake institutional data.
-7. Run role-based end-to-end acceptance for the modules in the completion blueprint before declaring operational readiness.
+1. Keep migration ledger and live schema checks synchronized; the previous 0024–0026 pending note is resolved.
+2. Provision the identity encryption key through an approved secret-management path. Keep the key out of source control, logs, and chat; retain a recoverable encrypted backup and documented rotation procedure.
+3. Re-deploy the Development Function only after the environment update is safely prepared; verify liveness, readiness, and fail-closed identity-document behavior.
+4. Run API-level two-tenant isolation tests and role/permission tests.
+5. Provision the first real institution through Central Command using its authorized Super Administrator and actual institution details. Do not seed fake institutional data.
+6. Run role-based end-to-end acceptance for the modules in the completion blueprint before declaring operational readiness.
 
 ## Readiness statement
 
-PONDOK OS has a successfully built and deployed Development API foundation and broad tenant RLS coverage. It is **not yet ready for live institutional operations**: migrations 0024–0026 are pending on Development, the identity-document encryption key is missing, no tenant exists, and two-tenant live acceptance has not been completed.
+PONDOK OS has a successfully built and deployed Development API foundation and broad tenant RLS coverage. Migrations 0024–0026 are now applied on Development. It is **not yet ready for live institutional operations**: the identity-document encryption key remains missing (last verified), no tenant exists, and two-tenant live acceptance has not been completed.
+
+Additional Central Command inspection on 2026-11-08 found 80 tables in schema `platform`; 79 have RLS enabled and FORCE enabled. The one exception is `platform.super_admins`, the global platform control table, which must remain behind server-side Super Admin authorization. A separate Central Command menu audit documents transaction-capable versus read-only pages.
