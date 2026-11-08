@@ -34,7 +34,7 @@ A controlled pilot may be prepared only after the pilot-entry gates in section 7
 |---|---|---|
 | Tenant and institution setup | Organization, campus, membership, role, permission and activation foundations | Real institution onboarding, legal identity/authority checks, owner handover, and two-tenant isolation UAT |
 | Student and guardian master | Student profile, structured address, guardian relations, health and identity API foundations | Identity key/backup/rotation; consent and authority evidence; secure document vault; lifecycle and role-based UAT |
-| PPDB | Admission period/application foundations | Full checklist, document handling, selection/interview, guardian portal, registration/payment, conversion to active student |
+| PPDB | Admission period/application foundations; accepted-applicant conversion now creates a student profile plus primary guardian contact and normalized student–guardian relation | Full checklist, secure document handling, selection/interview, guardian portal, daftar ulang/payment, transition from applicant to active student, and multi-guardian handling |
 | Academic | Student/class/educator foundations | Curriculum versions, schedules, attendance correction, assessment, report cards, promotion/graduation and complete lifecycle |
 | Boarding / kesantrian | Dormitory, room, bed, assignment, leave and incident resources | Approval, safeguarding, check-in/out, escalation, guardian communication and protected case handling |
 | Finance/accounting | Chart of accounts, fiscal periods, journal draft/list, balanced-posting guard, period close and immutable posted journals | Full approval/posting UI, statements, budgets, cash/bank reconciliation, billing lifecycle and accountant UAT |
@@ -52,7 +52,7 @@ Central Command must be assessed as AKVISIO's company operating system and platf
 
 The existing 23-menu audit identifies these material gaps:
 
-- Executive metrics are counts and limited control-plane indicators, not a complete KPI model.
+- PR #150 adds Super Admin-only aggregate counts for customers, active subscriptions, unpaid invoices, online/degraded/offline installations, open support cases, and backup/verification/restore failures in the last 30 days. This is a data-backed operational snapshot, not a complete KPI model: MRR/revenue by currency, churn/cohort, lead conversion, renewal forecasts, SLA aging, customer health, and reconciled finance dashboards remain incomplete.
 - CRM has lead/customer/contact foundations but lacks full pipeline, activities, conversion and customer-success lifecycle.
 - Product catalogue lacks complete package composition, module compatibility, price/version snapshots and publication governance.
 - Quotes and contracts have approval foundations, but subscription lifecycle, renewals, amendments, proration, grace periods, suspension/cancellation and entitlement synchronization remain incomplete.
@@ -176,3 +176,10 @@ Do not mark the entire platform ready when only selected modules have passed. Co
 - PR #147 merged as `5714030418083c43e3800ecfb88c065c6dfaf265`. CI #1301 and Neon Function bundle #229 passed.
 - Added unit tests for the actual `withTenantScope` and `loadTenantContext` helpers: authenticated user/organization context is bound inside a transaction, a user cannot load another organization's membership by changing the selected organization, and transaction-local role/context is cleared before pooled connection reuse.
 - These are automated helper tests using synthetic identities and a query double. The existing disposable-PostgreSQL RLS test separately checks two synthetic tenants at database level. Live API acceptance with two real authenticated users and two actual non-production organizations remains pending; G1 is still blocked.
+
+
+## Update after PR #149 and PR #150 (2026-11-09)
+
+- PR #149 merged as `db446339cceb88ae0100fb0f6954b046c0e3615e`. CI #1312 and Neon Function bundle #231 passed. PPDB now captures the applicant-declared guardian relationship and, on accepted-applicant conversion, atomically creates the student profile, a primary guardian contact, and the student–guardian link. Guardian communication consent starts as pending. Legal-guardian, emergency-contact and pickup flags remain false until evidence-based verification. This is not yet a complete PPDB registration/payment-to-active-student workflow.
+- PR #150 merged as `2b5d0d9e4ae7d145db8861fba028f5df85dd6cc1`. CI #1320 and Neon Function bundle #234 passed. Central Command overview now reads aggregate commercial/operational metrics from platform tables through a Super Admin-only, read-only API. The Development snapshot currently returns zeros because no customer, subscription, invoice, installation, support or backup records are present.
+- Both changes are code/test/UI changes only. No Neon Development or Production writes, schema changes, migrations, or seed records were performed. Post-merge Pages/Release Bundle deployment evidence remains to be independently checked.
