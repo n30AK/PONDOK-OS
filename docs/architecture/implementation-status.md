@@ -69,3 +69,18 @@ PONDOK OS has a functioning Development deployment foundation, broad tenant RLS 
 - The Development catalog currently has one active company Super Administrator, but zero organizations, memberships, activation requests and activation tokens. The sample DEMO/PILOT institution has not been activated; tenant creation must use the authenticated Central Command approval/activation flow.
 - The current Development `pondokapi` Function deployment is #43 (Node.js 24, completed). Its environment still does not contain `STUDENT_IDENTITY_ENCRYPTION_KEY`; identity-document operations must remain fail-closed.
 - This contract audit confirms route/resource and permission wiring only. It does not prove authenticated browser workflows, data persistence under a tenant, two-tenant API isolation, or institution UAT.
+
+## Verified changes after the 2026-11-08 snapshot (2026-11-09)
+
+- PR #141 added filtered visible-row CSV export and browser print for supported module tables. CSV export remains disabled in preview mode and for restricted student identity/health resources. PDF/XLSX and institution-letterhead print are not yet implemented.
+- PR #142 replaced raw relation-ID column headings with human-readable labels. This improves headings but does not, by itself, prove every relation value is resolved to a safe display label.
+- PR #143 added visible loading and error states for relation pickers; lookup failures are no longer silently shown as empty choices.
+- PR #144 fixed the student-options lookup permission allow-list for academic, boarding and library readers. It was merged as `10402d1094bde8bef753ece464dcd7b5a79fb5a7`. CI #1286 (including migrations on disposable PostgreSQL, RLS, typecheck, builds, container smoke test and unit tests) and Neon Function bundle #225 passed before merge.
+- These changes did not apply migrations, seed records, write to Neon Development, or modify Neon Production.
+- The PR #144 merge commit has been confirmed. Post-merge Pages and Release Bundle runs have not been confirmed in this audit; do not infer deployment from the PR CI result.
+
+## Commercial readiness decision (2026-11-09)
+
+PONDOK OS and Central Command remain **not ready for general commercial release**. See `docs/commercial/COMMERCIAL_READINESS_BASELINE_2026-11-09.md` for the gate matrix and prioritized acceptance work. Critical outstanding items include identity-key provisioning with recoverable backup/rotation, two-tenant/two-user API isolation, real institution onboarding, end-to-end student/guardian/PPDB and academic/boarding workflows, data-backed reports, and complete Central Command subscription/entitlement/billing/support operations.
+
+A generic initial-record form or a green CI job is not a completed domain workflow. Pilot and commercial claims must be restricted to the exact modules and deployment modes that have passed UAT and operational acceptance.
