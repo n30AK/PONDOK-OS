@@ -9,6 +9,22 @@ type Json = Record<string, unknown>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const STUDENT_OPTIONS_READ_PERMISSIONS = new Set([
+  "academic.students.read",
+  "academic.enrollments.read",
+  "academic.attendance.read",
+  "boarding.rooms.manage",
+  "boarding.assignments.manage",
+  "boarding.leave.read",
+  "boarding.incidents.read",
+  "library.loans.read",
+  "library.loans.write",
+]);
+
+export function canReadStudentOptions(permissions: readonly string[]): boolean {
+  return permissions.some((permission) => STUDENT_OPTIONS_READ_PERMISSIONS.has(permission));
+}
+
 const RESOURCES: Record<string, Resource> = {
   "campuses": { table: "core.campuses", permission: "academic.classes.read", writePermission: "core.campus.manage", fields: { code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:160}, campusType:{column:"campus_type",max:24,values:["main","branch","unit"]}, status:{column:"status",max:24,values:["active","inactive"]} } },
   "student-details": { table: "academic.student_profiles", permission: "academic.students.read", writePermission: "academic.students.update", fields: { campusId:{column:"campus_id",kind:"uuid",required:true}, studentNumber:{column:"student_number",required:true,max:48}, legalName:{column:"legal_name",required:true,max:180}, preferredName:{column:"preferred_name",max:180}, birthDate:{column:"birth_date",kind:"date"}, birthPlace:{column:"birth_place",max:120}, genderCode:{column:"gender_code",max:24,values:["male","female","unspecified"]}, citizenshipCode:{column:"citizenship_code",max:2}, nationalStudentNumber:{column:"national_student_number",max:32}, entryDate:{column:"entry_date",kind:"date"}, previousSchoolName:{column:"previous_school_name",max:180}, currentAddress:{column:"current_address",kind:"json"}, permanentAddress:{column:"permanent_address",kind:"json"}, primaryPhone:{column:"primary_phone",max:32}, primaryEmail:{column:"primary_email",max:254}, photoObjectKey:{column:"photo_object_key",max:512}, status:{column:"status",max:24,values:["applicant","active","graduated","withdrawn","suspended"]} } },
@@ -621,7 +637,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     if (req.method !== "GET") { res.setHeader("allow","GET"); reply(res,405,{error:"method_not_allowed"}); return true; }
     const tenant = await loadTenantContext(pool,userId,organizationId);
     if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
-    const allowed = ["academic.students.read","boarding.rooms.manage","library.loans.write"].some(permission=>tenant.permissions.includes(permission));
+    const allowed = canReadStudentOptions(tenant.permissions);
     if (!allowed) { reply(res,403,{error:"permission_required"}); return true; }
     const result = await pool.query(
       `SELECT id, student_number AS "studentNumber", legal_name AS "legalName"
