@@ -12,7 +12,7 @@ This checklist is intentionally strict. Do not promote a development build to pr
 - [ ] Assign least-privilege roles; verify direct API requests are denied without permission.
 - [x] Deploy the API build with transaction-scoped tenant context and `SET LOCAL ROLE pondok_runtime` before activating tenant RLS on Development.
 - [x] Apply migrations 0013 and 0014 on Neon Development; verify ENABLE + FORCE RLS on 59 tenant tables, restricted runtime role (`NOLOGIN`, `NOBYPASSRLS`), and hardened membership-role/role-permission policies. Staging and CI isolation tests pass.
-- [ ] Review and separately harden `core.organization_memberships`, which is intentionally excluded from migration 0013 as the membership authority.
+- [x] Review the live `core.organization_memberships` RLS policy set on Development: RLS ENABLE + FORCE is active, with platform-controlled insert and self/active-tenant or Super Admin read policies. This does not replace the still-pending two-tenant API isolation test.
 - [ ] Verify tenant isolation through the live API with at least two independent user identities and organizations.
 - [ ] Add campus-level authorization where required.
 - [ ] Add rate limits, security logging and abuse monitoring.
