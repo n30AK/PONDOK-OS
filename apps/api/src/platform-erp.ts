@@ -284,7 +284,8 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
       reply(res, 201, { data: scoped.value });
     } catch (error) {
       const code = errorCode(error);
-      reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? "duplicate_platform_record" : "platform_erp_create_failed" });
+      const conflictError = !isLead && typeof body.organizationId === "string" ? "organization_already_linked" : "duplicate_platform_record";
+      reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? conflictError : "platform_erp_create_failed" });
     }
     return true;
   }
