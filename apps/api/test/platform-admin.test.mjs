@@ -234,9 +234,9 @@ test("activation redemption creates the tenant atomically and consumes a user-bo
   assert.equal(Buffer.isBuffer(tokenLookup.values[0]), true);
   assert.equal(tokenLookup.values[0].toString("hex"), createHash("sha256").update(activationToken, "utf8").digest("hex"));
   assert.equal(tokenLookup.values[1], userId);
-  assert.match(tokenLookup.sql, /t\\.consumed_at IS NULL/);
-  assert.match(tokenLookup.sql, /t\\.expires_at > now\\(\\)/);
-  assert.match(tokenLookup.sql, /r\\.status = 'approved'/);
+  assert.ok(tokenLookup.sql.includes("t.consumed_at IS NULL"));
+  assert.ok(tokenLookup.sql.includes("t.expires_at > now()"));
+  assert.ok(tokenLookup.sql.includes("r.status = 'approved'"));
   const roleSwitch = calls.findIndex((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime");
   const tokenCheck = calls.findIndex((call) => call.sql.startsWith("SELECT t.request_id"));
   const organizationInsert = calls.findIndex((call) => call.sql.startsWith("INSERT INTO core.organizations"));
