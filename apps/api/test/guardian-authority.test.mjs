@@ -49,6 +49,48 @@ test("guardian authority verification writes evidence and metadata-only audit at
  assert.ok(calls.some(call=>call.sql.startsWith("RELEASE SAVEPOINT")));
 });
 
+test("guardian relation list hides legal authority evidence from ordinary student readers",async()=>{
+ const relation={id:relationId,student_id:"523e4567-e89b-42d3-a456-426614174000",guardian_id:"623e4567-e89b-42d3-a456-426614174000",relationship_code:"ibu",is_primary:true,is_legal_guardian:true,can_pickup_student:true,verification_note:"Dokumen sumber telah diperiksa",verified_at:new Date(),verified_by:userId};
+ const pool={async query(sql){if(sql.includes("FROM core.organization_memberships"))return{rows:[tenantRow(["academic.students.read"])]};if(sql.includes("FROM academic.student_guardians"))return{rows:[relation]};throw new Error("unexpected query: "+sql);}};
+ const res=responseDouble();
+ await handleModuleRecordsRequest(request("GET","/v1/modules/student-guardians"),res,pool,userId,organizationId);
+ assert.equal(res.statusCode,200);
+ const row=JSON.parse(res.body).data[0];
+ assert.equal(row.relationship_code,"ibu");
+ for(const field of ["is_legal_guardian","can_pickup_student","verification_note","verified_at","verified_by"]) assert.equal(Object.hasOwn(row,field),false,field+" must be restricted");
+});
+
+test("guardian relation list retains authority details only for dedicated verifiers",async()=>{
+ const relation={id:relationId,is_legal_guardian:true,can_pickup_student:false,verification_note:"Dokumen sumber telah diperiksa",verified_at:new Date(),verified_by:userId};
+ const pool={async query(sql){if(sql.includes("FROM core.organization_memberships"))return{rows:[tenantRow(["academic.students.read","academic.students.guardians.verify"])]};if(sql.includes("FROM academic.student_guardians"))return{rows:[relation]};throw new Error("unexpected query: "+sql);}};
+ const res=responseDouble();
+ await handleModuleRecordsRequest(request("GET","/v1/modules/student-guardians"),res,pool,userId,organizationId);
+ const row=JSON.parse(res.body).data[0];
+ assert.equal(row.is_legal_guardian,true);
+ assert.equal(row.can_pickup_student,false);
+ assert.equal(row.verification_note,"Dokumen sumber telah diperiksa");
+});
+
+test("guardian relation patch response also hides authority details from ordinary student editors",async()=>{
+ const calls=[];
+ const relation={id:relationId,relationship_code:"ibu",is_legal_guardian:true,can_pickup_student:true,verification_note:"Dokumen sumber telah diperiksa",verified_at:new Date(),verified_by:userId};
+ const pool={async query(sql){
+  calls.push(sql);
+  if(sql.includes("FROM core.organization_memberships"))return{rows:[tenantRow(["academic.students.read","academic.students.update"])]};
+  if(sql.startsWith("SAVEPOINT")||sql.startsWith("RELEASE SAVEPOINT"))return{rows:[]};
+  if(sql.startsWith("UPDATE academic.student_guardians"))return{rows:[relation]};
+  if(sql.startsWith("INSERT INTO audit.audit_events"))return{rows:[]};
+  throw new Error("unexpected query: "+sql);
+ }};
+ const res=responseDouble();
+ await handleModuleRecordsRequest(request("PATCH",`/v1/modules/student-guardians?id=${relationId}`,{relationshipCode:"ibu"}),res,pool,userId,organizationId);
+ assert.equal(res.statusCode,200);
+ const row=JSON.parse(res.body).data;
+ assert.equal(row.relationship_code,"ibu");
+ for(const field of ["is_legal_guardian","can_pickup_student","verification_note","verified_at","verified_by"]) assert.equal(Object.hasOwn(row,field),false,field+" must be restricted");
+ assert.ok(calls.some(sql=>sql.startsWith("INSERT INTO audit.audit_events")));
+});
+
 test("guardian verification rejects missing evidence and malformed authority flags",async()=>{
  const pool={async query(sql){if(sql.includes("FROM core.organization_memberships"))return{rows:[tenantRow(["academic.students.guardians.verify"])]};throw new Error("unexpected query: "+sql);}};
  const res=responseDouble();
