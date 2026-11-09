@@ -49,7 +49,7 @@ The runner uses checksums and stops if a previously recorded migration has chang
 ## Health checks
 
 - `/health/live` confirms the API process responds.
-- `/health/ready` confirms the configured PostgreSQL connection answers a query.
+- `/health/ready` confirms the PostgreSQL connection, that both restricted runtime roles can be assumed, and that tenant/platform RLS policy coverage is complete.
 - Neither endpoint proves that Neon Auth sign-in or every business workflow works.
 
 ## Current limits
