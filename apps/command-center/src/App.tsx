@@ -551,8 +551,8 @@ function CommercialWorkspace(){
   const dueOn=invoiceDueDates[id];if(!dueOn){setError("Tentukan tanggal jatuh tempo invoice.");return;}
   setSaving(true);setError("");setNotice("");
   try{
-   const result=await request<{alreadyExists?:boolean;data:{invoiceNumber?:string;billingPeriodStart?:string;billingPeriodEnd?:string}}>(`/v1/platform/erp/subscriptions/${id}/invoices`,{method:"POST",body:JSON.stringify({dueOn})});
-   setNotice(result.alreadyExists?"Invoice untuk periode ini sudah pernah dibuat; tidak dibuat duplikat.":`Draft invoice recurring dibuat untuk periode ${result.data.billingPeriodStart} s.d. ${result.data.billingPeriodEnd}.`);
+   const result=await request<{alreadyExists:boolean;invoiceNumber?:string;billingPeriodStart?:string;billingPeriodEnd?:string}>(`/v1/platform/erp/subscriptions/${id}/invoices`,{method:"POST",body:JSON.stringify({dueOn})});
+   setNotice(result.alreadyExists?"Invoice untuk periode ini sudah pernah dibuat; tidak dibuat duplikat.":`Draft invoice recurring dibuat untuk periode ${result.billingPeriodStart} s.d. ${result.billingPeriodEnd}.`);
   }catch(e){setError(e instanceof Error?e.message:"Invoice subscription gagal dibuat.");}
   finally{setSaving(false);}
  }
