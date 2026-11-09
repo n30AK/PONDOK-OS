@@ -16,15 +16,15 @@ The repository currently contains:
 
 - TypeScript monorepo foundation and PostgreSQL migration runner with checksums and advisory locking.
 - Neon Managed Auth JWT verification and server-side organization membership/permission resolution.
-- Guarded first-institution setup flow using a one-time server-side SHA-256 token.
+- Company-approved institution activation with verified applicant identity, one-time user-bound activation tokens and atomic tenant creation.
 - Transaction-scoped tenant context for authenticated API requests.
 - Tenant isolation uses FORCE ROW LEVEL SECURITY across 67 organization-owned tables in the current Development catalog, with restricted tenant and platform runtime roles.
-- CI integration tests for fail-closed tenant context, cross-tenant read/write isolation, and the first-institution bootstrap sequence under RLS.
+- CI integration tests for fail-closed tenant context, cross-tenant read/write isolation, and guarded activation flows under RLS.
 - Tenant-scoped API foundations for student records, finance journals, inventory items/warehouses/stock movements, HR employees and payroll transitions.
-- Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
+- Indonesian React/Vite institution workspace with Neon Auth sign-in, applicant activation requests, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
 - PostgreSQL domain foundations for library, PPDB, CMS, boarding, procurement, fixed assets, CRM and hybrid sync.
 - Integrated master data is active on Neon Development (migration 0018): structured student identity/address fields with dedicated address inputs in the web forms, guardian contact and legal-authority relations, educator profiles, temporal employee assignments, hierarchical departments/positions, and a separately encrypted student-health store. The Development API Function has its AES-256-GCM health key configured; real health-data acceptance and key recovery/rotation drills remain pending. Identity-document encryption remains fail-closed because its separate key is not configured.
-- Global system role templates and bootstrap workflows.
+- Global system role templates and company-controlled institution activation workflows.
 - PWA shell caching, Docker images, Nginx reverse proxy and Compose deployment for cloud-connected mode.
 - CI executes migrations on disposable PostgreSQL 18, typechecks, builds workspaces and containers, and runs unit tests.
 - A release workflow prepares a source/deployment ZIP without environment secrets or institution data.
