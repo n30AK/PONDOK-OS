@@ -414,6 +414,7 @@ type CatalogProduct={id:string;productCode:string;productName:string;description
 
 type CommercialQuote={id:string;quoteNumber:string;customerId:string;customerName:string;status:string;currency:string;subtotal:string|number;discountTotal:string|number;taxTotal:string|number;grandTotal:string|number;validUntil?:string|null;createdAt:string};
 type CommercialContract={id:string;contractNumber:string;customerId:string;customerName:string;quoteId:string;status:string;startsOn?:string|null;endsOn?:string|null;renewalMode:string;createdAt:string};
+type CommercialSubscription={id:string;customerId:string;customerName:string;contractId:string;contractNumber:string;productId:string;productName:string;quoteLineId:string;status:string;startsAt:string;endsAt?:string|null;nextBillingAt?:string|null;quantity:number;unitPrice:string|number;discountAmount:string|number;taxAmount:string|number;lineTotal:string|number;currency:string;billingInterval:string;createdAt:string};
 
 type BillingInvoice={id:string;invoiceNumber:string;customerId:string;customerName:string;contractId:string;status:string;currency:string;issuedOn?:string|null;dueOn?:string|null;grandTotal:string|number;amountPaid:string|number;journalEntryId?:string|null};
 type BillingPayment={id:string;paymentReference:string;customerId:string;customerName:string;invoiceId:string;invoiceNumber?:string|null;amount:string|number;paymentMethod:string;status:string;paidAt?:string|null;journalEntryId?:string|null};
@@ -488,20 +489,21 @@ function AccountingWorkspace(){
 }
 
 function CommercialWorkspace(){
- const [quotes,setQuotes]=useState<CommercialQuote[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]),[customers,setCustomers]=useState<CrmCustomer[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
+ const [quotes,setQuotes]=useState<CommercialQuote[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]),[subscriptions,setSubscriptions]=useState<CommercialSubscription[]>([]),[customers,setCustomers]=useState<CrmCustomer[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
  const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [quoteForm,setQuoteForm]=useState({customerId:"",productId:"",quantity:"1",unitPrice:"0",discountAmount:"0",taxAmount:"0",validUntil:""});
  const [contractForm,setContractForm]=useState({quoteId:"",startsOn:"",endsOn:"",renewalMode:"manual"});
  const load=useCallback(async()=>{
   setBusy(true);setError("");
   try{
-   const [q,k,c,p]=await Promise.all([
+   const [q,k,s,c,p]=await Promise.all([
     request<{items:CommercialQuote[]}>("/v1/platform/erp/quotes"),
     request<{items:CommercialContract[]}>("/v1/platform/erp/contracts"),
+    request<{items:CommercialSubscription[]}>("/v1/platform/erp/subscriptions"),
     request<{items:CrmCustomer[]}>("/v1/platform/erp/customers?limit=100"),
     request<{items:CatalogProduct[]}>("/v1/platform/erp/catalog?activeOnly=true")
    ]);
-   setQuotes(q.items??[]);setContracts(k.items??[]);setCustomers(c.items??[]);setProducts(p.items??[]);
+   setQuotes(q.items??[]);setContracts(k.items??[]);setSubscriptions(s.items??[]);setCustomers(c.items??[]);setProducts(p.items??[]);
    const firstCustomer=c.items?.[0];
    if(!quoteForm.customerId&&firstCustomer)setQuoteForm(x=>({...x,customerId:firstCustomer.id}));
    if(!contractForm.quoteId){const approved=(q.items??[]).find(x=>["approved","accepted"].includes(x.status));if(approved)setContractForm(x=>({...x,quoteId:approved.id}));}
@@ -533,6 +535,15 @@ function CommercialWorkspace(){
    quoteId:contractForm.quoteId,startsOn:contractForm.startsOn||null,endsOn:contractForm.endsOn||null,renewalMode:contractForm.renewalMode
   })});setNotice("Draft kontrak berhasil dibuat.");await load();}
   catch(e){setError(e instanceof Error?e.message:"Kontrak gagal dibuat.");}
+  finally{setSaving(false);}
+ }
+ async function createSubscriptions(contractId:string){
+  setSaving(true);setError("");setNotice("");
+  try{
+   const result=await request<{created:number;existing:number;items:CommercialSubscription[];entitlementsGranted:boolean}>(`/v1/platform/erp/contracts/${contractId}/subscriptions`,{method:"POST",body:"{}"});
+   setNotice(`Langganan dibuat: ${result.created}; sudah ada: ${result.existing}. Pemberian entitlement modul belum dilakukan.`);
+   await load();
+  }catch(e){setError(e instanceof Error?e.message:"Pembuatan langganan dari kontrak gagal.");}
   finally{setSaving(false);}
  }
  async function contractAction(id:string,action:"submit"|"approve"|"reject"){
@@ -575,9 +586,12 @@ function CommercialWorkspace(){
   </form>
  </section>
  <section className="panel"><PanelTitle title="Kontrak pelanggan" subtitle="Aktivasi membutuhkan persetujuan Super Admin kedua; pemohon tidak dapat menyetujui permintaannya sendiri."/>
-  {contracts.length===0?<Empty text="Belum ada kontrak."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Periode</th><th>Perpanjangan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{contracts.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.startsOn?date(x.startsOn):"—"} – {x.endsOn?date(x.endsOn):"—"}</td><td>{label(x.renewalMode)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"submit")}>Ajukan aktivasi</button>:x.status==="review"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void contractAction(x.id,"approve")}>Aktifkan</button><button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
+  {contracts.length===0?<Empty text="Belum ada kontrak."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Periode</th><th>Perpanjangan</th><th>Status</th><th>Subscription</th><th>Aksi</th></tr></thead><tbody>{contracts.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.startsOn?date(x.startsOn):"—"} – {x.endsOn?date(x.endsOn):"—"}</td><td>{label(x.renewalMode)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{(()=>{const count=subscriptions.filter(s=>s.contractId===x.id).length;return count?count+" langganan":x.status==="active"?<button className="secondary" disabled={saving} onClick={()=>void createSubscriptions(x.id)}>Buat langganan</button>:"Menunggu kontrak aktif";})()}</td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"submit")}>Ajukan aktivasi</button>:x.status==="review"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void contractAction(x.id,"approve")}>Aktifkan</button><button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
  </section>
- <p className="muted">Belum ada invoice, penerimaan pembayaran, subscription, atau jurnal otomatis pada tahap ini. Tagihan hanya akan dibuat setelah aturan komersial dan pembayaran disambungkan pada tahap berikutnya.</p>
+ <section className="panel"><PanelTitle title="Subscription pelanggan" subtitle="Dibuat dari baris recurring pada kontrak aktif; harga, diskon, pajak, dan interval disimpan sebagai snapshot."/>
+  {subscriptions.length===0?<Empty text="Belum ada subscription."/>:<div className="table-wrap"><table><thead><tr><th>Kontrak</th><th>Pelanggan</th><th>Produk</th><th>Periode</th><th>Kuantitas</th><th>Nilai per periode</th><th>Status</th></tr></thead><tbody>{subscriptions.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.productName}</td><td>{label(x.billingInterval)}<small>{date(x.startsAt)} – {x.endsAt?date(x.endsAt):"Tanpa akhir"}</small></td><td>{x.quantity}</td><td>{money(x.lineTotal,x.currency)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td></tr>)}</tbody></table></div>}
+ </section>
+ <p className="muted">Subscription tidak otomatis membuat invoice, menerima pembayaran, memposting jurnal, atau memberikan entitlement modul. Penagihan berkala dan provisioning akses tetap melalui workflow terpisah.</p>
  </div>;
 }
 
