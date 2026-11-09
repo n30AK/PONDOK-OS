@@ -100,3 +100,8 @@ The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode fr
 ## Readiness boundary
 
 A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #59 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+
+## Live Neon Auth tenant acceptance
+
+The disposable CI test uses synthetic signed identities and disposable PostgreSQL. For the separate two-real-user/two-real-tenant Development acceptance, follow [the live Neon Auth tenant acceptance runbook](../../docs/security/live-neon-auth-tenant-acceptance.md) and run `node apps/api/scripts/test-live-tenant-auth-isolation.mjs` with local secret-manager environment variables. The script is pinned to the Development Function hostname, performs no data writes, and must never be run against Production.
+
