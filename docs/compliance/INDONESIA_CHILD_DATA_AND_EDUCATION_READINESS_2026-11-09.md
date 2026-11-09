@@ -17,20 +17,30 @@ Do not advertise “compliant with Indonesian law” until legal counsel reviews
 | Instrument | Relevant scope | Engineering consequence |
 |---|---|---|
 | UU 27/2022 tentang Pelindungan Data Pribadi | General and specific personal data, data-subject rights, controller/processor duties, DPIA, security, incident notification, DPO criteria and cross-border transfers | Define controller/processor roles per contract; maintain processing records; provide access/correction/withdrawal/restriction/deletion flows; perform DPIA for high-risk processing; implement incident response; assess international transfers |
+| PP 71/2019 tentang Penyelenggaraan Sistem dan Transaksi Elektronik and Permenkominfo 5/2020 as amended by Permenkominfo 10/2021 | Private electronic-system operator registration and general PSE governance obligations | Confirm the legal entity, OSS/NIB/KBLI and PSE private registration status before operating the SaaS service; maintain registration and system/operator details |
 | PP 17/2025 tentang Tata Kelola Penyelenggaraan Sistem Elektronik dalam Pelindungan Anak (PP TUNAS) | PSE products/services/features specifically designed for, or likely to be used/accessed by, children | Age bands, child risk assessment, parent/guardian consent, high privacy by default, child-appropriate UX, reporting/complaint handling, no precise child geolocation collection or child profiling |
 | Permenkomdigi 9/2026 | Technical implementation of PP 17/2025: minimum ages/age bands, age verification, risk self-assessment and profile setting | Build an auditable age/risk assessment per product feature; retain evidence and review after material feature changes; do not assume all features have the same risk profile |
 | UU 18/2019 tentang Pesantren and PMA 30/2020 | Pesantren establishment and organization | Institution master data and registration evidence must support the pesantren's actual legal/administrative identity; do not invent a universal one-size-fits-all form |
 | PMA 31/2020 tentang Pendidikan Pesantren | Pesantren education forms and pathways, including formal and non-formal models | Academic configuration must distinguish Muadalah, Pendidikan Diniyah Formal, Ma'had Aly, Kitab Kuning study, and integrated models as applicable to each institution |
 | Permendikbudristek 31/2022 tentang Satu Data Pendidikan, Kebudayaan, Riset, dan Teknologi | Education data domains and principles: standards, metadata, interoperability, reference/master codes | Diknas/school workflows need versioned data dictionaries, metadata, reference codes and explicit interoperability mapping; this regulation alone is not proof of Dapodik integration |
 
+### Urgent transitional reporting-date review
+
+Permenkomdigi 9/2026 was promulgated on **6 March 2026**. Its closing transitional note requires the self-assessment report referenced in Article 21(1) to be submitted to the Minister through the Director General no later than **three months after promulgation** (nominally 6 June 2026). As of this assessment date (9 November 2026), that date has passed.
+
+This is an urgent legal work item, not a conclusion that PONDOK OS has violated the rule. Indonesian counsel must first determine whether PONDOK OS and/or each institution is within the relevant PSE scope, identify the responsible reporting entity, confirm whether a submission was already made, and advise on corrective steps if it was not. Do not backdate, fabricate or claim a filing. Retain the official submission receipt or a written legal determination that the requirement does not apply.
+
 Official references:
-- UU 27/2022: https://peraturan.bpk.go.id/Details/229798/uu-no-27-
+- UU 27/2022: https://peraturan.bpk.go.id/Download/224884/UU%20Nomor%2027%20Tahun%202022.pdf
+- PP 71/2019: https://peraturan.bpk.go.id/Download/112816/PP%20Nomor%2071%20Tahun%202019.pdf
+- Permenkominfo 5/2020 (PSE Privat): https://peraturan.bpk.go.id/Details/203049/permenkominfo-no-5-tahun-2020
+- Permenkominfo 10/2021 (amendment): https://peraturan.bpk.go.id/Details/203121/permenkominfo-no-10-tahun-2021
 - PP 17/2025: https://www.peraturan.go.id/files/pp-no-17-tahun-2025.pdf
 - Permenkomdigi 9/2026: https://peraturan.bpk.go.id/Details/346040/permenkomdigi-no-9-tahun-2026
-- UU 18/2019: https://peraturan.bpk.go.id/Details/122743/uu-no-18-tahun-2019
-- PMA 30/2020: https://peraturan.bpk.go.id/Details/176216/peraturan-menag-no-30-tahun-2020
-- PMA 31/2020: https://peraturan.bpk.go.id/Details/176475/peraturan-menag-no-31-tahun-2020
-- Permendikbudristek 31/2022: https://peraturan.bpk.go.id/Details/219347/permendikbudristek-no-31-tahun-2022
+- UU 18/2019: https://peraturan.bpk.go.id/Details/122743/uu-no-18-
+- PMA 30/2020: https://peraturan.bpk.go.id/Download/243115/PMA_No._30_tahun_2020.pdf
+- PMA 31/2020: https://peraturan.bpk.go.id/Download/243127/PMA_No._31_tahun_2020.pdf
+- Permendikbudristek 31/2022: https://lldikti3.kemdikbud.go.id/wp-content/uploads/2024/07/Permendikbudristek-No.-31-Tahun-2022-Satu-Data-Pendidikan-Kebudayaan-Riset-dan-Teknologi.pdf
 
 ## 3. Binding requirements translated into product controls
 
@@ -38,6 +48,9 @@ Official references:
 
 - Publish minimum-age and age-band information in clear Indonesian before account activation.
 - Classify every child-facing or child-accessible feature by age band and risk profile. Do not apply one global age rule to every feature.
+- For account-based products/features, implement the specific Permenkomdigi 9/2026 age gates: under 13 may hold an account only on a child-designed, low-risk feature with parent consent; ages 13 to under 16 may hold an account only on a low-risk feature with parent consent; ages 16 to under 18 may hold an account with parent consent. The relevant risk profile is the profile determined under the regulation, not a self-assigned product label.
+- Any account-based child experience must provide effective technology and operational steps for the parent/legal guardian to supervise the child's use. If a child feature permits contact with unknown people, provide parental controls for allowing or refusing that contact.
+- Assess whether any chat, social, public-posting, group or user-generated-content feature meets the regulatory definition of a social-networking service. Such services are generally high-risk unless determined otherwise; the regulation requires disabling accounts for children under 16 where the service is classified as a social-networking service. Do not add open social features without a separate legal/risk review.
 - Implement verified parent/legal-guardian consent before a child is allowed to use features where consent is required. Store who consented, their verified relationship/authority, which child and feature, purpose, notice version, timestamp, method, status, withdrawal and evidence.
 - Keep legal guardianship, parent/contact relationship, emergency contact and permission to pick up a santri as separate authority concepts. A phone number or family relationship alone must not grant pickup authority.
 - On refusal or withdrawal, suspend the relevant child feature and stop the consent-based processing within the statutory period; apply deletion/retention exceptions only where a documented legal basis requires it.
@@ -85,6 +98,7 @@ Official references:
 | Guardian authority | PR #159 filters five guardian authority fields from generic module responses unless caller has the dedicated verification permission | Partial; real workflow and role UAT required |
 | Identity document encryption | Strict AES-256-GCM key validation and fail-closed behavior exist; Development Function metadata lacks `STUDENT_IDENTITY_ENCRYPTION_KEY` | **Blocked**; do not enable identity document operations |
 | Child/guardian consent ledger | No production evidence of age-based consent lifecycle, verified legal-guardian consent, withdrawal or child feature gating | **Blocked** |
+| PSE private registration / business identity | No verified PSE registration evidence, NIB/KBLI review or registered operator details are included in the current project evidence | **Blocked** |
 | DPIA / feature risk assessment | No completed approved DPIA or per-feature PP TUNAS risk self-assessment evidence | **Blocked** |
 | Privacy officer / controller-processor contracts | No named appointed privacy officer evidence, DPA, sub-processor register or controller/processor schedule in current release evidence | **Blocked** |
 | Data-subject rights | No end-to-end DSAR workflow with statutory deadlines and audit evidence verified | **Blocked** |
@@ -101,13 +115,14 @@ The evidence above is an engineering snapshot, not a statement that the product 
 ### P0 — before any child-facing production use
 
 1. Legal counsel approves the controller/processor model, child-service scope, age bands, consent rules and cross-border transfer model.
-2. Complete and approve DPIA and PP TUNAS feature-risk self-assessment; document the reporting/submission obligations and evidence owner.
-3. Implement and test guardian identity/authority verification, child consent, per-feature consent, withdrawal, refusal, suspension and data deletion.
-4. Keep child-facing accounts/features disabled until required consent and age checks pass.
-5. Provision identity-document encryption key through a managed secret store with separate recoverable backup, rotation and restore drill; never share key material in chat.
-6. Appoint privacy officer/DPO function where legally required; sign DPA and sub-processor terms with each institution.
-7. Confirm data residency, subprocessors and international-transfer safeguards.
-8. Complete live two-tenant and role-based security UAT.
+2. Verify the operating legal entity, NIB/KBLI and whether PONDOK OS must register as a PSE Lingkup Privat under PP 71/2019 and Permenkominfo 5/2020 as amended; retain registration evidence or written legal determination.
+3. Complete and approve DPIA and PP TUNAS feature-risk self-assessment; document the reporting/submission obligations and evidence owner.
+4. Implement and test guardian identity/authority verification, child consent, per-feature consent, withdrawal, refusal, suspension and data deletion.
+5. Keep child-facing accounts/features disabled until required consent and age checks pass.
+6. Provision identity-document encryption key through a managed secret store with separate recoverable backup, rotation and restore drill; never share key material in chat.
+7. Appoint privacy officer/DPO function where legally required; sign DPA and sub-processor terms with each institution.
+8. Confirm data residency, subprocessors and international-transfer safeguards.
+9. Complete live two-tenant and role-based security UAT.
 
 ### P1 — before general commercial launch
 
@@ -122,7 +137,7 @@ The evidence above is an engineering snapshot, not a statement that the product 
 
 ## 6. Non-negotiable product defaults
 
-- No child account without the required age/guardian checks and consent.
+- No child account without the correct age-band/risk eligibility, verified guardian consent and working parent supervision controls.
 - No default sharing of child profiles across institutions or public display.
 - No precise geolocation collection from children.
 - No child profiling or automated consequential decision without legally reviewed basis and human safeguards.
