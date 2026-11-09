@@ -175,3 +175,20 @@ test("subscription list is Super Admin-only and uses the platform runtime role",
  assert.ok(calls.some(x=>x.sql==="SET LOCAL ROLE pondok_platform_runtime"));
  assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
+
+
+test("subscription generation rejects contracts whose billing period has expired",async()=>{
+ const contractId="423e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,customer_id,quote_id,status,starts_on,ends_on"))return{rows:[{id:contractId,customer_id:customerId,quote_id:quoteId,status:"active",starts_on:"2025-01-01",ends_on:"2025-12-31"}]};
+  if(sql.startsWith("SELECT status,currency FROM platform.quotes"))return{rows:[{status:"approved",currency:"IDR"}]};
+  if(sql.startsWith("SELECT ql.id,ql.product_id"))return{rows:[{id:"523e4567-e89b-42d3-a456-426614174000",product_id:"623e4567-e89b-42d3-a456-426614174000",quantity:"1.000",unit_price:"100.00",discount_amount:"0.00",tax_amount:"0.00",line_total:"100.00",product_type:"subscription",billing_interval:"monthly",is_active:true}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/contracts/${contractId}/subscriptions`,"POST",{}),res,pool,userId);
+ assert.equal(res.status,409);
+ assert.equal(JSON.parse(res.body).error,"contract_period_expired");
+ assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.subscriptions")));
+});
