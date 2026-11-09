@@ -23,6 +23,12 @@ Do not advertise “compliant with Indonesian law” until legal counsel reviews
 | PMA 31/2020 tentang Pendidikan Pesantren | Pesantren education forms and pathways, including formal and non-formal models | Academic configuration must distinguish Muadalah, Pendidikan Diniyah Formal, Ma'had Aly, Kitab Kuning study, and integrated models as applicable to each institution |
 | Permendikbudristek 31/2022 tentang Satu Data Pendidikan, Kebudayaan, Riset, dan Teknologi | Education data domains and principles: standards, metadata, interoperability, reference/master codes | Diknas/school workflows need versioned data dictionaries, metadata, reference codes and explicit interoperability mapping; this regulation alone is not proof of Dapodik integration |
 
+### Urgent transitional reporting-date review
+
+Permenkomdigi 9/2026 was promulgated on **6 March 2026**. Its closing transitional note requires the self-assessment report referenced in Article 21(1) to be submitted to the Minister through the Director General no later than **three months after promulgation** (nominally 6 June 2026). As of this assessment date (9 November 2026), that date has passed.
+
+This is an urgent legal work item, not a conclusion that PONDOK OS has violated the rule. Indonesian counsel must first determine whether PONDOK OS and/or each institution is within the relevant PSE scope, identify the responsible reporting entity, confirm whether a submission was already made, and advise on corrective steps if it was not. Do not backdate, fabricate or claim a filing. Retain the official submission receipt or a written legal determination that the requirement does not apply.
+
 Official references:
 - UU 27/2022: https://peraturan.bpk.go.id/Details/229798/uu-no-27-
 - PP 17/2025: https://www.peraturan.go.id/files/pp-no-17-tahun-2025.pdf
