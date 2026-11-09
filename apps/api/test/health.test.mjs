@@ -82,15 +82,69 @@ test("readiness is distinct from liveness and requires database connectivity", a
   assert.deepEqual(await notReady.json(), { status: "not_ready", dependency: "database_not_configured" });
 });
 
-test("readiness returns ready only after a database query succeeds", async (context) => {
-  const server = createApiServer({ pool: { query: async () => ({ rows: [{ "?column?": 1 }] }) } });
+function secureReadinessPool({ tenantProtected = 63, platformProtected = 79, failRoleSwitch = false } = {}) {
+  return {
+    query: async () => ({ rows: [{ "?column?": 1 }] }),
+    connect: async () => ({
+      query: async (sql) => {
+        if (failRoleSwitch && sql === "SET LOCAL ROLE pondok_runtime") throw new Error("role_switch_denied");
+        if (sql.includes("tenant_table_count")) return { rows: [{
+          runtime_role: "pondok_runtime",
+          role_can_login: false,
+          role_bypasses_rls: false,
+          memberships_rls: true,
+          tenant_table_count: 63,
+          protected_table_count: tenantProtected,
+        }] };
+        if (sql.includes("platform_table_count")) return { rows: [{
+          runtime_role: "pondok_platform_runtime",
+          role_can_login: false,
+          role_bypasses_rls: false,
+          platform_table_count: 79,
+          protected_platform_table_count: platformProtected,
+        }] };
+        return { rows: [] };
+      },
+      release() {},
+    }),
+  };
+}
+
+test("readiness requires database connectivity and both restricted RLS runtime roles", async (context) => {
+  const server = createApiServer({ pool: secureReadinessPool() });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   context.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   const address = server.address();
   assert.ok(address && typeof address === "object");
   const response = await fetch(`http://127.0.0.1:${address.port}/health/ready`);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { status: "ready", service: "pondok-os-api", dependencies: { database: "ok" } });
+  assert.deepEqual(await response.json(), {
+    status: "ready",
+    service: "pondok-os-api",
+    dependencies: { database: "ok", tenantSecurity: "ok", platformSecurity: "ok" },
+  });
+});
+
+test("readiness fails closed when any tenant table lacks its FORCE RLS isolation policy", async (context) => {
+  const server = createApiServer({ pool: secureReadinessPool({ tenantProtected: 62 }) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const response = await fetch(`http://127.0.0.1:${address.port}/health/ready`);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { status: "not_ready", dependency: "database_security_controls_unavailable" });
+});
+
+test("readiness fails closed when the tenant runtime role cannot be assumed", async (context) => {
+  const server = createApiServer({ pool: secureReadinessPool({ failRoleSwitch: true }) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const response = await fetch(`http://127.0.0.1:${address.port}/health/ready`);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { status: "not_ready", dependency: "database_security_controls_unavailable" });
 });
 
 test("development CORS preflight allows the local Vite origin", async (context) => {
