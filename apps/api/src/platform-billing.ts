@@ -232,7 +232,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
    const value=scoped.value as {error?:string;existing?:boolean;item?:unknown}|undefined;
    if(value?.error){reply(res,value.error==="subscription_not_found"?404:409,{error:value.error});return true;}
-   reply(res,value?.existing?200:201,{data:value?.item,alreadyExists:value?.existing??false});
+   const item=value?.item&&typeof value.item==="object"?{...(value.item as Record<string,unknown>),alreadyExists:value.existing??false}:{alreadyExists:value?.existing??false};
+   reply(res,value?.existing?200:201,{data:item});
   }catch(e){const code=errorCode(e);reply(res,code==="23505"?409:code==="42P01"?503:500,{error:code==="23505"?"subscription_invoice_conflict":"subscription_invoice_create_failed"});}
   return true;
  }
