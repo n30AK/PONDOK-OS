@@ -33,9 +33,9 @@ Each protected operation must verify identity, active organization membership or
 
 - Neon project: `frosty-cherry-92983148`.
 - Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, Development deployment #59, Node.js 24 (completed).
+- Function: `pondokapi`, Development deployment #61, Node.js 24 (completed).
 - Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced. The wider application catalog has 145 tables with RLS enabled and forced. Runtime-role policy coverage is 63/63 tenant tables and 79/79 platform tables.
-- Live migration ledger: through 0027. Migrations 0024–0026 were applied to Development on 2026-11-08; migration 0027 was applied on 2026-11-09 in one atomic transaction with a transaction-scoped advisory lock. Exact source-file SHA-256 checksums are recorded.
+- Live migration ledger: through 0028. Migrations 0024–0026 were applied to Development on 2026-11-08; migrations 0027–0028 were applied on 2026-11-09 in atomic transactions with transaction-scoped advisory locks. Exact source-file SHA-256 checksums are recorded.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
 - No organizations, memberships, student profiles, HR employees, platform customers, subscriptions, module entitlements or module orders exist yet.
 - CI now exercises actual API-level isolation with two signed synthetic JWT identities against disposable PostgreSQL. Live Neon Auth two-user/two-tenant acceptance and institution UAT are still pending.
@@ -99,4 +99,4 @@ The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode fr
 
 ## Readiness boundary
 
-A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #59 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #61 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
