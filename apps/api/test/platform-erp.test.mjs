@@ -47,6 +47,7 @@ test("CRM list uses Super Admin verification and platform runtime role",async()=
   assert.equal(res.status,200);
   assert.equal(JSON.parse(res.body).data.items[0].stage,"new");
   assert.ok(calls.some(x=>x.sql==="SET LOCAL ROLE pondok_platform_runtime"));
+  assert.match(calls.find(x=>x.sql.startsWith("SELECT id,lead_number"))?.sql??"",/convertedCustomerId/);
   assert.ok(calls.some(x=>x.sql==="COMMIT"));
   assert.ok(calls.some(x=>x.sql==="RELEASE"));
 });
