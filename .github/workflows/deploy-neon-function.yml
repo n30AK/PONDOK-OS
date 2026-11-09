@@ -48,10 +48,12 @@ jobs:
         run: pnpm --filter @pondok-os/api deploy:function
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          # Optional: set only during first-institution initialization.
-          # Store the SHA-256 digest, never the raw one-time bootstrap token.
-          PONDOK_BOOTSTRAP_TOKEN_SHA256: ${{ secrets.PONDOK_BOOTSTRAP_TOKEN_SHA256 }}
       - name: Verify deployed API liveness
         run: curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 3 --max-time 20 "https://br-proud-paper-b312lfxi-pondokapi.compute.c-4.ap-southeast-1.aws.neon.tech/health/live"
       - name: Verify deployed API readiness
         run: curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 3 --max-time 20 "https://br-proud-paper-b312lfxi-pondokapi.compute.c-4.ap-southeast-1.aws.neon.tech/health/ready"
+      - name: Verify legacy tenant bootstrap is disabled
+        shell: bash
+        run: |
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 --request POST "https://br-proud-paper-b312lfxi-pondokapi.compute.c-4.ap-southeast-1.aws.neon.tech/v1/bootstrap/organization" --header "content-type: application/json" --data '{}')"
+          test "$status" = "410"
