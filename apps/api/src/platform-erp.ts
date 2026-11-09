@@ -134,7 +134,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
             const result = await client.query(
               `SELECT id,lead_number AS "leadNumber",organization_name AS "organizationName",contact_name AS "contactName",
                 email,phone,source,stage,estimated_value AS "estimatedValue",currency,consent_status AS "consentStatus",
-                next_follow_up_at AS "nextFollowUpAt",lost_reason AS "lostReason",notes,created_at AS "createdAt",updated_at AS "updatedAt"
+                next_follow_up_at AS "nextFollowUpAt",lost_reason AS "lostReason",notes,(SELECT c.id FROM platform.customers c WHERE c.source_lead_id=platform.crm_leads.id) AS "convertedCustomerId",created_at AS "createdAt",updated_at AS "updatedAt"
                FROM platform.crm_leads WHERE id=$1::uuid`, [leadId],
             );
             return { item: result.rows[0] ?? null };
