@@ -25,6 +25,28 @@ export function canReadStudentOptions(permissions: readonly string[]): boolean {
   return permissions.some((permission) => STUDENT_OPTIONS_READ_PERMISSIONS.has(permission));
 }
 
+const GUARDIAN_AUTHORITY_PERMISSION = "academic.students.guardians.verify";
+const RESTRICTED_GUARDIAN_AUTHORITY_FIELDS = [
+  "is_legal_guardian",
+  "can_pickup_student",
+  "verification_note",
+  "verified_at",
+  "verified_by",
+] as const;
+
+function filterModuleRecordForPermissions(
+  resourceKey: string,
+  row: Record<string, unknown>,
+  permissions: readonly string[],
+): Record<string, unknown> {
+  if (resourceKey !== "student-guardians" || permissions.includes(GUARDIAN_AUTHORITY_PERMISSION)) {
+    return row;
+  }
+  const visible = { ...row };
+  for (const field of RESTRICTED_GUARDIAN_AUTHORITY_FIELDS) delete visible[field];
+  return visible;
+}
+
 const RESOURCES: Record<string, Resource> = {
   "campuses": { table: "core.campuses", permission: "academic.classes.read", writePermission: "core.campus.manage", fields: { code:{column:"code",required:true,max:32}, name:{column:"name",required:true,max:160}, campusType:{column:"campus_type",max:24,values:["main","branch","unit"]}, status:{column:"status",max:24,values:["active","inactive"]} } },
   "student-details": { table: "academic.student_profiles", permission: "academic.students.read", writePermission: "academic.students.update", fields: { campusId:{column:"campus_id",kind:"uuid",required:true}, studentNumber:{column:"student_number",required:true,max:48}, legalName:{column:"legal_name",required:true,max:180}, preferredName:{column:"preferred_name",max:180}, birthDate:{column:"birth_date",kind:"date"}, birthPlace:{column:"birth_place",max:120}, genderCode:{column:"gender_code",max:24,values:["male","female","unspecified"]}, citizenshipCode:{column:"citizenship_code",max:2}, nationalStudentNumber:{column:"national_student_number",max:32}, entryDate:{column:"entry_date",kind:"date"}, previousSchoolName:{column:"previous_school_name",max:180}, currentAddress:{column:"current_address",kind:"json"}, permanentAddress:{column:"permanent_address",kind:"json"}, primaryPhone:{column:"primary_phone",max:32}, primaryEmail:{column:"primary_email",max:254}, photoObjectKey:{column:"photo_object_key",max:512}, status:{column:"status",max:24,values:["applicant","active","graduated","withdrawn","suspended"]} } },
@@ -666,7 +688,8 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
     const limit=Number.isInteger(limitRaw)?Math.min(Math.max(limitRaw,1),200):100;
     const result=await pool.query(`SELECT * FROM ${resource.table} WHERE organization_id=$1::uuid ORDER BY ${resource.order ?? "created_at"} DESC LIMIT $2`,[organizationId,limit]);
-    reply(res,200,{data:result.rows,pagination:{limit,returned:result.rows.length}}); return true;
+    const data = result.rows.map((row) => filterModuleRecordForPermissions(match[1] ?? "", row as Record<string, unknown>, tenant.permissions));
+    reply(res,200,{data,pagination:{limit,returned:data.length}}); return true;
   }
   const body=await readJson(req);
   if (!body) { reply(res,400,{error:"invalid_json_or_body_too_large"}); return true; }
@@ -687,7 +710,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       const record=result.rows[0] as Record<string,unknown>;
       await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,[organizationId,userId,"module.record.update",resource.table,String(record.id ?? ""),JSON.stringify({resource:match[1],fields:entries.map(([key])=>key)})]);
       await pool.query("RELEASE SAVEPOINT module_record_write");
-      reply(res,200,{data:record});
+      reply(res,200,{data:filterModuleRecordForPermissions(match[1] ?? "",record,tenant.permissions)});
     } catch(reason) {
       await pool.query("ROLLBACK TO SAVEPOINT module_record_write").catch(() => undefined);
       await pool.query("RELEASE SAVEPOINT module_record_write").catch(() => undefined);
@@ -712,7 +735,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     const record = result.rows[0] as Record<string, unknown>;
     await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
     await pool.query("RELEASE SAVEPOINT module_record_write");
-    reply(res,201,{data:record});
+    reply(res,201,{data:filterModuleRecordForPermissions(match[1] ?? "",record,tenant.permissions)});
   } catch (reason) {
     await pool.query("ROLLBACK TO SAVEPOINT module_record_write").catch(() => undefined);
     await pool.query("RELEASE SAVEPOINT module_record_write").catch(() => undefined);
