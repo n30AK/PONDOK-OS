@@ -17,6 +17,7 @@ Do not advertise “compliant with Indonesian law” until legal counsel reviews
 | Instrument | Relevant scope | Engineering consequence |
 |---|---|---|
 | UU 27/2022 tentang Pelindungan Data Pribadi | General and specific personal data, data-subject rights, controller/processor duties, DPIA, security, incident notification, DPO criteria and cross-border transfers | Define controller/processor roles per contract; maintain processing records; provide access/correction/withdrawal/restriction/deletion flows; perform DPIA for high-risk processing; implement incident response; assess international transfers |
+| PP 71/2019 tentang Penyelenggaraan Sistem dan Transaksi Elektronik and Permenkominfo 5/2020 as amended by Permenkominfo 10/2021 | Private electronic-system operator registration and general PSE governance obligations | Confirm the legal entity, OSS/NIB/KBLI and PSE private registration status before operating the SaaS service; maintain registration and system/operator details |
 | PP 17/2025 tentang Tata Kelola Penyelenggaraan Sistem Elektronik dalam Pelindungan Anak (PP TUNAS) | PSE products/services/features specifically designed for, or likely to be used/accessed by, children | Age bands, child risk assessment, parent/guardian consent, high privacy by default, child-appropriate UX, reporting/complaint handling, no precise child geolocation collection or child profiling |
 | Permenkomdigi 9/2026 | Technical implementation of PP 17/2025: minimum ages/age bands, age verification, risk self-assessment and profile setting | Build an auditable age/risk assessment per product feature; retain evidence and review after material feature changes; do not assume all features have the same risk profile |
 | UU 18/2019 tentang Pesantren and PMA 30/2020 | Pesantren establishment and organization | Institution master data and registration evidence must support the pesantren's actual legal/administrative identity; do not invent a universal one-size-fits-all form |
@@ -31,6 +32,9 @@ This is an urgent legal work item, not a conclusion that PONDOK OS has violated 
 
 Official references:
 - UU 27/2022: https://peraturan.bpk.go.id/Download/224884/UU%20Nomor%2027%20Tahun%202022.pdf
+- PP 71/2019: https://peraturan.bpk.go.id/Download/112816/PP%20Nomor%2071%20Tahun%202019.pdf
+- Permenkominfo 5/2020 (PSE Privat): https://peraturan.bpk.go.id/Details/203049/permenkominfo-no-5-tahun-2020
+- Permenkominfo 10/2021 (amendment): https://peraturan.bpk.go.id/Details/203121/permenkominfo-no-10-tahun-2021
 - PP 17/2025: https://www.peraturan.go.id/files/pp-no-17-tahun-2025.pdf
 - Permenkomdigi 9/2026: https://peraturan.bpk.go.id/Details/346040/permenkomdigi-no-9-tahun-2026
 - UU 18/2019: https://peraturan.bpk.go.id/Details/122743/uu-no-18-
@@ -91,6 +95,7 @@ Official references:
 | Guardian authority | PR #159 filters five guardian authority fields from generic module responses unless caller has the dedicated verification permission | Partial; real workflow and role UAT required |
 | Identity document encryption | Strict AES-256-GCM key validation and fail-closed behavior exist; Development Function metadata lacks `STUDENT_IDENTITY_ENCRYPTION_KEY` | **Blocked**; do not enable identity document operations |
 | Child/guardian consent ledger | No production evidence of age-based consent lifecycle, verified legal-guardian consent, withdrawal or child feature gating | **Blocked** |
+| PSE private registration / business identity | No verified PSE registration evidence, NIB/KBLI review or registered operator details are included in the current project evidence | **Blocked** |
 | DPIA / feature risk assessment | No completed approved DPIA or per-feature PP TUNAS risk self-assessment evidence | **Blocked** |
 | Privacy officer / controller-processor contracts | No named appointed privacy officer evidence, DPA, sub-processor register or controller/processor schedule in current release evidence | **Blocked** |
 | Data-subject rights | No end-to-end DSAR workflow with statutory deadlines and audit evidence verified | **Blocked** |
@@ -107,13 +112,14 @@ The evidence above is an engineering snapshot, not a statement that the product 
 ### P0 — before any child-facing production use
 
 1. Legal counsel approves the controller/processor model, child-service scope, age bands, consent rules and cross-border transfer model.
-2. Complete and approve DPIA and PP TUNAS feature-risk self-assessment; document the reporting/submission obligations and evidence owner.
-3. Implement and test guardian identity/authority verification, child consent, per-feature consent, withdrawal, refusal, suspension and data deletion.
-4. Keep child-facing accounts/features disabled until required consent and age checks pass.
-5. Provision identity-document encryption key through a managed secret store with separate recoverable backup, rotation and restore drill; never share key material in chat.
-6. Appoint privacy officer/DPO function where legally required; sign DPA and sub-processor terms with each institution.
-7. Confirm data residency, subprocessors and international-transfer safeguards.
-8. Complete live two-tenant and role-based security UAT.
+2. Verify the operating legal entity, NIB/KBLI and whether PONDOK OS must register as a PSE Lingkup Privat under PP 71/2019 and Permenkominfo 5/2020 as amended; retain registration evidence or written legal determination.
+3. Complete and approve DPIA and PP TUNAS feature-risk self-assessment; document the reporting/submission obligations and evidence owner.
+4. Implement and test guardian identity/authority verification, child consent, per-feature consent, withdrawal, refusal, suspension and data deletion.
+5. Keep child-facing accounts/features disabled until required consent and age checks pass.
+6. Provision identity-document encryption key through a managed secret store with separate recoverable backup, rotation and restore drill; never share key material in chat.
+7. Appoint privacy officer/DPO function where legally required; sign DPA and sub-processor terms with each institution.
+8. Confirm data residency, subprocessors and international-transfer safeguards.
+9. Complete live two-tenant and role-based security UAT.
 
 ### P1 — before general commercial launch
 
