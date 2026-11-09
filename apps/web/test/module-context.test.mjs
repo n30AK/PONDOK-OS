@@ -17,7 +17,7 @@ test("student master workspace contains only student and guardian resources", as
     "student-identity-documents",
   ]);
   for (const key of ["instructor-profiles", "employee-assignments", "hr-departments", "hr-positions", "employees", "hr-contracts", "hr-payroll-periods", "hr-payroll-runs", "campuses"]) {
-    assert.equal(resources.find((item) => item.key === key)?.group, "Master Data Santri", false, `${key} must not appear under student master data`);
+    assert.notEqual(resources.find((item) => item.key === key)?.group, "Master Data Santri", `${key} must not appear under student master data`);
   }
 });
 
