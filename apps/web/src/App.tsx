@@ -62,6 +62,7 @@ export default function App() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationChoice[]>([]);
   const [screen, setScreen] = useState<Screen>("overview");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [moduleResource, setModuleResource] = useState("academic-years");
   const [operationsArea, setOperationsArea] = useState<OperationsArea>("finance");
@@ -82,6 +83,20 @@ export default function App() {
   const [campusId, setCampusId] = useState(() => "");
   const [birthDate, setBirthDate] = useState("");
   const [genderCode, setGenderCode] = useState("unspecified");
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileNavOpen]);
 
   useEffect(() => {
     let active = true;
@@ -353,8 +368,8 @@ export default function App() {
       <button type="button" className="text-button" onClick={() => void signOut()}>Keluar</button>
     </section></main>;
   }
-  return <div className="app-shell">
-    <aside className="sidebar">
+  return <div className={mobileNavOpen ? "app-shell mobile-nav-open" : "app-shell"}>
+    <aside id="workspace-sidebar" className="sidebar" onClickCapture={() => setMobileNavOpen(false)}>
       <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>PONDOK OS</strong><small>INSTITUTION WORKSPACE</small></div></div>
       <div className="side-label">MENU UTAMA</div>
       <button type="button" className={screen === "overview" ? "nav-item active" : "nav-item"} onClick={() => { setPreviewMode(false); setScreen("overview"); setError(""); }}><span>⌂</span> Ringkasan</button>
@@ -376,8 +391,9 @@ export default function App() {
       <button type="button" className={screen === "modules" && moduleResource === "all" ? "nav-item active" : "nav-item"} onClick={() => openModule("all")}><span>☷</span> Semua Modul</button>
       <div className="sidebar-bottom"><div className="secure-note"><span className={tenant?.security?.status === "protected" ? "secure-dot" : "secure-dot warning"} />{tenant?.security?.status === "protected" ? ` Isolasi data aktif · ${tenant.security.protectedTables}/${tenant.security.tenantTables} tabel terlindungi` : " Status isolasi belum terverifikasi"}</div><div className="profile"><div className="avatar">{initials}</div><div className="profile-text"><strong>{user.name || user.email}</strong><small>{user.email}</small></div><button className="icon-button" title="Keluar" onClick={() => void signOut()}>↗</button></div></div>
     </aside>
+    {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Tutup menu navigasi" onClick={() => setMobileNavOpen(false)} />}
     <main className="main-area">
-      <header className="topbar"><div><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : "Ringkasan"}</strong></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
+      <header className="topbar"><div className="topbar-leading"><button type="button" className="mobile-menu-toggle" aria-label={mobileNavOpen ? "Tutup menu navigasi" : "Buka menu navigasi"} aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar" onClick={() => setMobileNavOpen(value => !value)}><span /><span /><span /></button><div className="topbar-crumbs"><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : "Ringkasan"}</strong></div></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
