@@ -74,11 +74,15 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
  const quoteItem=path.match(/^\/v1\/platform\/erp\/quotes\/([0-9a-f-]{36})$/i);
  const contractCollection=path==="/v1/platform/erp/contracts";
  const contractAction=path.match(/^\/v1\/platform\/erp\/contracts\/([0-9a-f-]{36})\/(submit|approve|reject)$/i);
+ const contractSubscriptions=path.match(/^\/v1\/platform\/erp\/contracts\/([0-9a-f-]{36})\/subscriptions$/i);
  const contractItem=path.match(/^\/v1\/platform\/erp\/contracts\/([0-9a-f-]{36})$/i);
- if(!quoteCollection&&!quoteAction&&!quoteItem&&!contractCollection&&!contractAction&&!contractItem)return false;
+ const subscriptionCollection=path==="/v1/platform/erp/subscriptions";
+ const subscriptionItem=path.match(/^\/v1\/platform\/erp\/subscriptions\/([0-9a-f-]{36})$/i);
+ if(!quoteCollection&&!quoteAction&&!quoteItem&&!contractCollection&&!contractAction&&!contractItem&&!contractSubscriptions&&!subscriptionCollection&&!subscriptionItem)return false;
  const quoteId=quoteAction?.[1]??quoteItem?.[1],quoteVerb=quoteAction?.[2]?.toLowerCase();
- const contractId=contractAction?.[1]??contractItem?.[1],contractVerb=contractAction?.[2]?.toLowerCase();
- if((quoteId&&!UUID.test(quoteId))||(contractId&&!UUID.test(contractId))){reply(res,400,{error:"invalid_resource_id"});return true;}
+ const contractId=contractAction?.[1]??contractItem?.[1]??contractSubscriptions?.[1],contractVerb=contractAction?.[2]?.toLowerCase();
+ const subscriptionId=subscriptionItem?.[1];
+ if((quoteId&&!UUID.test(quoteId))||(contractId&&!UUID.test(contractId))||(subscriptionId&&!UUID.test(subscriptionId))){reply(res,400,{error:"invalid_resource_id"});return true;}
 
  if(req.method==="GET"){
   try{
@@ -95,6 +99,13 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
     }
     if(contractCollection){
      const result=await c.query(`SELECT k.id,k.contract_number AS "contractNumber",k.customer_id AS "customerId",cu.display_name AS "customerName",k.quote_id AS "quoteId",k.status,k.starts_on AS "startsOn",k.ends_on AS "endsOn",k.renewal_mode AS "renewalMode",k.created_at AS "createdAt" FROM platform.contracts k JOIN platform.customers cu ON cu.id=k.customer_id ORDER BY k.created_at DESC LIMIT 100`);
+     return{items:result.rows,returned:result.rows.length};
+    }
+    if(subscriptionCollection||subscriptionItem){
+     const result=await c.query(`SELECT s.id,s.customer_id AS "customerId",cu.display_name AS "customerName",s.contract_id AS "contractId",k.contract_number AS "contractNumber",s.product_id AS "productId",p.product_name AS "productName",s.quote_line_id AS "quoteLineId",s.status,s.starts_at AS "startsAt",s.ends_at AS "endsAt",s.next_billing_at AS "nextBillingAt",s.quantity,s.unit_price AS "unitPrice",s.discount_amount AS "discountAmount",s.tax_amount AS "taxAmount",s.line_total AS "lineTotal",s.currency,s.billing_interval AS "billingInterval",s.created_at AS "createdAt"
+      FROM platform.subscriptions s JOIN platform.customers cu ON cu.id=s.customer_id LEFT JOIN platform.contracts k ON k.id=s.contract_id JOIN platform.product_catalog p ON p.id=s.product_id
+      ${subscriptionItem?"WHERE s.id=$1::uuid":""} ORDER BY s.created_at DESC LIMIT 100`,subscriptionItem?[subscriptionId]:[]);
+     if(subscriptionItem)return{item:result.rows[0]??null};
      return{items:result.rows,returned:result.rows.length};
     }
     if(contractItem){
@@ -163,6 +174,67 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
    if(scoped.value && "duplicate" in scoped.value && scoped.value.duplicate){reply(res,409,{error:"contract_already_exists_for_quote"});return true;}
    reply(res,201,{data:scoped.value?.item});
   }catch(e){reply(res,500,{error:"contract_create_failed"});}
+  return true;
+ }
+
+ if(req.method==="POST"&&contractSubscriptions){
+  const body=await readJson(req);if(!body){reply(res,400,{error:"invalid_json_or_body_too_large"});return true;}
+  if(Object.keys(body).length){reply(res,422,{error:"subscription_generation_does_not_accept_overrides"});return true;}
+  try{
+   const scoped=await withAdmin(pool,userId,async c=>{
+    const contract=await c.query<{id:string;customer_id:string;quote_id:string|null;status:string;starts_on:string|null;ends_on:string|null}>(
+     "SELECT id,customer_id,quote_id,status,starts_on,ends_on FROM platform.contracts WHERE id=$1::uuid FOR UPDATE",[contractId]);
+    const k=contract.rows[0];
+    if(!k)return{error:"contract_not_found" as const};
+    if(k.status!=="active")return{error:"contract_must_be_active" as const};
+    if(!k.quote_id)return{error:"contract_quote_required" as const};
+    const quote=await c.query<{status:string;currency:string}>("SELECT status,currency FROM platform.quotes WHERE id=$1::uuid",[k.quote_id]);
+    if(!quote.rows[0]||!["approved","accepted"].includes(quote.rows[0].status))return{error:"approved_quote_required" as const};
+    const lines=await c.query<{id:string;product_id:string;quantity:string;unit_price:string;discount_amount:string;tax_amount:string;line_total:string;product_type:string;billing_interval:string;is_active:boolean}>(
+     `SELECT ql.id,ql.product_id,ql.quantity::text,ql.unit_price::text,ql.discount_amount::text,ql.tax_amount::text,ql.line_total::text,
+       p.product_type,p.billing_interval,p.is_active
+      FROM platform.quote_lines ql JOIN platform.product_catalog p ON p.id=ql.product_id
+      WHERE ql.quote_id=$1::uuid AND p.product_type IN ('subscription','module')
+        AND p.billing_interval IN ('monthly','quarterly','yearly')
+      ORDER BY ql.id`,[k.quote_id]);
+    if(!lines.rows.length)return{error:"contract_has_no_recurring_products" as const};
+    if(lines.rows.some(x=>!x.is_active))return{error:"contract_contains_inactive_recurring_product" as const};
+    if(lines.rows.some(x=>!Number.isSafeInteger(Number(x.quantity))||Number(x.quantity)<1))return{error:"recurring_quantity_must_be_positive_integer" as const};
+
+    const startsAt=k.starts_on?new Date(`${String(k.starts_on).slice(0,10)}T00:00:00.000Z`):new Date();
+    const endsAt=k.ends_on?new Date(`${String(k.ends_on).slice(0,10)}T23:59:59.999Z`):null;
+    if(endsAt&&endsAt.getTime()<startsAt.getTime())return{error:"contract_period_invalid" as const};
+    const now=Date.now();
+    const status=startsAt.getTime()>now?"scheduled":"active";
+    const results:Record<string,unknown>[]=[];
+    let created=0;
+    for(const line of lines.rows){
+     const existing=await c.query("SELECT id,status FROM platform.subscriptions WHERE quote_line_id=$1::uuid FOR UPDATE",[line.id]);
+     if(existing.rows[0]){results.push(existing.rows[0] as Record<string,unknown>);continue;}
+     const inserted=await c.query(
+      `INSERT INTO platform.subscriptions
+       (customer_id,contract_id,product_id,quote_line_id,status,starts_at,ends_at,next_billing_at,quantity,unit_price,
+        discount_amount,tax_amount,line_total,currency,billing_interval,created_by)
+       VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6::timestamptz,$7::timestamptz,$6::timestamptz,$8::integer,
+        $9::numeric,$10::numeric,$11::numeric,$12::numeric,$13,$14,$15::uuid)
+       RETURNING id,status,quote_line_id AS "quoteLineId",product_id AS "productId",starts_at AS "startsAt",
+        ends_at AS "endsAt",next_billing_at AS "nextBillingAt",quantity,unit_price AS "unitPrice",
+        discount_amount AS "discountAmount",tax_amount AS "taxAmount",line_total AS "lineTotal",currency,billing_interval AS "billingInterval"`,
+      [k.customer_id,k.id,line.product_id,line.id,status,startsAt.toISOString(),endsAt?.toISOString()??null,
+       Number(line.quantity),line.unit_price,line.discount_amount,line.tax_amount,line.line_total,quote.rows[0].currency,line.billing_interval,userId]);
+     const subscription=inserted.rows[0] as {id:string}|undefined;
+     if(!subscription)throw new Error("subscription_insert_failed");
+     await audit(c,userId,"commercial.subscription.created","subscription",subscription.id,{contractId:k.id,quoteLineId:line.id,billingInterval:line.billing_interval,status});
+     results.push(subscription as Record<string,unknown>);created++;
+    }
+    return{items:results,created,existing:results.length-created,entitlementsGranted:false};
+   });
+   if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
+   const value=scoped.value as {error?:string;created?:number}|undefined;
+   if(value?.error==="contract_not_found"||value?.error==="contract_quote_required"){reply(res,404,{error:value.error});return true;}
+   if(value?.error){reply(res,409,{error:value.error});return true;}
+   reply(res,value?.created?201:200,{data:scoped.value});
+  }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:errorCode(e)==="23505"?"subscription_already_exists":"subscription_generation_failed"});}
   return true;
  }
 
