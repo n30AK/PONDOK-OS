@@ -174,3 +174,16 @@
 @media(prefers-reduced-motion:reduce){
   .sidebar{transition:none}
 }
+
+
+/* Accessible password visibility control and account recovery forms. */
+.password-field{position:relative;display:flex;align-items:center;width:100%;margin-top:0}
+.login-card .password-field input{width:100%;padding-right:48px}
+.password-visibility{position:absolute;right:7px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:#587468;padding:7px}
+.password-visibility:hover{background:#edf4ef;color:#174b3e}
+.password-visibility:focus-visible{outline:2px solid #548b79;outline-offset:1px}
+.password-visibility svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.forgot-password-link{display:block;margin:10px 0 0 auto;padding:2px 0;color:#28634f;font-size:11px}
+.forgot-password-link:hover,.auth-toggle:hover{text-decoration:underline}
+.login-card .password-field{margin-top:0}
+.login-card label .password-field{gap:0}
