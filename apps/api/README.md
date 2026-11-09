@@ -29,15 +29,15 @@ Never commit populated environment files or print database URLs in logs. Never m
 
 Each protected operation must verify identity, active organization membership or platform Super Admin authority, and the required permission. Tenant-owned queries must include organization scope. Authenticated tenant handlers use a checked-out PostgreSQL connection and transaction-local tenant context; runtime database roles are restricted to prevent owner-level RLS bypass.
 
-## Development deployment snapshot (2026-11-08)
+## Development deployment snapshot (2026-11-09)
 
 - Neon project: `frosty-cherry-92983148`.
 - Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, Development deployment #53, Node.js 24 (completed).
-- Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced.
+- Function: `pondokapi`, Development deployment #56, Node.js 24 (completed).
+- Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced. The wider application catalog has 145 tables with RLS enabled and forced. Runtime-role policy coverage is 63/63 tenant tables and 79/79 platform tables.
 - Live migration ledger: through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction with an advisory lock; source-file SHA-256 checksums are recorded.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
-- No organizations, memberships, student profiles or HR employees exist yet.
+- No organizations, memberships, student profiles, HR employees, platform customers, subscriptions, module entitlements or module orders exist yet.
 - CI now exercises actual API-level isolation with two signed synthetic JWT identities against disposable PostgreSQL. Live Neon Auth two-user/two-tenant acceptance and institution UAT are still pending.
 
 The Development deployment workflow and deployment script are scoped to the Development project/branch. Do not repoint them to Production as part of routine work. Production branch `br-late-cherry-b3uqtuvh` must remain untouched.
@@ -60,7 +60,7 @@ Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026
 
 ## Central activation and company administration
 
-The distribution model uses company approval. New institutions submit an authenticated activation request; the request does not itself create a tenant or membership. A company Super Administrator approves or rejects it through Central Command.
+The distribution model uses company approval. New institutions submit an authenticated activation request; the request does not itself create a tenant or membership. A company Super Administrator approves or rejects it through Central Command. The retired public `POST /v1/bootstrap/organization` endpoint returns HTTP 410; the old direct-database `db:bootstrap` command and token generator are removed.
 
 - `GET /v1/platform/admin/me`: reports whether the authenticated user has an active company Super Admin grant.
 - `POST /v1/platform/activation-requests`: submits an institution request bound to the authenticated user.
@@ -78,4 +78,4 @@ The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode fr
 
 ## Readiness boundary
 
-A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The live HTTP readiness and legacy-route checks are being added to the Development deployment workflow; do not treat the previous Function deployment as independently verified until that workflow passes. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.

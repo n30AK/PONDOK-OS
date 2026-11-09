@@ -1,6 +1,6 @@
 # First institution activation (centralized SaaS)
 
-PONDOK OS uses a centralized company approval model. New institutions must not create their own tenant through the legacy bootstrap form.
+PONDOK OS uses a centralized company approval model. New institutions must not create their own tenant directly. Tenant creation is controlled by the authenticated applicant → company Super Administrator approval → one-time activation-token workflow.
 
 ## Development rollout prerequisites
 
@@ -52,6 +52,6 @@ This bootstrap is only for the first Development tenant. Subsequent institutions
 
 ## Legacy bootstrap
 
-`POST /v1/bootstrap/organization` is disabled and returns HTTP 410 in the centralized distribution architecture. The old `PONDOK_BOOTSTRAP_TOKEN_SHA256` mechanism must not be used for institution onboarding. Remove its Development Function environment value only after the new API build is deployed and its route-disable behavior is verified.
+`POST /v1/bootstrap/organization` is disabled in the API source and returns HTTP 410. The old token-based setup form and `PONDOK_BOOTSTRAP_TOKEN_SHA256` configuration have been retired from the application and deployment workflow. The Development Function metadata still showed a legacy value in deployment #56; remove that stale value only after the next Development deployment workflow passes its live HTTP 410 check. Do not set the variable again. Direct HTTP verification of the currently active deployment has not yet been independently confirmed.
 
 No instruction in this runbook authorizes a Production database migration, Super Admin grant, Function deployment, or credential change.

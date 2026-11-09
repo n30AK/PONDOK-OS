@@ -68,26 +68,25 @@ The repository includes a manual workflow named **PONDOK OS GitHub Pages**. It b
 
 The expected URL is `https://n30ak.github.io/PONDOK-OS/`. The origin `https://n30ak.github.io` has been added to Neon Auth trusted domains on the **development branch only**.
 
-## 5. First-institution bootstrap
+## 5. Institution activation
 
-The API does not enable first-organization setup unless a one-time SHA-256 digest is configured.
+Institution onboarding uses the centralized approval model; it does not use the legacy first-setup form or a repository secret.
 
-1. Generate the one-time token locally from the repository root with `node scripts/create-bootstrap-token.mjs`.
-2. Keep the raw token private; do not paste it into chat, GitHub, or logs.
-3. Add only the 64-character SHA-256 digest as a temporary GitHub Actions repository secret named `PONDOK_BOOTSTRAP_TOKEN_SHA256`.
-4. Run **Deploy PONDOK OS API to Neon Development** again with `DEPLOY_DEV_API`.
-5. Use the raw token once in the first-setup screen after the web workspace is live.
-6. Immediately delete the `PONDOK_BOOTSTRAP_TOKEN_SHA256` GitHub secret and redeploy the API without it.
-7. Verify that a second bootstrap attempt is rejected and that the owner can sign in.
+1. The institution contact signs in or creates an account through Neon Auth and verifies the account email.
+2. From the authenticated workspace entry page, submit an institution activation request.
+3. A company Super Administrator reviews the request in the separate Central Command application.
+4. If approved, the operator receives a one-time activation token. Deliver it only to the verified applicant through an approved channel.
+5. The applicant signs in with the same account and redeems the token in the activation panel. The API atomically creates the tenant, owner membership, main campus and audit events.
+6. Confirm the owner can enter the tenant workspace and a different user cannot.
 
-The deployment script validates the digest format and never prints its value. Do not set this secret before the API and web workspace are ready for first setup.
+The deployment workflow verifies that `POST /v1/bootstrap/organization` returns HTTP 410. The retired `PONDOK_BOOTSTRAP_TOKEN_SHA256` variable is not used by current application code or deployment configuration; remove any stale copy from the Development Function environment after the live 410 check passes. Never configure this variable for a new deployment.
 
 ## 6. Remaining gates after hosting
 
 Hosting the API and static workspace does not activate database RLS or initialize an institution.
 
 - Deploy the matching API build first. This is required because the API sets transaction-local tenant context.
-- Apply migration 0013 to the development branch using the repository migration runner, then verify all 59 protected tables have ENABLE + FORCE RLS.
+- Apply migration 0013 to the development branch using the repository migration runner, then verify tenant-owned and platform-owned tables have the expected ENABLE + FORCE RLS policies and restricted runtime-role coverage.
 - Verify live Neon Auth sign-in, owner bootstrap and two-tenant isolation.
 - Do not apply the migration or deploy this workflow to `br-late-cherry-b3uqtuvh` (production) without a separate production-readiness approval.
 

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { handlePlatformRequest, validateActivationRequest } from "../dist/platform-admin.js";
 import { handleRequest } from "../dist/main.js";
 
@@ -204,4 +205,89 @@ test("non-admin cannot read platform audit feed", async () => {
   assert.equal(res.status, 403);
   assert.equal(JSON.parse(res.body).error, "platform_super_admin_required");
   assert.ok(!calls.some((call) => call.sql.startsWith("SELECT id, actor_user_id")));
+});
+
+
+test("activation redemption creates the tenant atomically and consumes a user-bound token", async () => {
+  const activationToken = "activation-token-with-more-than-forty-characters-1234567890";
+  const organizationId = "323e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const campusId = "523e4567-e89b-42d3-a456-426614174000";
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT t.request_id")) return { rows: [{
+      request_id: requestId, requested_by: userId, organization_name: valid.organizationName,
+      organization_slug: valid.organizationSlug, organization_type: valid.organizationType,
+      campus_code: valid.campusCode, campus_name: valid.campusName, status: "approved"
+    }] };
+    if (sql.startsWith("SELECT id FROM core.roles")) return { rows: [{ id: "623e4567-e89b-42d3-a456-426614174000" }] };
+    if (sql.startsWith("INSERT INTO core.organizations")) return { rows: [{ id: organizationId }] };
+    if (sql.startsWith("INSERT INTO core.organization_memberships")) return { rows: [{ id: membershipId }] };
+    if (sql.startsWith("INSERT INTO core.campuses")) return { rows: [{ id: campusId }] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/activate", "POST", { activationToken }), res, pool, userId);
+  assert.equal(res.status, 201);
+  assert.deepEqual(JSON.parse(res.body).data, { organizationId, membershipId, campusId });
+  const tokenLookup = calls.find((call) => call.sql.startsWith("SELECT t.request_id"));
+  assert.ok(tokenLookup);
+  assert.equal(Buffer.isBuffer(tokenLookup.values[0]), true);
+  assert.equal(tokenLookup.values[0].toString("hex"), createHash("sha256").update(activationToken, "utf8").digest("hex"));
+  assert.equal(tokenLookup.values[1], userId);
+  assert.ok(tokenLookup.sql.includes("t.consumed_at IS NULL"));
+  assert.ok(tokenLookup.sql.includes("t.expires_at > now()"));
+  assert.ok(tokenLookup.sql.includes("r.status = 'approved'"));
+  const roleSwitch = calls.findIndex((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime");
+  const tokenCheck = calls.findIndex((call) => call.sql.startsWith("SELECT t.request_id"));
+  const organizationInsert = calls.findIndex((call) => call.sql.startsWith("INSERT INTO core.organizations"));
+  const tokenConsume = calls.findIndex((call) => call.sql.startsWith("UPDATE platform.activation_tokens"));
+  const membershipInsert = calls.findIndex((call) => call.sql.startsWith("INSERT INTO core.organization_memberships"));
+  const campusInsert = calls.findIndex((call) => call.sql.startsWith("INSERT INTO core.campuses"));
+  assert.ok(roleSwitch >= 0 && roleSwitch < tokenCheck);
+  assert.ok(tokenCheck < organizationInsert && organizationInsert < tokenConsume);
+  assert.ok(tokenConsume < membershipInsert && membershipInsert < campusInsert);
+  assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO audit.audit_events")));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
+});
+
+test("activation token cannot be redeemed by another user or replayed after consumption", async () => {
+  const activationToken = "activation-token-with-more-than-forty-characters-1234567890";
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT t.request_id")) return { rows: [] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/activate", "POST", { activationToken }), res, pool, "923e4567-e89b-42d3-a456-426614174000");
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "activation_token_invalid_expired_or_used");
+  assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO core.organizations")));
+  assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO core.organization_memberships")));
+  const tokenLookup = calls.find((call) => call.sql.startsWith("SELECT t.request_id"));
+  assert.ok(tokenLookup);
+  assert.equal(tokenLookup.values[1], "923e4567-e89b-42d3-a456-426614174000");
+  assert.ok(calls.some((call) => call.sql === "COMMIT"), "a rejected read-only token lookup closes its transaction cleanly");
+  assert.ok(!calls.some((call) => call.sql === "ROLLBACK"));
+});
+
+test("activation redemption rolls back all tenant creation when a later insert fails", async () => {
+  const activationToken = "activation-token-with-more-than-forty-characters-1234567890";
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT t.request_id")) return { rows: [{
+      request_id: requestId, requested_by: userId, organization_name: valid.organizationName,
+      organization_slug: valid.organizationSlug, organization_type: valid.organizationType,
+      campus_code: valid.campusCode, campus_name: valid.campusName, status: "approved"
+    }] };
+    if (sql.startsWith("SELECT id FROM core.roles")) return { rows: [{ id: "623e4567-e89b-42d3-a456-426614174000" }] };
+    if (sql.startsWith("INSERT INTO core.organizations")) return { rows: [{ id: "323e4567-e89b-42d3-a456-426614174000" }] };
+    if (sql.startsWith("INSERT INTO core.organization_memberships")) return { rows: [{ id: "423e4567-e89b-42d3-a456-426614174000" }] };
+    if (sql.startsWith("INSERT INTO core.campuses")) { const error = new Error("simulated campus failure"); error.code = "23503"; throw error; }
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request("/v1/platform/activate", "POST", { activationToken }), res, pool, userId);
+  assert.equal(res.status, 500);
+  assert.equal(JSON.parse(res.body).error, "activation_failed");
+  assert.ok(calls.some((call) => call.sql === "ROLLBACK"));
+  assert.ok(!calls.some((call) => call.sql === "COMMIT"));
 });
