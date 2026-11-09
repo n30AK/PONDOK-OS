@@ -18,12 +18,12 @@ The repository currently contains:
 - Neon Managed Auth JWT verification and server-side organization membership/permission resolution.
 - Guarded first-institution setup flow using a one-time server-side SHA-256 token.
 - Transaction-scoped tenant context for authenticated API requests.
-- Tenant isolation migration using FORCE ROW LEVEL SECURITY for 59 organization-owned tables across 15 schema groups.
+- Tenant isolation uses FORCE ROW LEVEL SECURITY across 67 organization-owned tables in the current Development catalog, with restricted tenant and platform runtime roles.
 - CI integration tests for fail-closed tenant context, cross-tenant read/write isolation, and the first-institution bootstrap sequence under RLS.
 - Tenant-scoped API foundations for student records, finance journals, inventory items/warehouses/stock movements, HR employees and payroll transitions.
 - Indonesian React/Vite admin workspace with Neon Auth sign-in, first setup, tenant selection, student list/create, and initial finance/inventory/HR list + basic-record creation screens.
 - PostgreSQL domain foundations for library, PPDB, CMS, boarding, procurement, fixed assets, CRM and hybrid sync.
-- Integrated master data is active on Neon Development (migration 0018): structured student identity/address fields with dedicated address inputs in the web forms, guardian contact and legal-authority relations, educator profiles, temporal employee assignments, hierarchical departments/positions, and a separately encrypted student-health store. The Development API Function has its AES-256-GCM health key configured; real health-data acceptance and key recovery/rotation drills remain pending.
+- Integrated master data is active on Neon Development (migration 0018): structured student identity/address fields with dedicated address inputs in the web forms, guardian contact and legal-authority relations, educator profiles, temporal employee assignments, hierarchical departments/positions, and a separately encrypted student-health store. The Development API Function has its AES-256-GCM health key configured; real health-data acceptance and key recovery/rotation drills remain pending. Identity-document encryption remains fail-closed because its separate key is not configured.
 - Global system role templates and bootstrap workflows.
 - PWA shell caching, Docker images, Nginx reverse proxy and Compose deployment for cloud-connected mode.
 - CI executes migrations on disposable PostgreSQL 18, typechecks, builds workspaces and containers, and runs unit tests.
@@ -63,17 +63,17 @@ For container deployment, copy `.env.compose.example` to `.env` and follow [docs
 
 - Neon development branch: `br-proud-paper-b312lfxi`.
 - Neon production branch: `br-late-cherry-b3uqtuvh` — do not run development migrations here.
-- The Neon Development migration ledger includes migrations 0013–0019. Migration 0013 forces tenant RLS on 59 organization-owned tables across 15 schema groups; migration 0014 creates the `pondok_runtime` NOLOGIN/NOBYPASSRLS role; migrations 0017–0018 add the module registry and integrated master data; migration 0019 protects the membership authority table.
-- CI applies all migrations to disposable PostgreSQL 18; migrations 0013–0019 have also been explicitly applied and verified on Neon Development. Production remains untouched.
+- The Neon Development migration ledger is recorded through migration 0026. Migrations 0013–0019 establish tenant isolation and module/master-data foundations; 0020–0026 add Central Command, operational and guardian-authority foundations.
+- CI applies all migrations to disposable PostgreSQL 18; migrations through 0026 have been explicitly applied and verified on Neon Development. Production remains untouched.
 - Bootstrap and migration commands are explicit; they are not run automatically at application startup.
 
 ## Security boundaries
 
 - The backend verifies JWTs and resolves membership/permissions from the selected organization.
 - Authenticated tenant requests set `app.user_id` and `app.organization_id` transaction-locally before tenant queries.
-- Migration 0013 enables and forces RLS on 59 organization-owned tables across 15 schema groups. Its integration test verifies missing-context denial, bidirectional tenant isolation, and cross-tenant write rejection.
-- Migrations 0013–0019 are recorded on Neon Development. All organization-owned tables with an `organization_id` column now have ENABLE + FORCE RLS, including the membership authority table hardened by migration 0019. API tenant transactions switch to `pondok_runtime` before tenant queries so the `neondb_owner` connection cannot bypass RLS. The Development `pondokapi` Function deployment #25 is completed and includes the health-encryption key/version secrets. Live two-tenant API acceptance remains pending.
-- Migration 0018 is applied only to Neon Development; Production remains untouched. One verified Development Super Administrator is active and the owner role template is ready. No organization or membership exists yet. The first-tenant form is available in Central Command and requires the actual institution and main-campus details before it can create the first workspace.
+- The Development catalog verifies ENABLE + FORCE RLS on all 67 organization-owned tables. The runtime-role audit separately verifies 63/63 tenant tables and 79/79 platform tables under restricted runtime roles. CI tests missing-context denial, bidirectional tenant isolation, and cross-tenant write rejection.
+- Migrations 0013–0026 are recorded on Neon Development. All 67 organization-owned tables with an `organization_id` column have ENABLE + FORCE RLS, including the membership authority table. API tenant and platform transactions switch to `pondok_runtime` and `pondok_platform_runtime` respectively. The Development `pondokapi` Function deployment #56 is completed; identity-document encryption is still fail-closed because `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent. Live Neon Auth two-user/two-tenant acceptance remains pending.
+- Migration 0018 is applied only to Neon Development; Production remains untouched. One verified Development Super Administrator is active and the owner role template is ready. No organization or membership exists yet. The first Development tenant must be initialized by the verified company Super Administrator in the separate Central Command application using real institution and main-campus details. Subsequent institutions use the authenticated applicant → approval → one-time activation-token workflow.
 - `core.organization_memberships` now has ENABLE + FORCE RLS with tenant self-read, platform self/admin read, and controlled insert policies. Applicant membership creation requires a consumed activation token bound to the target organization.
 - These controls are not a completed security certification. The development database currently has no institution records; no real student/guardian/employee data should be imported before staging acceptance.
 - Never commit database URLs, passwords, signing keys, bootstrap tokens, or personal data.
