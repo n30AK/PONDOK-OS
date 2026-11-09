@@ -39,7 +39,7 @@ const enterpriseAreas: Record<EnterpriseArea, { title: string; description: stri
   entitlements: { title: "Module Entitlement Registry", description: "Daftar hak akses modul yang terikat pada pelanggan, instalasi, kontrak, dan siklus pesanan.", status: "Registry baca-saja; pemberian, perubahan, penangguhan, dan pencabutan entitlement belum diaktifkan sampai workflow order, approval, billing, dan audit lengkap.", tables: ["module_entitlements", "module_orders", "module_lifecycle_events"], next: "Pantau entitlement, status aktivasi dan billing, serta histori lifecycle. Tidak ada perubahan akses dari halaman ini." },
   crm: { title: "CRM & Customer Success", description: "Siklus prospek, pelanggan, kontak, komunikasi, onboarding, dan retensi pelanggan PONDOK OS.", status: "API dan workspace CRM aktif untuk lead, pelanggan, dan kontak; pipeline lanjutan belum lengkap", tables: ["crm_leads", "customers", "customer_contacts"], next: "API CRM, pipeline prospek, aktivitas sales, customer onboarding, dan histori komunikasi." },
   catalog: { title: "Product & Module Catalog", description: "Katalog produk, paket layanan, modul, versi, harga, entitlement, dan marketplace modul.", status: "Katalog produk dasar aktif; paket, versi modul, dependency, dan provisioning entitlement belum lengkap", tables: ["product_catalog", "module_catalog", "module_entitlements"], next: "Editor katalog, versi dan harga, dependency modul, kompatibilitas, serta approval publikasi." },
-  contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "API penawaran dan persetujuan kontrak terhubung · subscription dan billing lanjutan menyusul", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Subscription, renewal automation, perubahan paket, dan entitlement per instalasi." },
+  contracts: { title: "Kontrak, Lisensi & Subscription", description: "Penawaran yang disetujui, kontrak pelanggan, periode lisensi, perpanjangan, perubahan paket, dan terminasi.", status: "API penawaran, approval kontrak, dan pembuatan subscription recurring dari kontrak aktif tersedia · recurring billing dan entitlement menyusul", tables: ["quotes", "quote_lines", "contracts", "subscriptions"], next: "Recurring invoice scheduler, renewal automation, perubahan paket, serta provisioning dan entitlement per instalasi." },
   billing: { title: "Billing, Invoice & Pembayaran", description: "Tagihan modul, biaya implementasi dan maintenance, invoice, penerimaan pembayaran, piutang, dan rekonsiliasi.", status: "API invoice, pembayaran, dan posting jurnal tersedia · credit note dan rekonsiliasi menyusul", tables: ["invoices", "invoice_lines", "payments", "maintenance_agreements", "maintenance_service_events"], next: "Invoice PDF, credit note, refund, aging piutang, recurring billing, dan rekonsiliasi bank." },
   accounting: { title: "Accounting & General Ledger", description: "Chart of accounts, jurnal umum, buku besar, neraca saldo, rekonsiliasi, tutup buku, dan audit trail.", status: "Chart of Accounts dan posting double-entry invoice/pembayaran terhubung · laporan keuangan menyusul", tables: ["chart_of_accounts", "journal_entries", "journal_lines"], next: "Reversal, trial balance, general ledger drilldown, bank reconciliation, period close, P&L, balance sheet, dan cash flow." },
   support: { title: "Customer Support, Incident & SLA", description: "Tiket dukungan, klasifikasi dampak, eskalasi, insiden, SLA, root cause, dan komunikasi penyelesaian.", status: "API baca dan form intake tiket/insiden tersedia · assignment, eskalasi, SLA breach, dan penyelesaian terkontrol menyusul", tables: ["support_cases", "installation_incidents"], next: "Form tiket dan insiden dapat membuat catatan awal; workflow assignment, SLA timer, eskalasi, dan close-out belum lengkap." },
@@ -414,6 +414,7 @@ type CatalogProduct={id:string;productCode:string;productName:string;description
 
 type CommercialQuote={id:string;quoteNumber:string;customerId:string;customerName:string;status:string;currency:string;subtotal:string|number;discountTotal:string|number;taxTotal:string|number;grandTotal:string|number;validUntil?:string|null;createdAt:string};
 type CommercialContract={id:string;contractNumber:string;customerId:string;customerName:string;quoteId:string;status:string;startsOn?:string|null;endsOn?:string|null;renewalMode:string;createdAt:string};
+type CommercialSubscription={id:string;customerId:string;customerName:string;contractId:string;contractNumber:string;productId:string;productName:string;quoteLineId:string;status:string;startsAt:string;endsAt?:string|null;nextBillingAt?:string|null;quantity:number;unitPrice:string|number;discountAmount:string|number;taxAmount:string|number;lineTotal:string|number;currency:string;billingInterval:string;createdAt:string};
 
 type BillingInvoice={id:string;invoiceNumber:string;customerId:string;customerName:string;contractId:string;status:string;currency:string;issuedOn?:string|null;dueOn?:string|null;grandTotal:string|number;amountPaid:string|number;journalEntryId?:string|null};
 type BillingPayment={id:string;paymentReference:string;customerId:string;customerName:string;invoiceId:string;invoiceNumber?:string|null;amount:string|number;paymentMethod:string;status:string;paidAt?:string|null;journalEntryId?:string|null};
@@ -488,20 +489,21 @@ function AccountingWorkspace(){
 }
 
 function CommercialWorkspace(){
- const [quotes,setQuotes]=useState<CommercialQuote[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]),[customers,setCustomers]=useState<CrmCustomer[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
+ const [quotes,setQuotes]=useState<CommercialQuote[]>([]),[contracts,setContracts]=useState<CommercialContract[]>([]),[subscriptions,setSubscriptions]=useState<CommercialSubscription[]>([]),[customers,setCustomers]=useState<CrmCustomer[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
  const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [quoteForm,setQuoteForm]=useState({customerId:"",productId:"",quantity:"1",unitPrice:"0",discountAmount:"0",taxAmount:"0",validUntil:""});
  const [contractForm,setContractForm]=useState({quoteId:"",startsOn:"",endsOn:"",renewalMode:"manual"});
  const load=useCallback(async()=>{
   setBusy(true);setError("");
   try{
-   const [q,k,c,p]=await Promise.all([
+   const [q,k,s,c,p]=await Promise.all([
     request<{items:CommercialQuote[]}>("/v1/platform/erp/quotes"),
     request<{items:CommercialContract[]}>("/v1/platform/erp/contracts"),
+    request<{items:CommercialSubscription[]}>("/v1/platform/erp/subscriptions"),
     request<{items:CrmCustomer[]}>("/v1/platform/erp/customers?limit=100"),
     request<{items:CatalogProduct[]}>("/v1/platform/erp/catalog?activeOnly=true")
    ]);
-   setQuotes(q.items??[]);setContracts(k.items??[]);setCustomers(c.items??[]);setProducts(p.items??[]);
+   setQuotes(q.items??[]);setContracts(k.items??[]);setSubscriptions(s.items??[]);setCustomers(c.items??[]);setProducts(p.items??[]);
    const firstCustomer=c.items?.[0];
    if(!quoteForm.customerId&&firstCustomer)setQuoteForm(x=>({...x,customerId:firstCustomer.id}));
    if(!contractForm.quoteId){const approved=(q.items??[]).find(x=>["approved","accepted"].includes(x.status));if(approved)setContractForm(x=>({...x,quoteId:approved.id}));}
@@ -533,6 +535,15 @@ function CommercialWorkspace(){
    quoteId:contractForm.quoteId,startsOn:contractForm.startsOn||null,endsOn:contractForm.endsOn||null,renewalMode:contractForm.renewalMode
   })});setNotice("Draft kontrak berhasil dibuat.");await load();}
   catch(e){setError(e instanceof Error?e.message:"Kontrak gagal dibuat.");}
+  finally{setSaving(false);}
+ }
+ async function createSubscriptions(contractId:string){
+  setSaving(true);setError("");setNotice("");
+  try{
+   const result=await request<{created:number;existing:number;items:CommercialSubscription[];entitlementsGranted:boolean}>(`/v1/platform/erp/contracts/${contractId}/subscriptions`,{method:"POST",body:"{}"});
+   setNotice(`Langganan dibuat: ${result.created}; sudah ada: ${result.existing}. Pemberian entitlement modul belum dilakukan.`);
+   await load();
+  }catch(e){setError(e instanceof Error?e.message:"Pembuatan langganan dari kontrak gagal.");}
   finally{setSaving(false);}
  }
  async function contractAction(id:string,action:"submit"|"approve"|"reject"){
@@ -575,9 +586,12 @@ function CommercialWorkspace(){
   </form>
  </section>
  <section className="panel"><PanelTitle title="Kontrak pelanggan" subtitle="Aktivasi membutuhkan persetujuan Super Admin kedua; pemohon tidak dapat menyetujui permintaannya sendiri."/>
-  {contracts.length===0?<Empty text="Belum ada kontrak."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Periode</th><th>Perpanjangan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{contracts.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.startsOn?date(x.startsOn):"—"} – {x.endsOn?date(x.endsOn):"—"}</td><td>{label(x.renewalMode)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"submit")}>Ajukan aktivasi</button>:x.status==="review"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void contractAction(x.id,"approve")}>Aktifkan</button><button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
+  {contracts.length===0?<Empty text="Belum ada kontrak."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Periode</th><th>Perpanjangan</th><th>Status</th><th>Subscription</th><th>Aksi</th></tr></thead><tbody>{contracts.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.startsOn?date(x.startsOn):"—"} – {x.endsOn?date(x.endsOn):"—"}</td><td>{label(x.renewalMode)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{(()=>{const count=subscriptions.filter(s=>s.contractId===x.id).length;return count?count+" langganan":x.status==="active"?<button className="secondary" disabled={saving} onClick={()=>void createSubscriptions(x.id)}>Buat langganan</button>:"Menunggu kontrak aktif";})()}</td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"submit")}>Ajukan aktivasi</button>:x.status==="review"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void contractAction(x.id,"approve")}>Aktifkan</button><button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
  </section>
- <p className="muted">Belum ada invoice, penerimaan pembayaran, subscription, atau jurnal otomatis pada tahap ini. Tagihan hanya akan dibuat setelah aturan komersial dan pembayaran disambungkan pada tahap berikutnya.</p>
+ <section className="panel"><PanelTitle title="Subscription pelanggan" subtitle="Dibuat dari baris recurring pada kontrak aktif; harga, diskon, pajak, dan interval disimpan sebagai snapshot."/>
+  {subscriptions.length===0?<Empty text="Belum ada subscription."/>:<div className="table-wrap"><table><thead><tr><th>Kontrak</th><th>Pelanggan</th><th>Produk</th><th>Periode</th><th>Kuantitas</th><th>Nilai per periode</th><th>Status</th></tr></thead><tbody>{subscriptions.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.productName}</td><td>{label(x.billingInterval)}<small>{date(x.startsAt)} – {x.endsAt?date(x.endsAt):"Tanpa akhir"}</small></td><td>{x.quantity}</td><td>{money(x.lineTotal,x.currency)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td></tr>)}</tbody></table></div>}
+ </section>
+ <p className="muted">Subscription tidak otomatis membuat invoice, menerima pembayaran, memposting jurnal, atau memberikan entitlement modul. Penagihan berkala dan provisioning akses tetap melalui workflow terpisah.</p>
  </div>;
 }
 
