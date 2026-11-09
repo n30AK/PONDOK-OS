@@ -147,7 +147,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
           const result = await client.query(
             `SELECT id,lead_number AS "leadNumber",organization_name AS "organizationName",contact_name AS "contactName",
               email,phone,source,stage,estimated_value AS "estimatedValue",currency,consent_status AS "consentStatus",
-              next_follow_up_at AS "nextFollowUpAt",created_at AS "createdAt",updated_at AS "updatedAt"
+              next_follow_up_at AS "nextFollowUpAt",(SELECT c.id FROM platform.customers c WHERE c.source_lead_id=platform.crm_leads.id) AS "convertedCustomerId",created_at AS "createdAt",updated_at AS "updatedAt"
              FROM platform.crm_leads WHERE ${filter} ORDER BY created_at DESC LIMIT $${values.length}`, values,
           );
           return { items: result.rows, limit, returned: result.rows.length };
