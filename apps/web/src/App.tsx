@@ -68,10 +68,17 @@ export default function App() {
   const [operationsArea, setOperationsArea] = useState<OperationsArea>("finance");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [resetPasswordMode, setResetPasswordMode] = useState(() => new URLSearchParams(window.location.search).has("token"));
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("token") ?? "");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [selfSignUp, setSelfSignUp] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => new URLSearchParams(window.location.search).has("error") ? "Tautan reset kata sandi tidak valid atau sudah kedaluwarsa. Minta tautan reset yang baru." : "");
   const [notice, setNotice] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -238,6 +245,40 @@ export default function App() {
       setError(reason instanceof Error ? reason.message : "Login gagal.");
     } finally { setBusy(false); }
   };
+  const requestPasswordReset = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!authClient) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.requestPasswordReset({
+        email: email.trim(),
+        redirectTo: `${window.location.origin}${window.location.pathname}`,
+      });
+      if (result.error) throw new Error(result.error.message);
+      setNotice("Jika alamat email terdaftar, tautan untuk membuat kata sandi baru akan dikirim ke kotak masuk email tersebut. Periksa juga folder spam.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Permintaan reset kata sandi gagal. Coba lagi nanti.");
+    } finally { setBusy(false); }
+  };
+
+  const submitPasswordReset = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!authClient || !resetToken) return;
+    if (newPassword.length < 8) { setError("Kata sandi baru minimal 8 karakter."); return; }
+    if (newPassword !== confirmNewPassword) { setError("Konfirmasi kata sandi belum sama."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.resetPassword({ newPassword, token: resetToken });
+      if (result.error) throw new Error(result.error.message);
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+      setResetPasswordMode(false); setResetToken(""); setNewPassword(""); setConfirmNewPassword("");
+      setShowNewPassword(false); setPassword(""); setForgotPasswordMode(false);
+      setNotice("Kata sandi berhasil diperbarui. Silakan masuk menggunakan kata sandi baru.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Reset kata sandi gagal. Minta tautan reset yang baru.");
+    } finally { setBusy(false); }
+  };
+
   const registerWorkspaceAccount = async (event: FormEvent) => {
     event.preventDefault();
     if (!authClient) return;
@@ -318,14 +359,34 @@ export default function App() {
         <div className="auth-foot">Dibangun untuk tata kelola yang aman, tertib, dan berkelanjutan.</div>
       </section>
       <section className="auth-panel">
-        {selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
+        {resetPasswordMode ? <form className="login-card" onSubmit={submitPasswordReset}>
+          <div className="eyebrow">PEMULIHAN AKUN</div>
+          <h2>Buat kata sandi baru</h2>
+          <p className="muted">Gunakan kata sandi baru yang kuat dan belum pernah dipakai pada akun lain.</p>
+          <label>Kata sandi baru<div className="password-field"><input type={showNewPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required /><button type="button" className="password-visibility" aria-label={showNewPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showNewPassword} onClick={() => setShowNewPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
+          <label>Ulangi kata sandi baru<div className="password-field"><input type={showNewPassword ? "text" : "password"} value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required /><button type="button" className="password-visibility" aria-label={showNewPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showNewPassword} onClick={() => setShowNewPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
+          {error && <div className="alert error">{error}</div>}
+          {notice && <div className="alert success">{notice}</div>}
+          <button className="primary full" disabled={busy || !authClient || !resetToken}>{busy ? "Memperbarui kata sandi…" : "Simpan kata sandi baru"}</button>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setResetPasswordMode(false); setResetToken(""); setNewPassword(""); setConfirmNewPassword(""); setError(""); setNotice(""); window.history.replaceState({}, "", window.location.pathname); }}>← Kembali ke login</button>
+        </form> : forgotPasswordMode ? <form className="login-card" onSubmit={requestPasswordReset}>
+          <div className="eyebrow">PEMULIHAN AKUN</div>
+          <h2>Lupa kata sandi?</h2>
+          <p className="muted">Masukkan email akun PONDOK OS. Jika terdaftar, kami akan mengirim tautan reset ke alamat tersebut.</p>
+          <label>Email akun<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
+          {error && <div className="alert error">{error}</div>}
+          {notice && <div className="alert success">{notice}</div>}
+          <button className="primary full" disabled={busy || !authClient}>{busy ? "Mengirim tautan…" : "Kirim tautan reset"}</button>
+          <button type="button" className="text-button auth-toggle" onClick={() => { setForgotPasswordMode(false); setError(""); setNotice(""); }}>← Kembali ke login</button>
+          <SupportLink />
+        </form> : selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
           <div className="eyebrow">PENDAFTARAN PENGGUNA</div>
           <h2>Buat akun PONDOK OS</h2>
           <p className="muted">Buat identitas akun terlebih dahulu. Akses data pesantren hanya diberikan melalui undangan dan penetapan peran oleh administrator lembaga.</p>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Nama lengkap<input value={adminName} onChange={(e) => setAdminName(e.target.value)} autoComplete="name" required maxLength={120} /></label>
           <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
-          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required /></label>
+          <label>Kata sandi<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required /><button type="button" className="password-visibility" aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Mendaftarkan akun…" : "Daftar akun"}</button>
@@ -338,7 +399,8 @@ export default function App() {
           <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
-          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
+          <label>Kata sandi<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /><button type="button" className="password-visibility" aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
+          <button type="button" className="text-button forgot-password-link" onClick={() => { setForgotPasswordMode(true); setError(""); setNotice(""); setPassword(""); }}>Lupa kata sandi?</button>
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
