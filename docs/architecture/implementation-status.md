@@ -6,7 +6,7 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 
 - Target: Neon project `frosty-cherry-92983148`, Development branch `br-proud-paper-b312lfxi`, database `neondb`.
 - The live catalog contains 67 tables with `organization_id`; all 67 have RLS enabled and forced.
-- The live migration ledger is recorded through 0028. Migrations 0024–0026 were applied to Development on 2026-11-08; migration 0027 was applied on 2026-11-09 in one atomic transaction, with a transaction-scoped advisory lock and SHA-256 checksums recorded from the exact repository files.
+- The live migration ledger is recorded through 0028. Migrations 0024–0026 were applied to Development on 2026-11-08; migrations 0027–0028 were applied on 2026-11-09 in atomic transactions, with transaction-scoped advisory locks and SHA-256 checksums recorded from the exact repository files.
 - Neon Function `pondokapi` Development deployment #43 is completed on Node.js 24. The preceding Development deployment workflow passed liveness and readiness checks. Readiness confirms database connectivity, not complete schema or business-workflow acceptance.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; the identity-document API must remain fail-closed until secure key provisioning, recoverable backup and rotation are prepared.
 - There are currently zero organizations, memberships, student profiles and HR employees. No fabricated tenant or personal records have been seeded.
