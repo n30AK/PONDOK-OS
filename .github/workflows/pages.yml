@@ -66,6 +66,8 @@ jobs:
           VITE_NEON_AUTH_URL: ${{ inputs.neon_auth_url || 'https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth' }}
       - name: Assemble isolated Command Center route
         run: mkdir -p apps/web/dist/command-center && cp -a apps/command-center/dist/. apps/web/dist/command-center/
+      - name: Assemble public marketing website
+        run: mkdir -p apps/web/dist/website && cp -a apps/marketing/. apps/web/dist/website/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
