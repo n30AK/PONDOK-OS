@@ -153,18 +153,18 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
           const result = await client.query(
             `SELECT c.id,c.customer_code AS "customerCode",c.legal_name AS "legalName",c.display_name AS "displayName",
               c.entity_type AS "entityType",c.billing_email AS "billingEmail",c.billing_phone AS "billingPhone",
-              c.billing_address AS "billingAddress",c.status,c.organization_id AS "organizationId",
+              c.billing_address AS "billingAddress",c.status,c.tenant_id AS "organizationId",
               o.name AS "organizationName",o.slug AS "organizationSlug",c.created_at AS "createdAt",c.updated_at AS "updatedAt"
-             FROM platform.customers c LEFT JOIN core.organizations o ON o.id=c.organization_id WHERE c.id=$1::uuid`, [customerId],
+             FROM platform.customers c LEFT JOIN core.organizations o ON o.id=c.tenant_id WHERE c.id=$1::uuid`, [customerId],
           );
           return { item: result.rows[0] ?? null };
         }
         const result = await client.query(
           `SELECT c.id,c.customer_code AS "customerCode",c.legal_name AS "legalName",c.display_name AS "displayName",
             c.entity_type AS "entityType",c.billing_email AS "billingEmail",c.billing_phone AS "billingPhone",c.status,
-            c.organization_id AS "organizationId",o.name AS "organizationName",o.slug AS "organizationSlug",
+            c.tenant_id AS "organizationId",o.name AS "organizationName",o.slug AS "organizationSlug",
             c.created_at AS "createdAt",c.updated_at AS "updatedAt"
-           FROM platform.customers c LEFT JOIN core.organizations o ON o.id=c.organization_id
+           FROM platform.customers c LEFT JOIN core.organizations o ON o.id=c.tenant_id
            WHERE ($1='%%' OR c.legal_name ILIKE $1 OR c.display_name ILIKE $1 OR c.customer_code ILIKE $1)
            ORDER BY c.created_at DESC LIMIT $2`,
           [`%${q.replace(/[\\%_]/g, "\\$&")}%`, limit],
@@ -190,7 +190,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
     try {
       const scoped = await withAdmin(pool, userId, async (client) => {
         const existing = await client.query<{ id: string; organizationId: string | null }>(
-          `SELECT id,organization_id AS "organizationId" FROM platform.customers WHERE id=$1::uuid FOR UPDATE`, [customerId],
+          `SELECT id,tenant_id AS "organizationId" FROM platform.customers WHERE id=$1::uuid FOR UPDATE`, [customerId],
         );
         const current = existing.rows[0];
         if (!current) return { error: "customer_not_found" as const };
@@ -203,13 +203,13 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
         );
         if (!organization.rows[0]) return { error: "organization_not_found" as const };
         const linked = await client.query(
-          "SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [organizationId],
+          "SELECT id FROM platform.customers WHERE tenant_id=$1::uuid LIMIT 1", [organizationId],
         );
         if (linked.rows[0]) return { error: "organization_already_linked" as const };
         const updated = await client.query(
-          `UPDATE platform.customers SET organization_id=$2::uuid,updated_at=now()
+          `UPDATE platform.customers SET tenant_id=$2::uuid,updated_at=now()
            WHERE id=$1::uuid
-           RETURNING id,organization_id AS "organizationId"`, [customerId, organizationId],
+           RETURNING id,tenant_id AS "organizationId"`, [customerId, organizationId],
         );
         const row = updated.rows[0] as { id: string; organizationId: string } | undefined;
         if (!row) throw new Error("customer_link_update_failed");
@@ -258,16 +258,16 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
         if (organizationId) {
           const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid", [organizationId]);
           if (!organization.rows[0]) return { error: "organization_not_found" as const };
-          const linked = await client.query("SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [organizationId]);
+          const linked = await client.query("SELECT id FROM platform.customers WHERE tenant_id=$1::uuid LIMIT 1", [organizationId]);
           if (linked.rows[0]) return { error: "organization_already_linked" as const };
         }
         const result = await client.query(
           `INSERT INTO platform.customers
-            (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,account_owner_user_id,organization_id)
+            (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,account_owner_user_id,tenant_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'prospect',$8::uuid,$9::uuid)
            RETURNING id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
             entity_type AS "entityType",billing_email AS "billingEmail",billing_phone AS "billingPhone",billing_address AS "billingAddress",
-            organization_id AS "organizationId",status,created_at AS "createdAt"`,
+            tenant_id AS "organizationId",status,created_at AS "createdAt"`,
           [customerCode,String(body.legalName).trim(),String(body.displayName).trim(),body.entityType ?? "institution",
            body.billingEmail ? String(body.billingEmail).trim().toLowerCase() : null,body.billingPhone ?? null,
            JSON.stringify(body.billingAddress ?? {}),userId,organizationId],
@@ -285,7 +285,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
     } catch (error) {
       const code = errorCode(error);
       const constraint = error && typeof error === "object" && "constraint" in error ? String((error as { constraint?: unknown }).constraint ?? "") : "";
-      const conflictError = constraint === "platform_customers_one_per_organization" ? "organization_already_linked" : "duplicate_platform_record";
+      const conflictError = constraint === "platform_customers_one_per_tenant" ? "organization_already_linked" : "duplicate_platform_record";
       reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? conflictError : "platform_erp_create_failed" });
     }
     return true;
