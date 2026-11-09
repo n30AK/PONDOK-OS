@@ -47,6 +47,15 @@ The Development deployment workflow and deployment script are scoped to the Deve
 The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carrying `organization_id`. This is a database catalog result, not a substitute for API-level authorization testing. CI exercises RLS behavior against disposable PostgreSQL; live two-tenant API acceptance still requires two independently authenticated users and two actual non-production organizations.
 
 
+## Contract subscription generation
+
+- `GET /v1/platform/erp/subscriptions` lists subscription records; `GET /v1/platform/erp/subscriptions/:id` returns one record.
+- `POST /v1/platform/erp/contracts/:id/subscriptions` creates subscriptions only from an active contract whose quote is approved or accepted.
+- Only recurring `subscription` or `module` catalog lines with monthly, quarterly or yearly billing intervals are converted. Quantities must be whole numbers. Contract start/end dates define the subscription period; expired contracts are rejected.
+- Migration `0029_platform_contract_subscriptions.sql` binds each subscription to its source quote line, stores the billing interval and quoted unit price/discount/tax/line-total snapshots, allows a `scheduled` state, and enforces one contract per quote and one subscription per quote line.
+- Repeating the conversion is idempotent. The endpoint requires an active company Super Admin and the restricted platform runtime role.
+- This creates commercial subscription records only. It does **not** issue invoices, collect payments, post journals, grant module entitlements, provision installations, or activate tenant modules. Those remain separate approval-controlled workflows.
+
 ## CRM lead conversion
 
 A Super Admin can convert a CRM lead only after its stage is explicitly `won`:
