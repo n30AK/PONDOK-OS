@@ -94,12 +94,15 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
   const leadId = path.match(/^\/v1\/platform\/erp\/leads\/([0-9a-f-]{36})$/i)?.[1];
+  const leadConversionId = path.match(/^\/v1\/platform\/erp\/leads\/([0-9a-f-]{36})\/convert$/i)?.[1];
   const customerId = path.match(/^\/v1\/platform\/erp\/customers\/([0-9a-f-]{36})$/i)?.[1];
-  const isLead = path === "/v1/platform/erp/leads" || Boolean(leadId);
+  const isLead = path === "/v1/platform/erp/leads" || Boolean(leadId) || Boolean(leadConversionId);
   const isCustomer = path === "/v1/platform/erp/customers" || Boolean(customerId);
   const isMetrics = path === "/v1/platform/erp/executive-metrics";
   if (!isLead && !isCustomer && !isMetrics) return false;
-  if ((leadId && !UUID.test(leadId)) || (customerId && !UUID.test(customerId))) { reply(res, 400, { error: "invalid_resource_id" }); return true; }
+  if ((leadId && !UUID.test(leadId)) || (leadConversionId && !UUID.test(leadConversionId)) || (customerId && !UUID.test(customerId))) { reply(res, 400, { error: "invalid_resource_id" }); return true; }
+
+  if (leadConversionId && req.method !== "POST") { reply(res, 405, { error: "method_not_allowed" }); return true; }
 
   if (req.method === "GET") {
     const rawLimit = Number(url.searchParams.get("limit") ?? "50");
@@ -131,7 +134,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
             const result = await client.query(
               `SELECT id,lead_number AS "leadNumber",organization_name AS "organizationName",contact_name AS "contactName",
                 email,phone,source,stage,estimated_value AS "estimatedValue",currency,consent_status AS "consentStatus",
-                next_follow_up_at AS "nextFollowUpAt",lost_reason AS "lostReason",notes,created_at AS "createdAt",updated_at AS "updatedAt"
+                next_follow_up_at AS "nextFollowUpAt",lost_reason AS "lostReason",notes,(SELECT c.id FROM platform.customers c WHERE c.source_lead_id=platform.crm_leads.id) AS "convertedCustomerId",created_at AS "createdAt",updated_at AS "updatedAt"
                FROM platform.crm_leads WHERE id=$1::uuid`, [leadId],
             );
             return { item: result.rows[0] ?? null };
@@ -144,7 +147,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
           const result = await client.query(
             `SELECT id,lead_number AS "leadNumber",organization_name AS "organizationName",contact_name AS "contactName",
               email,phone,source,stage,estimated_value AS "estimatedValue",currency,consent_status AS "consentStatus",
-              next_follow_up_at AS "nextFollowUpAt",created_at AS "createdAt",updated_at AS "updatedAt"
+              next_follow_up_at AS "nextFollowUpAt",(SELECT c.id FROM platform.customers c WHERE c.source_lead_id=platform.crm_leads.id) AS "convertedCustomerId",created_at AS "createdAt",updated_at AS "updatedAt"
              FROM platform.crm_leads WHERE ${filter} ORDER BY created_at DESC LIMIT $${values.length}`, values,
           );
           return { items: result.rows, limit, returned: result.rows.length };
@@ -224,6 +227,66 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
     } catch (error) {
       const code = errorCode(error);
       reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? "organization_already_linked" : "customer_organization_link_failed" });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && leadConversionId) {
+    const body = await readJson(req);
+    if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
+    const invalid = validateCustomerInput(body);
+    if (invalid) { reply(res, 422, { error: invalid }); return true; }
+    try {
+      const scoped = await withAdmin(pool, userId, async (client) => {
+        const leadResult = await client.query<{ id: string; stage: string; organizationName: string; email: string | null; phone: string | null }>(
+          `SELECT id,stage,organization_name AS "organizationName",email,phone
+           FROM platform.crm_leads WHERE id=$1::uuid FOR UPDATE`, [leadConversionId],
+        );
+        const lead = leadResult.rows[0];
+        if (!lead) return { error: "lead_not_found" as const };
+        const prior = await client.query<{ id: string; customerCode: string; organizationId: string | null }>(
+          `SELECT id,customer_code AS "customerCode",tenant_id AS "organizationId"
+           FROM platform.customers WHERE source_lead_id=$1::uuid`, [leadConversionId],
+        );
+        if (prior.rows[0]) return { alreadyConverted: true as const, customer: prior.rows[0] };
+        if (lead.stage !== "won") return { error: "lead_not_won" as const };
+
+        const organizationId = typeof body.organizationId === "string" ? body.organizationId : null;
+        if (organizationId) {
+          const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid", [organizationId]);
+          if (!organization.rows[0]) return { error: "organization_not_found" as const };
+          const linked = await client.query("SELECT id FROM platform.customers WHERE tenant_id=$1::uuid LIMIT 1", [organizationId]);
+          if (linked.rows[0]) return { error: "organization_already_linked" as const };
+        }
+
+        const customerCode = `CUS-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${randomUUID().slice(0,8).toUpperCase()}`;
+        const inserted = await client.query(
+          `INSERT INTO platform.customers
+            (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,
+             source_lead_id,account_owner_user_id,tenant_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'prospect',$8::uuid,$9::uuid,$10::uuid)
+           RETURNING id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
+            status,source_lead_id AS "sourceLeadId",tenant_id AS "organizationId",created_at AS "createdAt"`,
+          [customerCode,String(body.legalName).trim(),String(body.displayName).trim(),body.entityType ?? "institution",
+           body.billingEmail ? String(body.billingEmail).trim().toLowerCase() : lead.email,
+           body.billingPhone ?? lead.phone,JSON.stringify(body.billingAddress ?? {}),leadConversionId,userId,organizationId],
+        );
+        const customer = inserted.rows[0] as { id: string; customerCode: string } | undefined;
+        if (!customer) throw new Error("lead_conversion_customer_insert_failed");
+        await audit(client,userId,"crm.lead.converted","crm_lead",leadConversionId,{customerId:customer.id});
+        await audit(client,userId,"crm.customer.created_from_lead","customer",customer.id,{leadId:leadConversionId,organizationId});
+        return { alreadyConverted: false as const, customer };
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      const value = scoped.value as { error?: string; alreadyConverted?: boolean } | undefined;
+      if (value?.error === "lead_not_found" || value?.error === "organization_not_found") { reply(res, 404, { error: value.error }); return true; }
+      if (value?.error === "lead_not_won" || value?.error === "organization_already_linked") { reply(res, 409, { error: value.error }); return true; }
+      reply(res, value?.alreadyConverted ? 200 : 201, { data: scoped.value });
+    } catch (error) {
+      const code = errorCode(error);
+      const constraint = error && typeof error === "object" && "constraint" in error ? String((error as { constraint?: unknown }).constraint ?? "") : "";
+      const conflict = constraint === "platform_customers_one_per_source_lead" ? "lead_already_converted" : constraint === "platform_customers_one_per_tenant" ? "organization_already_linked" : "customer_conversion_conflict";
+      reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? conflict : "lead_conversion_failed" });
     }
     return true;
   }

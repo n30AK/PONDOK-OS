@@ -33,6 +33,11 @@ try {
     "platform runtime must be able to resolve tenant names for Super Admin CRM views",
   );
 
+  const leadIndex = await client.query(
+    "SELECT indexdef FROM pg_indexes WHERE schemaname='platform' AND indexname='platform_customers_one_per_source_lead'",
+  );
+  assert.equal(leadIndex.rowCount, 1, "a CRM lead can be converted to at most one customer");
+
   await client.query("SET LOCAL ROLE pondok_platform_runtime");
   await client.query("SELECT set_config('app.user_id',$1,true)", [admin]);
 
@@ -74,8 +79,29 @@ try {
   await client.query("ROLLBACK TO SAVEPOINT invalid_tenant_customer");
   await client.query("RELEASE SAVEPOINT invalid_tenant_customer");
 
+
+  const lead = await client.query(
+    "INSERT INTO platform.crm_leads (lead_number,organization_name,contact_name,stage) VALUES ('CI-LEAD-CONVERT-1','Pondok CI','Admin CI','won') RETURNING id",
+  );
+  const sourceLeadId = lead.rows[0].id;
+  await client.query(
+    "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,source_lead_id) VALUES ('CI-LEAD-CUSTOMER-1','Yayasan Lead CI','Pondok Lead CI','prospect',$1::uuid)",
+    [sourceLeadId],
+  );
+  await client.query("SAVEPOINT duplicate_lead_conversion");
+  await assert.rejects(
+    () => client.query(
+      "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,source_lead_id) VALUES ('CI-LEAD-CUSTOMER-2','Yayasan Lead CI Duplikat','Pondok Lead CI Duplikat','prospect',$1::uuid)",
+      [sourceLeadId],
+    ),
+    (error) => error?.code === "23505",
+    "one won CRM lead cannot create duplicate customer records",
+  );
+  await client.query("ROLLBACK TO SAVEPOINT duplicate_lead_conversion");
+  await client.query("RELEASE SAVEPOINT duplicate_lead_conversion");
+
   await client.query("ROLLBACK");
-  process.stdout.write("Customer/tenant link integrity passed: FK, one-customer-per-tenant uniqueness, platform role read and tenant-name join.\n");
+  process.stdout.write("Customer/tenant and CRM conversion integrity passed: FK, one-customer-per-tenant and one-customer-per-lead uniqueness, platform role read and tenant-name join.\n");
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
   throw error;

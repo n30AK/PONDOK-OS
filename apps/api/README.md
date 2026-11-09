@@ -47,6 +47,16 @@ The Development deployment workflow and deployment script are scoped to the Deve
 The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carrying `organization_id`. This is a database catalog result, not a substitute for API-level authorization testing. CI exercises RLS behavior against disposable PostgreSQL; live two-tenant API acceptance still requires two independently authenticated users and two actual non-production organizations.
 
 
+## CRM lead conversion
+
+A Super Admin can convert a CRM lead only after its stage is explicitly `won`:
+
+- `POST /v1/platform/erp/leads/:id/convert` accepts customer legal/display names, optional entity type, billing details, address and optional existing `organizationId`.
+- The operation locks the lead row and creates the commercial customer plus audit events in one transaction. Lead email/phone are used as billing-contact defaults when the request omits them.
+- Converted customers start as `prospect`; conversion does not activate the customer, create a contract/subscription/invoice, provision an installation, or grant module entitlements.
+- The partial unique index `platform_customers_one_per_source_lead` prevents duplicate customer records from one lead. Repeating a conversion returns the existing customer (HTTP 200); a lead not in `won` stage returns HTTP 409.
+- The endpoint requires active company Super Admin authorization and the restricted platform runtime role. It does not change tenant state.
+
 ## Commercial customer ↔ institution tenant link
 
 The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` is applied on Development. It adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect. The live Development registry still contains zero customer records.

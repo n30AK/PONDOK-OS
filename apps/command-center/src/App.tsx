@@ -406,7 +406,7 @@ export default function App() {
   </div>;
 }
 
-type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; nextFollowUpAt?:string|null; createdAt:string };
+type CrmLead = { id:string; convertedCustomerId?:string|null; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; nextFollowUpAt?:string|null; createdAt:string };
 type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; organizationId?:string|null; organizationName?:string|null; organizationSlug?:string|null; createdAt:string };
 type CrmContact = {id:string;customerId:string;fullName:string;positionTitle?:string|null;email?:string|null;phone?:string|null;isPrimary:boolean};
 
@@ -661,6 +661,20 @@ function CRMWorkspace({tenants}:{tenants:Tenant[]}){
     finally{setSaving(false);}
   }
 
+  async function convertWonLead(item:CrmLead){
+    if(item.stage!=="won"||item.convertedCustomerId)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      const result=await request<{alreadyConverted:boolean;customer:{customerCode:string}}>(`/v1/platform/erp/leads/${item.id}/convert`,{method:"POST",body:JSON.stringify({
+        legalName:item.organizationName,displayName:item.organizationName,entityType:"institution",
+        ...(item.email?{billingEmail:item.email}:{}),...(item.phone?{billingPhone:item.phone}:{})
+      })});
+      setNotice(result.alreadyConverted?`Prospek sudah dikonversi menjadi pelanggan ${result.customer.customerCode}.`:`Prospek berhasil dikonversi menjadi pelanggan ${result.customer.customerCode}.`);
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Konversi prospek menjadi pelanggan gagal.");}
+    finally{setSaving(false);}
+  }
+
   async function createContact(event:FormEvent){
     event.preventDefault();if(!selectedCustomerId)return;setSaving(true);setError("");setNotice("");
     try{
@@ -739,7 +753,7 @@ function CRMWorkspace({tenants}:{tenants:Tenant[]}){
       </div>
       <div className="toolbar crm-toolbar"><input placeholder="Cari prospek atau pelanggan…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="secondary" onClick={()=>void load()} disabled={busy}>{busy?"Memuat…":"Muat ulang"}</button></div>
     </section>
-    <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><div className="inline-actions"><select aria-label={`Tahap prospek ${x.leadNumber}`} value={stageDrafts[x.id]??x.stage} onChange={e=>setStageDrafts(current=>({...current,[x.id]:e.target.value}))}>{["new","qualified","discovery","demo","proposal","negotiation","won","lost","dormant"].map(stage=><option key={stage} value={stage}>{label(stage)}</option>)}</select>{(stageDrafts[x.id]??x.stage)!==x.stage&&<button className="primary" disabled={saving} onClick={()=>void updateLeadStage(x)}>Simpan</button>}</div></td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}{x.nextFollowUpAt&&<small>Follow-up: {date(x.nextFollowUpAt)}</small>}</td></tr>)}</tbody></table></div>}</section>
+    <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Konversi</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><div className="inline-actions"><select aria-label={`Tahap prospek ${x.leadNumber}`} value={stageDrafts[x.id]??x.stage} onChange={e=>setStageDrafts(current=>({...current,[x.id]:e.target.value}))}>{["new","qualified","discovery","demo","proposal","negotiation","won","lost","dormant"].map(stage=><option key={stage} value={stage}>{label(stage)}</option>)}</select>{(stageDrafts[x.id]??x.stage)!==x.stage&&<button className="primary" disabled={saving} onClick={()=>void updateLeadStage(x)}>Simpan</button>}</div></td><td>{x.convertedCustomerId?<span className="pill success">Sudah dikonversi</span>:x.stage==="won"?<button className="secondary" disabled={saving} onClick={()=>void convertWonLead(x)}>Jadikan pelanggan</button>:<span className="muted">Tersedia setelah status won</span>}</td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}{x.nextFollowUpAt&&<small>Follow-up: {date(x.nextFollowUpAt)}</small>}</td></tr>)}</tbody></table></div>}</section>
     <section className="panel"><PanelTitle title="Daftar pelanggan" subtitle="Data aktual dari platform.customers"/>{busy?<div className="empty">Memuat data…</div>:visibleCustomers.length===0?<Empty text="Belum ada pelanggan yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama legal</th><th>Nama tampilan</th><th>Jenis</th><th>Tenant</th><th>Status</th><th>Dibuat</th></tr></thead><tbody>{visibleCustomers.map(x=><tr key={x.id}><td>{x.customerCode}</td><td>{x.legalName}</td><td><b>{x.displayName}</b><small>{x.billingEmail||"—"}</small></td><td>{label(x.entityType)}</td><td>{x.organizationId?<><b>{x.organizationName||"Tenant tertaut"}</b><small>{x.organizationSlug||x.organizationId}</small></>:<div className="inline-actions"><select aria-label={`Tenant untuk ${x.customerCode}`} value={customerOrgDrafts[x.id]??""} onChange={e=>setCustomerOrgDrafts(current=>({...current,[x.id]:e.target.value}))}><option value="">Pilih tenant</option>{tenants.map(t=><option key={t.organizationId} value={t.organizationId}>{t.name} · {t.slug}</option>)}</select><button className="secondary" disabled={saving||!customerOrgDrafts[x.id]} onClick={()=>void linkCustomerOrganization(x)}>Tautkan</button></div>}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
 
     <section className="panel"><PanelTitle title="Kontak & Customer 360" subtitle="Kontak resmi pelanggan, penanggung jawab, dan kanal komunikasi."/>
