@@ -25,8 +25,8 @@ A controlled pilot may be prepared only after the pilot-entry gates in section 7
 - The implementation-status audit records 45 distinct read/write permission keys referenced by 44 module resources.
 - The workspace/API contract records 44 module resources: 42 generic tenant-scoped resources plus dedicated encrypted student identity-document and health-profile handlers.
 - Development snapshot records zero organizations, memberships, student profiles, and HR employees; no fabricated tenant or personal records have been seeded.
-- Two-tenant API isolation using two independent real identities remains unaccepted.
-- `STUDENT_IDENTITY_ENCRYPTION_KEY` was absent in the last documented Development audit. Identity-document operations must remain fail-closed until key provisioning, recoverable encrypted backup, and rotation/recovery are verified.
+- PR #155 adds an actual HTTP API integration test using two independently signed synthetic EdDSA JWT identities against disposable PostgreSQL. CI #1343 passed: each identity reads only its own tenant records; changing the organization header and cross-tenant reads/writes are denied. Live Neon Auth acceptance with two real users and two real institution tenants remains pending.
+- `STUDENT_IDENTITY_ENCRYPTION_KEY` remains absent from the Development Function environment. PR #154 now strictly validates canonical Base64 32-byte AES-256 keys and key-version labels for both health and identity data, with fail-closed tests. Identity-document operations must remain fail-closed until the key is provisioned through the approved secret vault, recoverable encrypted backup is verified, and rotation/recovery is prepared.
 - CI #1286 and Neon Function bundle #225 passed for PR #144. PR #144 was merged as `10402d1094bde8bef753ece464dcd7b5a79fb5a7`. This verifies the tested build/unit-test pipeline for that change; it does not prove live tenant acceptance or post-merge production readiness.
 
 ### PONDOK OS module status
@@ -148,7 +148,7 @@ A module cannot be marked operational or included in a commercial package until 
 
 | Gate | Required evidence | Current status |
 |---|---|---|
-| G0 — Engineering baseline | Main build, CI, API bundle, Pages/release artifacts and no unresolved critical defects | Partial; PR #152 merged, CI #1327 passed and Development Function deployment #52 is completed; direct HTTP readiness check and full post-merge Pages/release evidence still need confirmation |
+| G0 — Engineering baseline | Main build, CI, API bundle, Pages/release artifacts and no unresolved critical defects | Partial; PR #154 CI #1341 + Function bundle #241 passed, PR #155 CI #1343 + Function bundle #242 passed, and Development Function deployment #53 completed. Direct HTTP health response and full Pages/release evidence remain unverified |
 | G1 — Security baseline | Two-tenant isolation, identity-key lifecycle, audit, backup/restore and access review | Blocked |
 | G2 — Institution onboarding | Verified institution, authorized Super Admin approval, tenant activation, owner handover | Blocked; Development has no institution tenant in the last audit |
 | G3 — Core operational UAT | Student/guardian/PPDB, academic, boarding, finance and HR flows for pilot scope | Blocked |
@@ -194,3 +194,12 @@ Do not mark the entire platform ready when only selected modules have passed. Co
 - Neon Development Function `pondokapi` deployment #52 is reported completed. Direct HTTP health verification could not be completed from the available inspection path, so do not claim the endpoint response was independently confirmed.
 - Current Function environment metadata still lists `STUDENT_HEALTH_ENCRYPTION_KEY` but not `STUDENT_IDENTITY_ENCRYPTION_KEY`. Identity-document writes must remain fail-closed. The key must not be generated/configured without an approved secure secret and recoverable-backup/rotation process.
 - No Neon Production changes or data seeding occurred. Two-real-tenant API acceptance, institution UAT and commercial lifecycle remain release blockers.
+
+
+## Update after PR #154 and PR #155 (2026-11-09)
+
+- PR #154 merged as `719965913b65b2552b11e30bf2c8f79ae9d14251`; CI #1341 and Neon Function bundle #241 passed. Both health and identity AES-256-GCM key configuration now requires canonical standard Base64 for exactly 32 bytes and a valid version label. Missing or malformed identity key remains fail-closed. Added a secure Development-only provisioning/recovery runbook. No key was generated or configured.
+- PR #155 merged as `15988acabbae34c7f63ff5b6a9ef1eeba94bca5e`; CI #1343 and Neon Function bundle #242 passed. The new CI integration test runs the actual API HTTP server against disposable PostgreSQL with two separately signed synthetic JWT identities, proves own-tenant reads, and denies changed-header, cross-tenant reads and writes.
+- Development Neon Function `pondokapi` deployment #53 is completed. Environment metadata still does not include `STUDENT_IDENTITY_ENCRYPTION_KEY`. No direct HTTP health response could be retrieved from the available network path.
+- The new test is stronger automated API evidence but does not substitute for two real Neon Auth users, two institution tenants, live onboarding, backup/restore drill or institution UAT. G1, G2, G3 and commercial gates remain blocked.
+- No Development database writes, schema migrations, tenant seeds, identity keys, or Production changes were performed by these PRs.
