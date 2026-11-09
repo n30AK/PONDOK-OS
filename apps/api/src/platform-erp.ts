@@ -102,6 +102,8 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
   if (!isLead && !isCustomer && !isMetrics) return false;
   if ((leadId && !UUID.test(leadId)) || (leadConversionId && !UUID.test(leadConversionId)) || (customerId && !UUID.test(customerId))) { reply(res, 400, { error: "invalid_resource_id" }); return true; }
 
+  if (leadConversionId && req.method !== "POST") { reply(res, 405, { error: "method_not_allowed" }); return true; }
+
   if (req.method === "GET") {
     const rawLimit = Number(url.searchParams.get("limit") ?? "50");
     const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
@@ -283,7 +285,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
     } catch (error) {
       const code = errorCode(error);
       const constraint = error && typeof error === "object" && "constraint" in error ? String((error as { constraint?: unknown }).constraint ?? "") : "";
-      const conflict = constraint === "platform_customers_one_per_source_lead" ? "lead_already_converted" : "customer_conversion_conflict";
+      const conflict = constraint === "platform_customers_one_per_source_lead" ? "lead_already_converted" : constraint === "platform_customers_one_per_tenant" ? "organization_already_linked" : "customer_conversion_conflict";
       reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? conflict : "lead_conversion_failed" });
     }
     return true;
