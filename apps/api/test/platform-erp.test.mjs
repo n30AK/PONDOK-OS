@@ -25,6 +25,11 @@ test("lead validation rejects invalid email, stage, and negative value",()=>{
   assert.equal(validateLeadInput({organizationName:"Pondok",contactName:"Admin",email:"admin@example.org",stage:"new"}),null);
 });
 
+test("customer validation accepts a tenant UUID and rejects malformed tenant identifiers",()=>{
+  assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"not-a-uuid"}),"invalid_organization_id");
+  assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"323e4567-e89b-42d3-a456-426614174000"}),null);
+});
+
 test("customer validation requires legal and display names and object address",()=>{
   assert.equal(validateCustomerInput({legalName:"A",displayName:"A"}),"invalid_legal_name");
   assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",billingAddress:"not-an-object"}),"invalid_billing_address");
@@ -109,4 +114,74 @@ test("executive metrics endpoint is read-only",async()=>{
   await handlePlatformErpRequest(request("/v1/platform/erp/executive-metrics","POST",{}),res,pool,userId);
   assert.equal(res.status,405);
   assert.ok(!calls.some(x=>x.sql.startsWith("SELECT EXISTS")));
+});
+
+
+test("customer creation validates tenant existence and stores the tenant link atomically",async()=>{
+  const organizationId="323e4567-e89b-42d3-a456-426614174000";
+  const customerId="423e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id FROM core.organizations")) return {rows:[{id:organizationId}]};
+    if(sql.startsWith("SELECT id FROM platform.customers WHERE organization_id")) return {rows:[]};
+    if(sql.startsWith("INSERT INTO platform.customers")) return {rows:[{id:customerId,customerCode:"CUS-1",organizationId}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/customers","POST",{legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId}),res,pool,userId);
+  assert.equal(res.status,201);
+  assert.equal(JSON.parse(res.body).data.organizationId,organizationId);
+  const insert=calls.find(x=>x.sql.startsWith("INSERT INTO platform.customers"));
+  assert.ok(insert);
+  assert.equal(insert.values[8],organizationId);
+  assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+
+test("customer cannot be linked to a nonexistent or already-linked tenant",async()=>{
+  const organizationId="323e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id FROM core.organizations")) return {rows:[]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/customers","POST",{legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId}),res,pool,userId);
+  assert.equal(res.status,404);
+  assert.equal(JSON.parse(res.body).error,"organization_not_found");
+  assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.customers")));
+});
+
+test("existing CRM customer can be linked to exactly one tenant with an audit event",async()=>{
+  const organizationId="323e4567-e89b-42d3-a456-426614174000";
+  const customerId="423e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id,organization_id")) return {rows:[{id:customerId,organizationId:null}]};
+    if(sql.startsWith("SELECT id,name,slug FROM core.organizations")) return {rows:[{id:organizationId,name:"Pondok Contoh",slug:"pondok-contoh"}]};
+    if(sql.startsWith("SELECT id FROM platform.customers WHERE organization_id")) return {rows:[]};
+    if(sql.startsWith("UPDATE platform.customers SET organization_id")) return {rows:[{id:customerId,organizationId}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/customers/${customerId}`,"PATCH",{organizationId}),res,pool,userId);
+  assert.equal(res.status,200);
+  assert.equal(JSON.parse(res.body).data.organizationId,organizationId);
+  assert.ok(calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET organization_id")));
+  assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+
+test("customer link cannot be silently reassigned to a different tenant",async()=>{
+  const customerId="423e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id,organization_id")) return {rows:[{id:customerId,organizationId:"523e4567-e89b-42d3-a456-426614174000"}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/customers/${customerId}`,"PATCH",{organizationId:"623e4567-e89b-42d3-a456-426614174000"}),res,pool,userId);
+  assert.equal(res.status,409);
+  assert.equal(JSON.parse(res.body).error,"customer_already_linked");
+  assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET organization_id")));
 });
