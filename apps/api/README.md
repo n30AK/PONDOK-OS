@@ -33,12 +33,12 @@ Each protected operation must verify identity, active organization membership or
 
 - Neon project: `frosty-cherry-92983148`.
 - Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, deployment #43, Node.js 24.
+- Function: `pondokapi`, Development deployment #53, Node.js 24 (completed).
 - Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced.
 - Live migration ledger: through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction with an advisory lock; source-file SHA-256 checksums are recorded.
-- `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; identity-document operations must remain fail-closed until securely provisioned.
+- `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
 - No organizations, memberships, student profiles or HR employees exist yet.
-- Live two-tenant API acceptance and institution UAT are pending.
+- CI now exercises actual API-level isolation with two signed synthetic JWT identities against disposable PostgreSQL. Live Neon Auth two-user/two-tenant acceptance and institution UAT are still pending.
 
 The Development deployment workflow and deployment script are scoped to the Development project/branch. Do not repoint them to Production as part of routine work. Production branch `br-late-cherry-b3uqtuvh` must remain untouched.
 

@@ -98,3 +98,8 @@ A generic initial-record form or a green CI job is not a completed domain workfl
 
 - PR #152 merged as `8357efe3e9a550df04d355b73c2c51a8d7e258db`; CI #1327 and Neon Function bundle #236 passed. `GET /health/ready` now verifies both restricted runtime roles and live RLS coverage before returning ready. The Development runtime-role inspection returned 63/63 tenant tables and 79/79 platform tables covered, with both roles NOLOGIN/NOBYPASSRLS. Function deployment #52 is completed; direct HTTP health response remains unverified.
 - Development Function environment metadata still does not list `STUDENT_IDENTITY_ENCRYPTION_KEY`; identity-document operations remain fail-closed pending approved key provisioning, recoverable backup and rotation/recovery.
+
+
+- PR #154 merged as `719965913b65b2552b11e30bf2c8f79ae9d14251`; CI #1341 and Neon Function bundle #241 passed. Health and identity encryption keys now require canonical Base64 for exactly 32 bytes and valid version labels. Identity key is still absent in the Development Function environment; identity-document routes remain fail-closed. A provisioning/recovery runbook was added.
+- PR #155 merged as `15988acabbae34c7f63ff5b6a9ef1eeba94bca5e`; CI #1343 and Neon Function bundle #242 passed. CI now starts the actual API HTTP server against disposable PostgreSQL, signs two synthetic EdDSA JWTs, and verifies own-tenant data access plus cross-tenant read/write denial.
+- Development Function `pondokapi` deployment #53 is completed. Direct HTTP readiness response is not independently verified; real Neon Auth two-user/two-tenant UAT remains pending.
