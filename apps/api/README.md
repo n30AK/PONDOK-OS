@@ -33,7 +33,7 @@ Each protected operation must verify identity, active organization membership or
 
 - Neon project: `frosty-cherry-92983148`.
 - Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, Development deployment #56, Node.js 24 (completed).
+- Function: `pondokapi`, Development deployment #57, Node.js 24 (completed).
 - Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced. The wider application catalog has 145 tables with RLS enabled and forced. Runtime-role policy coverage is 63/63 tenant tables and 79/79 platform tables.
 - Live migration ledger: through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction with an advisory lock; source-file SHA-256 checksums are recorded.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
@@ -74,8 +74,8 @@ Tenant creation requires the institution's actual details and an authorized Supe
 
 ## Student identity encryption
 
-The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode from base64 to exactly 32 bytes. The key is not currently present in the Development Function environment. Do not enable identity-document writes until secure secret provisioning, recoverable encrypted backup and rotation/recovery procedures are in place. Never put key material in source control, logs or chat.
+The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode from base64 to exactly 32 bytes. The key is not currently present in the Development Function environment. The retired `PONDOK_BOOTSTRAP_TOKEN_SHA256` name still appears in Development Function environment metadata but is no longer referenced by the current API, web app, or deployment workflow; it must not be re-used and should be removed from the Function environment through an approved secret-management path. Do not enable identity-document writes until secure secret provisioning, recoverable encrypted backup and rotation/recovery procedures are in place. Never put key material in source control, logs or chat.
 
 ## Readiness boundary
 
-A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The live HTTP readiness and legacy-route checks are being added to the Development deployment workflow; do not treat the previous Function deployment as independently verified until that workflow passes. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #57 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
