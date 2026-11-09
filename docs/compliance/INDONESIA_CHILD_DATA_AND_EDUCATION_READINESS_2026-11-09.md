@@ -30,13 +30,13 @@ Permenkomdigi 9/2026 was promulgated on **6 March 2026**. Its closing transition
 This is an urgent legal work item, not a conclusion that PONDOK OS has violated the rule. Indonesian counsel must first determine whether PONDOK OS and/or each institution is within the relevant PSE scope, identify the responsible reporting entity, confirm whether a submission was already made, and advise on corrective steps if it was not. Do not backdate, fabricate or claim a filing. Retain the official submission receipt or a written legal determination that the requirement does not apply.
 
 Official references:
-- UU 27/2022: https://peraturan.bpk.go.id/Details/229798/uu-no-27-
+- UU 27/2022: https://peraturan.bpk.go.id/Download/224884/UU%20Nomor%2027%20Tahun%202022.pdf
 - PP 17/2025: https://www.peraturan.go.id/files/pp-no-17-tahun-2025.pdf
 - Permenkomdigi 9/2026: https://peraturan.bpk.go.id/Details/346040/permenkomdigi-no-9-tahun-2026
-- UU 18/2019: https://peraturan.bpk.go.id/Details/122743/uu-no-18-tahun-2019
-- PMA 30/2020: https://peraturan.bpk.go.id/Details/176216/peraturan-menag-no-30-tahun-2020
-- PMA 31/2020: https://peraturan.bpk.go.id/Details/176475/peraturan-menag-no-31-tahun-2020
-- Permendikbudristek 31/2022: https://peraturan.bpk.go.id/Details/219347/permendikbudristek-no-31-tahun-2022
+- UU 18/2019: https://peraturan.bpk.go.id/Details/122743/uu-no-18-
+- PMA 30/2020: https://peraturan.bpk.go.id/Download/243115/PMA_No._30_tahun_2020.pdf
+- PMA 31/2020: https://peraturan.bpk.go.id/Download/243127/PMA_No._31_tahun_2020.pdf
+- Permendikbudristek 31/2022: https://lldikti3.kemdikbud.go.id/wp-content/uploads/2024/07/Permendikbudristek-No.-31-Tahun-2022-Satu-Data-Pendidikan-Kebudayaan-Riset-dan-Teknologi.pdf
 
 ## 3. Binding requirements translated into product controls
 
