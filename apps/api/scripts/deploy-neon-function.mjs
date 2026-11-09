@@ -30,16 +30,6 @@ const environment = {
   NEON_AUTH_JWKS_URL: "https://ep-billowing-boat-b3junw8u.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth/.well-known/jwks.json",
 };
 
-// The digest is optional and should only be set temporarily for the first
-// institution bootstrap. Never pass the raw one-time token to this workflow.
-const bootstrapDigest = process.env.PONDOK_BOOTSTRAP_TOKEN_SHA256?.trim();
-if (bootstrapDigest) {
-  if (!/^[a-f0-9]{64}$/i.test(bootstrapDigest)) {
-    throw new Error("PONDOK_BOOTSTRAP_TOKEN_SHA256 must be a 64-character SHA-256 hex digest.");
-  }
-  environment.PONDOK_BOOTSTRAP_TOKEN_SHA256 = bootstrapDigest;
-}
-
 console.log("Deploying PONDOK OS API to the development branch only.");
 await neon.functions.deploy({
   projectId,
