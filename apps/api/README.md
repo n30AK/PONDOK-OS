@@ -56,6 +56,16 @@ The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carr
 - Repeating the conversion is idempotent. The endpoint requires an active company Super Admin and the restricted platform runtime role.
 - This creates commercial subscription records only. It does **not** issue invoices, collect payments, post journals, grant module entitlements, provision installations, or activate tenant modules. Those remain separate approval-controlled workflows.
 
+## Recurring subscription invoices
+
+- `POST /v1/platform/erp/subscriptions/:id/invoices` creates a draft invoice for a due, active recurring subscription whose customer and source contract are also active.
+- The request accepts only `dueOn`. The billing period is derived from the subscription's immutable `next_billing_at` and billing interval (monthly, quarterly or yearly); callers cannot override price, quantity, discount, tax or period.
+- Invoice lines and totals use the subscription's stored quote snapshot. A period extending beyond the subscription end date is rejected until proration is implemented.
+- Migration `0030_platform_recurring_invoice_periods.sql` stores inclusive billing-period dates and enforces one invoice per subscription period plus at most one open invoice per subscription.
+- Repeating the request for the same period returns the existing invoice. A second open invoice is rejected. The new invoice remains draft until an authorized Super Admin issues it through the existing invoice workflow.
+- The next billing date advances only when the invoice is fully paid through the existing verified-payment flow; partial or pending payments do not advance it. The payment verifier remains subject to maker-checker (creator cannot verify their own payment).
+- No automatic scheduler, proration, late-fee/dunning, tax configuration, credit note, refund, bank reconciliation, entitlement grant or installation provisioning is introduced by this workflow.
+
 ## CRM lead conversion
 
 A Super Admin can convert a CRM lead only after its stage is explicitly `won`:
