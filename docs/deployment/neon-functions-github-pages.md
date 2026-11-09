@@ -48,7 +48,7 @@ curl -i https://<function-invocation-host>/health/live
 curl -i https://<function-invocation-host>/health/ready
 ```
 
-Expected: `/health/live` returns HTTP 200. `/health/ready` returns HTTP 200 when the branch-injected database connection is available.
+Expected: `/health/live` returns HTTP 200. `/health/ready` returns HTTP 200 only when the branch database is reachable, both restricted runtime roles can be assumed, and all tenant/platform RLS coverage checks pass.
 
 ## 3. Enable GitHub Pages once
 
