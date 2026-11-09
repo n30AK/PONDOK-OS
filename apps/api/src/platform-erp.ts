@@ -183,7 +183,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
 
   if (req.method === "PATCH" && customerId && isCustomer) {
     const body = await readJson(req);
-    if (!body || Object.keys(body).length !== 1 || typeof organizationId !== "string" || !UUID.test(organizationId)) {
+    if (!body || Object.keys(body).length !== 1 || typeof body.organizationId !== "string" || !UUID.test(body.organizationId)) {
       reply(res, 422, { error: "organization_link_requires_valid_organization_id" }); return true;
     }
     const organizationId = body.organizationId;
@@ -213,7 +213,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
         );
         const row = updated.rows[0] as { id: string; organizationId: string } | undefined;
         if (!row) throw new Error("customer_link_update_failed");
-        await audit(client, userId, "crm.customer.organization_linked", "customer", customerId, { organizationId: organizationId });
+        await audit(client, userId, "crm.customer.organization_linked", "customer", customerId, { organizationId });
         return row;
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
