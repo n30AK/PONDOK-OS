@@ -288,3 +288,44 @@ test("fails closed when the student health encryption key is missing", async () 
     if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
   }
 });
+
+
+test("fails closed for malformed or non-canonical student health key material", async () => {
+  const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  const previousVersion = process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64") + "!!!!";
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = "test-v1";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.health.read"])] };
+    throw new Error("no data query should run with malformed key material");
+  }};
+  try {
+    const res = responseDouble();
+    await handleModuleRecordsRequest(request("GET", "/v1/modules/student-health-profiles"), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 503);
+    assert.equal(JSON.parse(res.body).error, "student_health_encryption_not_configured");
+  } finally {
+    if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
+    if (previousVersion === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = previousVersion;
+  }
+});
+
+test("fails closed for invalid student health key version labels", async () => {
+  const previousKey = process.env.STUDENT_HEALTH_ENCRYPTION_KEY;
+  const previousVersion = process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = "../invalid";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.students.health.read"])] };
+    throw new Error("no data query should run with invalid key version");
+  }};
+  try {
+    const res = responseDouble();
+    await handleModuleRecordsRequest(request("GET", "/v1/modules/student-health-profiles"), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 503);
+    assert.equal(JSON.parse(res.body).error, "student_health_encryption_not_configured");
+  } finally {
+    if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
+    if (previousVersion === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = previousVersion;
+  }
+});
