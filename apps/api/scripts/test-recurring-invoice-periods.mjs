@@ -82,6 +82,8 @@ try {
   await client.query("ROLLBACK TO SAVEPOINT second_open_invoice");
   await client.query("RELEASE SAVEPOINT second_open_invoice");
 
+  await client.query("UPDATE platform.invoices SET status='paid' WHERE id=$1", [second.rows[0].id]);
+
   await client.query("SAVEPOINT invalid_period_pair");
   await assert.rejects(
     () => client.query(
