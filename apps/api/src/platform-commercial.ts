@@ -84,6 +84,8 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
  const subscriptionId=subscriptionItem?.[1];
  if((quoteId&&!UUID.test(quoteId))||(contractId&&!UUID.test(contractId))||(subscriptionId&&!UUID.test(subscriptionId))){reply(res,400,{error:"invalid_resource_id"});return true;}
 
+ if(contractSubscriptions&&req.method!=="POST"){reply(res,405,{error:"method_not_allowed"});return true;}
+
  if(req.method==="GET"){
   try{
    const scoped=await withAdmin(pool,userId,async c=>{
@@ -176,8 +178,6 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
   }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:errorCode(e)==="23505"?"contract_already_exists_for_quote":"contract_create_failed"});}
   return true;
  }
-
- if(contractSubscriptions&&req.method!=="POST"){reply(res,405,{error:"method_not_allowed"});return true;}
 
  if(req.method==="POST"&&contractSubscriptions){
   const body=await readJson(req);if(!body){reply(res,400,{error:"invalid_json_or_body_too_large"});return true;}
