@@ -20,6 +20,23 @@ export function validateInvoiceInput(v:Json):string|null{
  if(!validDate(v.dueOn))return "invalid_due_date";
  return null;
 }
+export function validateSubscriptionInvoiceInput(v:Json):string|null{
+ if(Object.keys(v).some(k=>k!=="dueOn"))return "unsupported_subscription_invoice_field";
+ if(!validDate(v.dueOn))return "invalid_due_date";
+ return null;
+}
+function addBillingInterval(start:string,interval:string):string{
+ const [year,month,day]=start.split("-").map(Number);
+ const months=interval==="monthly"?1:interval==="quarterly"?3:interval==="yearly"?12:0;
+ if(!months||!year||!month||!day)throw new Error("invalid_billing_interval");
+ const targetMonth=month-1+months;
+ const targetYear=year+Math.floor(targetMonth/12);
+ const normalizedMonth=targetMonth%12;
+ const lastDay=new Date(Date.UTC(targetYear,normalizedMonth+1,0)).getUTCDate();
+ const next=new Date(Date.UTC(targetYear,normalizedMonth,Math.min(day,lastDay)));
+ next.setUTCDate(next.getUTCDate()-1);
+ return next.toISOString().slice(0,10);
+}
 export function validatePaymentInput(v:Json):string|null{
  if(typeof v.invoiceId!=="string"||!UUID.test(v.invoiceId))return "invalid_invoice_id";
  if(amountCents(v.amount)===null)return "invalid_payment_amount";
@@ -71,11 +88,12 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
  const invoicesPath=path==="/v1/platform/erp/invoices";
  const invoiceAction=path.match(/^\/v1\/platform\/erp\/invoices\/([0-9a-f-]{36})\/issue$/i);
  const invoiceItem=path.match(/^\/v1\/platform\/erp\/invoices\/([0-9a-f-]{36})$/i);
+ const subscriptionInvoiceAction=path.match(/^\/v1\/platform\/erp\/subscriptions\/([0-9a-f-]{36})\/invoices$/i);
  const paymentsPath=path==="/v1/platform/erp/payments";
  const paymentAction=path.match(/^\/v1\/platform\/erp\/payments\/([0-9a-f-]{36})\/(verify|reject)$/i);
- if(!accountsPath&&!journalsPath&&!seedAccountsPath&&!invoicesPath&&!invoiceAction&&!invoiceItem&&!paymentsPath&&!paymentAction)return false;
- const invoiceId=invoiceAction?.[1]??invoiceItem?.[1],paymentId=paymentAction?.[1],paymentVerb=paymentAction?.[2]?.toLowerCase();
- if((invoiceId&&!UUID.test(invoiceId))||(paymentId&&!UUID.test(paymentId))){reply(res,400,{error:"invalid_resource_id"});return true;}
+ if(!accountsPath&&!journalsPath&&!seedAccountsPath&&!invoicesPath&&!invoiceAction&&!invoiceItem&&!subscriptionInvoiceAction&&!paymentsPath&&!paymentAction)return false;
+ const invoiceId=invoiceAction?.[1]??invoiceItem?.[1],subscriptionId=subscriptionInvoiceAction?.[1],paymentId=paymentAction?.[1],paymentVerb=paymentAction?.[2]?.toLowerCase();
+ if((invoiceId&&!UUID.test(invoiceId))||(subscriptionId&&!UUID.test(subscriptionId))||(paymentId&&!UUID.test(paymentId))){reply(res,400,{error:"invalid_resource_id"});return true;}
 
  if(req.method==="GET"){
   try{
@@ -143,6 +161,80 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
    if(scoped.value&&"invalidState"in scoped.value&&scoped.value.invalidState){reply(res,409,{error:"active_contract_with_quote_required"});return true;}
    reply(res,201,{data:scoped.value?.item});
   }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:"invoice_create_failed"});}
+  return true;
+ }
+
+ if(req.method==="POST"&&subscriptionInvoiceAction){
+  const body=await readJson(req);if(!body){reply(res,400,{error:"invalid_json_or_body_too_large"});return true;}
+  const invalid=validateSubscriptionInvoiceInput(body);if(invalid){reply(res,422,{error:invalid});return true;}
+  if(String(body.dueOn)<businessDate()){reply(res,422,{error:"due_date_cannot_be_in_the_past"});return true;}
+  try{
+   const scoped=await withAdmin(pool,userId,async c=>{
+    const found=await c.query<{
+     id:string;customer_id:string;customer_status:string;contract_id:string;contract_status:string;product_id:string;product_name:string;
+     status:string;starts_at:string;ends_at:string|null;next_billing_at:string|null;quantity:number;unit_price:string;
+     discount_amount:string;tax_amount:string;line_total:string;currency:string;billing_interval:string|null;
+     period_start:string;subscription_end_date:string|null;
+    }>(
+     `SELECT s.id,s.customer_id,cu.status AS customer_status,s.contract_id,k.status AS contract_status,
+       s.product_id,p.product_name,s.status,s.starts_at,s.ends_at,s.next_billing_at,s.quantity,
+       s.unit_price::text,s.discount_amount::text,s.tax_amount::text,s.line_total::text,s.currency,s.billing_interval,
+       to_char(s.next_billing_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS period_start,
+       CASE WHEN s.ends_at IS NULL THEN NULL ELSE to_char(s.ends_at AT TIME ZONE 'UTC','YYYY-MM-DD') END AS subscription_end_date
+      FROM platform.subscriptions s
+      JOIN platform.customers cu ON cu.id=s.customer_id
+      LEFT JOIN platform.contracts k ON k.id=s.contract_id
+      JOIN platform.product_catalog p ON p.id=s.product_id
+      WHERE s.id=$1::uuid FOR UPDATE OF s`,[subscriptionId]);
+    const s=found.rows[0];
+    if(!s)return{error:"subscription_not_found" as const};
+    if(s.status!=="active"||["suspended","former"].includes(s.customer_status)||s.contract_status!=="active")return{error:"active_subscription_and_contract_with_billable_customer_required" as const};
+    if(!s.billing_interval||!["monthly","quarterly","yearly"].includes(s.billing_interval))return{error:"recurring_billing_interval_required" as const};
+    if(!s.next_billing_at||new Date(s.next_billing_at).getTime()>Date.now())return{error:"subscription_not_due" as const};
+    const periodStart=s.period_start;
+    const periodEnd=addBillingInterval(periodStart,s.billing_interval);
+    if(s.subscription_end_date&&periodEnd>s.subscription_end_date)return{error:"subscription_period_exceeds_end_date_proration_required" as const};
+    const dueOn=String(body.dueOn);
+    if(dueOn<periodStart)return{error:"due_date_before_billing_period" as const};
+    const existing=await c.query<{id:string;invoice_number:string;status:string}>(
+     "SELECT id,invoice_number,status FROM platform.invoices WHERE subscription_id=$1::uuid AND billing_period_start=$2::date FOR UPDATE",
+     [subscriptionId,periodStart]);
+    if(existing.rows[0])return{existing:true as const,item:existing.rows[0]};
+    const open=await c.query("SELECT id FROM platform.invoices WHERE subscription_id=$1::uuid AND status IN ('draft','issued','partially_paid','overdue') LIMIT 1 FOR UPDATE",[subscriptionId]);
+    if(open.rows[0])return{error:"subscription_has_unpaid_invoice" as const};
+    const subtotalCents=Math.round(Number(s.unit_price)*Number(s.quantity)*100);
+    const discountCents=Math.round(Number(s.discount_amount)*100);
+    const taxCents=Math.round(Number(s.tax_amount)*100);
+    const totalCents=Math.round(Number(s.line_total)*100);
+    if(!Number.isSafeInteger(subtotalCents)||!Number.isSafeInteger(discountCents)||!Number.isSafeInteger(taxCents)||!Number.isSafeInteger(totalCents)||subtotalCents-discountCents+taxCents!==totalCents||totalCents<=0)
+      return{error:"subscription_price_snapshot_invalid" as const};
+    const invoiceNumber=numberId("INV");
+    const inserted=await c.query(
+     `INSERT INTO platform.invoices
+       (invoice_number,customer_id,contract_id,subscription_id,status,currency,due_on,billing_period_start,billing_period_end,
+        subtotal,discount_total,tax_total,grand_total,created_by)
+      VALUES($1,$2::uuid,$3::uuid,$4::uuid,'draft',$5,$6::date,$7::date,$8::date,
+       $9::numeric,$10::numeric,$11::numeric,$12::numeric,$13::uuid)
+      RETURNING id,invoice_number AS "invoiceNumber",customer_id AS "customerId",contract_id AS "contractId",
+       subscription_id AS "subscriptionId",status,currency,due_on AS "dueOn",
+       billing_period_start AS "billingPeriodStart",billing_period_end AS "billingPeriodEnd",
+       grand_total AS "grandTotal",created_at AS "createdAt"`,
+     [invoiceNumber,s.customer_id,s.contract_id,subscriptionId,s.currency,dueOn,periodStart,periodEnd,
+      money(subtotalCents),money(discountCents),money(taxCents),money(totalCents),userId]);
+    const invoice=inserted.rows[0] as {id:string}|undefined;
+    if(!invoice)throw new Error("subscription_invoice_insert_failed");
+    await c.query(
+     "INSERT INTO platform.invoice_lines(invoice_id,product_id,description,quantity,unit_price,discount_amount,tax_amount,line_total) VALUES($1::uuid,$2::uuid,$3,$4::numeric,$5::numeric,$6::numeric,$7::numeric,$8::numeric)",
+     [invoice.id,s.product_id, s.product_name+" ("+periodStart+" – "+periodEnd+")",s.quantity,money(Math.round(Number(s.unit_price)*100)),money(discountCents),money(taxCents),money(totalCents)]);
+    await audit(c,userId,"billing.subscription_invoice.created","invoice",invoice.id,{subscriptionId,periodStart,periodEnd});
+    return{existing:false as const,item:invoice};
+   });
+   if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
+   const value=scoped.value as {error?:string;existing?:boolean;item?:unknown}|undefined;
+   if(value?.error){reply(res,value.error==="subscription_not_found"?404:409,{error:value.error});return true;}
+   const item=value?.item&&typeof value.item==="object"?{...(value.item as Record<string,unknown>),alreadyExists:value.existing??false}:{alreadyExists:value?.existing??false};
+   reply(res,value?.existing?200:201,{data:item});
+  }catch(e){const code=errorCode(e);reply(res,code==="23505"?409:code==="42P01"?503:500,{error:code==="23505"?"subscription_invoice_conflict":"subscription_invoice_create_failed"});}
   return true;
  }
 
@@ -215,7 +307,7 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const created=await c.query<{actor_user_id:string}>("SELECT actor_user_id FROM platform.audit_events WHERE resource_type='payment' AND resource_id=$1::uuid AND action='billing.payment.created' ORDER BY created_at DESC LIMIT 1",[paymentId]);
     if(!created.rows[0])return{notFound:false as const,invalidState:true as const,selfApproval:false as const,missingAccounts:false as const};
     if(created.rows[0].actor_user_id===userId)return{notFound:false as const,invalidState:false as const,selfApproval:true as const,missingAccounts:false as const};
-    const invoice=await c.query<{status:string;grand_total:string;amount_paid:string}>("SELECT status,grand_total,amount_paid FROM platform.invoices WHERE id=$1::uuid FOR UPDATE",[p.invoice_id]);
+    const invoice=await c.query<{status:string;grand_total:string;amount_paid:string;subscription_id:string|null;billing_period_end:string|null}>("SELECT status,grand_total,amount_paid,subscription_id,billing_period_end FROM platform.invoices WHERE id=$1::uuid FOR UPDATE",[p.invoice_id]);
     if(!invoice.rows[0]||!["issued","partially_paid","overdue"].includes(invoice.rows[0].status))return{notFound:false as const,invalidState:true as const,selfApproval:false as const,missingAccounts:false as const};
     const amount=Math.round(Number(p.amount)*100),outstanding=Math.round((Number(invoice.rows[0].grand_total)-Number(invoice.rows[0].amount_paid))*100);
     if(amount<=0||amount>outstanding)return{notFound:false as const,invalidState:true as const,selfApproval:false as const,missingAccounts:false as const};
@@ -228,6 +320,15 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
     const newPaid=Math.round(Number(invoice.rows[0].amount_paid)*100)+amount,grand=Math.round(Number(invoice.rows[0].grand_total)*100),newStatus=newPaid>=grand?"paid":"partially_paid";
     await c.query("UPDATE platform.payments SET status='verified',verified_by=$2::uuid,verified_at=now(),journal_entry_id=$3::uuid WHERE id=$1::uuid",[paymentId,userId,journalId]);
     await c.query("UPDATE platform.invoices SET amount_paid=$2::numeric,status=$3,updated_at=now() WHERE id=$1::uuid",[p.invoice_id,money(newPaid),newStatus]);
+    if(newStatus==="paid"&&invoice.rows[0].subscription_id&&invoice.rows[0].billing_period_end){
+     await c.query(
+      `UPDATE platform.subscriptions
+       SET next_billing_at=((($2::date+1)::timestamp AT TIME ZONE 'UTC')),
+           status=CASE WHEN ends_at IS NOT NULL AND ends_at < (($2::date+1)::timestamp AT TIME ZONE 'UTC') THEN 'expired' ELSE status END,
+           updated_at=now()
+       WHERE id=$1::uuid AND next_billing_at <= (($2::date+1)::timestamp AT TIME ZONE 'UTC')`,
+      [invoice.rows[0].subscription_id,invoice.rows[0].billing_period_end]);
+    }
     await audit(c,userId,"billing.payment.verified","payment",paymentId!,{invoiceId:p.invoice_id,journalEntryId:journalId,amount:money(amount)});
     return{notFound:false as const,invalidState:false as const,selfApproval:false as const,missingAccounts:false as const,journalId,newStatus};
    });
