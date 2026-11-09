@@ -183,9 +183,10 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
 
   if (req.method === "PATCH" && customerId && isCustomer) {
     const body = await readJson(req);
-    if (!body || Object.keys(body).length !== 1 || typeof body.organizationId !== "string" || !UUID.test(body.organizationId)) {
+    if (!body || Object.keys(body).length !== 1 || typeof organizationId !== "string" || !UUID.test(organizationId)) {
       reply(res, 422, { error: "organization_link_requires_valid_organization_id" }); return true;
     }
+    const organizationId = body.organizationId;
     try {
       const scoped = await withAdmin(pool, userId, async (client) => {
         const existing = await client.query<{ id: string; organizationId: string | null }>(
@@ -194,25 +195,25 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
         const current = existing.rows[0];
         if (!current) return { error: "customer_not_found" as const };
         if (current.organizationId) {
-          if (current.organizationId === body.organizationId) return { id: current.id, organizationId: current.organizationId, alreadyLinked: true };
+          if (current.organizationId === organizationId) return { id: current.id, organizationId: current.organizationId, alreadyLinked: true };
           return { error: "customer_already_linked" as const };
         }
         const organization = await client.query<{ id: string; name: string; slug: string }>(
-          `SELECT id,name,slug FROM core.organizations WHERE id=$1::uuid FOR KEY SHARE`, [body.organizationId],
+          `SELECT id,name,slug FROM core.organizations WHERE id=$1::uuid FOR KEY SHARE`, [organizationId],
         );
         if (!organization.rows[0]) return { error: "organization_not_found" as const };
         const linked = await client.query(
-          "SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [body.organizationId],
+          "SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [organizationId],
         );
         if (linked.rows[0]) return { error: "organization_already_linked" as const };
         const updated = await client.query(
           `UPDATE platform.customers SET organization_id=$2::uuid,updated_at=now()
            WHERE id=$1::uuid
-           RETURNING id,organization_id AS "organizationId"`, [customerId, body.organizationId],
+           RETURNING id,organization_id AS "organizationId"`, [customerId, organizationId],
         );
         const row = updated.rows[0] as { id: string; organizationId: string } | undefined;
         if (!row) throw new Error("customer_link_update_failed");
-        await audit(client, userId, "crm.customer.organization_linked", "customer", customerId, { organizationId: body.organizationId });
+        await audit(client, userId, "crm.customer.organization_linked", "customer", customerId, { organizationId: organizationId });
         return row;
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
