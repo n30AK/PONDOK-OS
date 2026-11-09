@@ -49,7 +49,7 @@ The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carr
 
 ## Commercial customer ↔ institution tenant link
 
-The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` adds an optional `platform.customers.organization_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect.
+The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect.
 
 - `POST /v1/platform/erp/customers` accepts optional `organizationId`; when supplied, the API verifies the tenant exists and is not already linked.
 - `GET /v1/platform/erp/customers` and `GET /v1/platform/erp/customers/:id` return only the linked tenant's name and slug in addition to customer fields.
