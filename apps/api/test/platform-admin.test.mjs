@@ -234,6 +234,9 @@ test("activation redemption creates the tenant atomically and consumes a user-bo
   assert.equal(Buffer.isBuffer(tokenLookup.values[0]), true);
   assert.equal(tokenLookup.values[0].toString("hex"), createHash("sha256").update(activationToken, "utf8").digest("hex"));
   assert.equal(tokenLookup.values[1], userId);
+  assert.match(tokenLookup.sql, /t\\.consumed_at IS NULL/);
+  assert.match(tokenLookup.sql, /t\\.expires_at > now\\(\\)/);
+  assert.match(tokenLookup.sql, /r\\.status = 'approved'/);
   const roleSwitch = calls.findIndex((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime");
   const tokenCheck = calls.findIndex((call) => call.sql.startsWith("SELECT t.request_id"));
   const organizationInsert = calls.findIndex((call) => call.sql.startsWith("INSERT INTO core.organizations"));
@@ -260,6 +263,9 @@ test("activation token cannot be redeemed by another user or replayed after cons
   assert.equal(JSON.parse(res.body).error, "activation_token_invalid_expired_or_used");
   assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO core.organizations")));
   assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO core.organization_memberships")));
+  const tokenLookup = calls.find((call) => call.sql.startsWith("SELECT t.request_id"));
+  assert.ok(tokenLookup);
+  assert.equal(tokenLookup.values[1], "923e4567-e89b-42d3-a456-426614174000");
   assert.ok(calls.some((call) => call.sql === "COMMIT"), "a rejected read-only token lookup closes its transaction cleanly");
   assert.ok(!calls.some((call) => call.sql === "ROLLBACK"));
 });
