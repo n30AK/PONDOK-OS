@@ -254,8 +254,8 @@ test("won CRM lead converts to one prospect customer in a single audited transac
   assert.ok(insert);
   assert.equal(insert.values[4],"admin@example.org");
   assert.equal(insert.values[5],"08123456789");
-  assert.ok(calls.some(x=>x.sql.includes("crm.lead.converted")));
-  assert.ok(calls.some(x=>x.sql.includes("crm.customer.created_from_lead")));
+  assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")&&x.values[1]==="crm.lead.converted"));
+  assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")&&x.values[1]==="crm.customer.created_from_lead"));
   assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
 
