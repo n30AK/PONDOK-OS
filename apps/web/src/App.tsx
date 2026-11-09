@@ -68,14 +68,7 @@ export default function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selfSignUp, setSelfSignUp] = useState(false);
-  const [firstSetup, setFirstSetup] = useState(false);
-  const [existingAdminAccount, setExistingAdminAccount] = useState(false);
   const [adminName, setAdminName] = useState("");
-  const [bootstrapToken, setBootstrapToken] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [organizationSlug, setOrganizationSlug] = useState("");
-  const [firstCampusCode, setFirstCampusCode] = useState("UTAMA");
-  const [firstCampusName, setFirstCampusName] = useState("Kampus Utama");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -245,49 +238,6 @@ export default function App() {
     } finally { setBusy(false); }
   };
 
-  const bootstrapFirstOrganization = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!authClient) return;
-    setBusy(true); setError(""); setNotice("");
-    try {
-      if (!existingAdminAccount) {
-        const signup = await authClient.signUp.email({ email, password, name: adminName.trim() });
-        if (signup.error) throw new Error(signup.error.message);
-      }
-      const signin = await authClient.signIn.email({ email, password });
-      if (signin.error) throw new Error(signin.error.message);
-      const token = await getAccessToken();
-      const response = await fetch(`${API_BASE}/v1/bootstrap/organization`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-bootstrap-token": bootstrapToken
-        },
-        body: JSON.stringify({
-          organizationName: organizationName.trim(),
-          slug: organizationSlug.trim().toLowerCase(),
-          campusCode: firstCampusCode.trim().toUpperCase(),
-          campusName: firstCampusName.trim()
-        })
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error ?? `Inisialisasi gagal (${response.status})`);
-      const orgId = result.data.organizationId as string;
-      const firstCampusId = result.data.campusId as string;
-      localStorage.setItem("pondok.organizationId", orgId);
-      localStorage.setItem(`pondok.campusId.${orgId}`, firstCampusId);
-      setCampusId(firstCampusId);
-      setUser(await getCurrentUser());
-      const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
-      setTenant(context);
-      setFirstSetup(false);
-      setNotice("Pesantren berhasil diinisialisasi. Akun ini menjadi pemilik institusi pertama.");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Inisialisasi organisasi gagal.");
-    } finally { setBusy(false); }
-  };
-
   const showStudents = async () => {
     if (!tenant) return;
     setScreen("students"); setError(""); setNotice("");
@@ -353,24 +303,7 @@ export default function App() {
         <div className="auth-foot">Dibangun untuk tata kelola yang aman, tertib, dan berkelanjutan.</div>
       </section>
       <section className="auth-panel">
-        {firstSetup ? <form className="login-card setup-card" onSubmit={bootstrapFirstOrganization}>
-          <div className="eyebrow">PENYIAPAN PERTAMA KALI</div>
-          <h2>Aktifkan pesantren</h2>
-          <p className="muted">Hanya dapat berhasil jika database belum memiliki organisasi dan operator telah menyiapkan token satu kali.</p>
-          {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Isi VITE_NEON_AUTH_URL pada .env.local.</div>}
-          {!existingAdminAccount && <label>Nama administrator<input value={adminName} onChange={(e) => setAdminName(e.target.value)} required maxLength={120} /></label>}
-          <label>Email administrator<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
-          <label>Kata sandi<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={existingAdminAccount ? "current-password" : "new-password"} minLength={8} required /></label>
-          <label>Nama pesantren<input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} required minLength={3} maxLength={180} /></label>
-          <label>Slug organisasi<input value={organizationSlug} onChange={(e) => setOrganizationSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} placeholder="pondok-contoh" required maxLength={80} /></label>
-          <div className="form-grid setup-grid"><label>Kode kampus<input value={firstCampusCode} onChange={(e) => setFirstCampusCode(e.target.value.toUpperCase())} required maxLength={24} /></label><label>Nama kampus<input value={firstCampusName} onChange={(e) => setFirstCampusName(e.target.value)} required maxLength={120} /></label></div>
-          <label>Token setup satu kali<input type="password" value={bootstrapToken} onChange={(e) => setBootstrapToken(e.target.value)} required minLength={24} maxLength={256} autoComplete="off" /></label>
-          {error && <div className="alert error">{error}</div>}
-          <button className="primary full" disabled={busy || !authClient}>{busy ? "Menginisialisasi…" : existingAdminAccount ? "Masuk dan lanjutkan setup" : "Buat institusi pertama"} <span>→</span></button>
-          <p className="login-note">Token tidak disimpan di browser. Setelah organisasi pertama dibuat, endpoint setup akan menolak permintaan berikutnya.</p>
-          <button type="button" className="text-button auth-toggle" onClick={() => { setExistingAdminAccount((value) => !value); setError(""); }}>{existingAdminAccount ? "Belum punya akun? Daftarkan administrator" : "Sudah punya akun? Gunakan akun yang ada"}</button>
-          <button type="button" className="text-button auth-toggle" onClick={() => { setFirstSetup(false); setError(""); }}>← Kembali ke login</button>
-        </form> : selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
+        {selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
           <div className="eyebrow">PENDAFTARAN PENGGUNA</div>
           <h2>Buat akun PONDOK OS</h2>
           <p className="muted">Buat identitas akun terlebih dahulu. Akses data pesantren hanya diberikan melalui undangan dan penetapan peran oleh administrator lembaga.</p>
