@@ -9,7 +9,7 @@ This deployment packages the API and PWA web workspace in Docker. PostgreSQL and
 - A Neon PostgreSQL branch with Neon Managed Auth enabled on that same branch.
 - A trusted web origin configured in Neon Auth.
 - A TLS reverse proxy in front of the web port for production.
-- An API build that includes transaction-scoped tenant context and the RLS-compatible first-organization bootstrap.
+- An API build that includes transaction-scoped tenant context, restricted runtime roles, and company-approved institution activation.
 
 ## Configure
 
@@ -19,7 +19,7 @@ This deployment packages the API and PWA web workspace in Docker. PostgreSQL and
 4. Ensure the database migration ledger and any manually created schema objects have been reconciled before migration.
 5. Keep the populated `.env` private and outside version control.
 
-For the first institution only, follow [the first-install runbook](../runbooks/first-install.md). Generate a one-time token locally using `node scripts/create-bootstrap-token.mjs`, configure only the digest as `PONDOK_BOOTSTRAP_TOKEN_SHA256`, and enter the raw token once in the first-setup screen. Remove the digest from the API environment immediately after initialization.
+Institution onboarding uses the authenticated applicant → company Super Administrator review → user-bound, one-time activation-token flow described in [the first-install runbook](../runbooks/first-install.md). The retired `/v1/bootstrap/organization` endpoint returns HTTP 410; do not configure or use `PONDOK_BOOTSTRAP_TOKEN_SHA256`.
 
 ## Build and run
 
@@ -42,7 +42,7 @@ Migrations are deliberately not run automatically when containers start. After t
 docker compose --profile migration run --rm migrate
 ```
 
-On the current PONDOK OS development branch, migrations 0001–0012 are recorded and 0013 is pending. Verify the target branch, migration ledger, and RLS flags after the migration runner completes. Never run this development procedure against the production branch.
+On the current PONDOK OS Development branch, the migration ledger is verified through 0026. Reconcile the target branch and checksums before applying any future migration. Never run this development procedure against the production branch.
 
 The runner uses checksums and stops if a previously recorded migration has changed.
 
