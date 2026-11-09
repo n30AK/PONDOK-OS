@@ -54,6 +54,7 @@ export function validateCustomerInput(value: Json): string | null {
   if (value.billingPhone !== undefined && value.billingPhone !== null && (typeof value.billingPhone !== "string" || value.billingPhone.length > 40)) return "invalid_billing_phone";
   if (value.billingAddress !== undefined && !record(value.billingAddress)) return "invalid_billing_address";
   if (value.billingAddress && JSON.stringify(value.billingAddress).length > 8000) return "billing_address_too_large";
+  if (value.organizationId !== undefined && value.organizationId !== null && (typeof value.organizationId !== "string" || !UUID.test(value.organizationId))) return "invalid_organization_id";
   return null;
 }
 async function withAdmin<T>(pool: TenantDatabase, userId: string, work: (client: Client) => Promise<T>): Promise<{ forbidden: boolean; value?: T }> {
@@ -150,20 +151,22 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
         }
         if (customerId) {
           const result = await client.query(
-            `SELECT id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
-              entity_type AS "entityType",billing_email AS "billingEmail",billing_phone AS "billingPhone",
-              billing_address AS "billingAddress",status,created_at AS "createdAt",updated_at AS "updatedAt"
-             FROM platform.customers WHERE id=$1::uuid`, [customerId],
+            `SELECT c.id,c.customer_code AS "customerCode",c.legal_name AS "legalName",c.display_name AS "displayName",
+              c.entity_type AS "entityType",c.billing_email AS "billingEmail",c.billing_phone AS "billingPhone",
+              c.billing_address AS "billingAddress",c.status,c.tenant_id AS "organizationId",
+              o.name AS "organizationName",o.slug AS "organizationSlug",c.created_at AS "createdAt",c.updated_at AS "updatedAt"
+             FROM platform.customers c LEFT JOIN core.organizations o ON o.id=c.tenant_id WHERE c.id=$1::uuid`, [customerId],
           );
           return { item: result.rows[0] ?? null };
         }
         const result = await client.query(
-          `SELECT id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
-            entity_type AS "entityType",billing_email AS "billingEmail",billing_phone AS "billingPhone",status,
-            created_at AS "createdAt",updated_at AS "updatedAt"
-           FROM platform.customers
-           WHERE ($1='%%' OR legal_name ILIKE $1 OR display_name ILIKE $1 OR customer_code ILIKE $1)
-           ORDER BY created_at DESC LIMIT $2`,
+          `SELECT c.id,c.customer_code AS "customerCode",c.legal_name AS "legalName",c.display_name AS "displayName",
+            c.entity_type AS "entityType",c.billing_email AS "billingEmail",c.billing_phone AS "billingPhone",c.status,
+            c.tenant_id AS "organizationId",o.name AS "organizationName",o.slug AS "organizationSlug",
+            c.created_at AS "createdAt",c.updated_at AS "updatedAt"
+           FROM platform.customers c LEFT JOIN core.organizations o ON o.id=c.tenant_id
+           WHERE ($1='%%' OR c.legal_name ILIKE $1 OR c.display_name ILIKE $1 OR c.customer_code ILIKE $1)
+           ORDER BY c.created_at DESC LIMIT $2`,
           [`%${q.replace(/[\\%_]/g, "\\$&")}%`, limit],
         );
         return { items: result.rows, limit, returned: result.rows.length };
@@ -174,6 +177,53 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
       reply(res, 200, { data: scoped.value });
     } catch (error) {
       reply(res, errorCode(error) === "42P01" ? 503 : 500, { error: "platform_erp_read_failed" });
+    }
+    return true;
+  }
+
+  if (req.method === "PATCH" && customerId && isCustomer) {
+    const body = await readJson(req);
+    if (!body || Object.keys(body).length !== 1 || typeof body.organizationId !== "string" || !UUID.test(body.organizationId)) {
+      reply(res, 422, { error: "organization_link_requires_valid_organization_id" }); return true;
+    }
+    const organizationId = body.organizationId;
+    try {
+      const scoped = await withAdmin(pool, userId, async (client) => {
+        const existing = await client.query<{ id: string; organizationId: string | null }>(
+          `SELECT id,tenant_id AS "organizationId" FROM platform.customers WHERE id=$1::uuid FOR UPDATE`, [customerId],
+        );
+        const current = existing.rows[0];
+        if (!current) return { error: "customer_not_found" as const };
+        if (current.organizationId) {
+          if (current.organizationId === organizationId) return { id: current.id, organizationId: current.organizationId, alreadyLinked: true };
+          return { error: "customer_already_linked" as const };
+        }
+        const organization = await client.query<{ id: string; name: string; slug: string }>(
+          `SELECT id,name,slug FROM core.organizations WHERE id=$1::uuid`, [organizationId],
+        );
+        if (!organization.rows[0]) return { error: "organization_not_found" as const };
+        const linked = await client.query(
+          "SELECT id FROM platform.customers WHERE tenant_id=$1::uuid LIMIT 1", [organizationId],
+        );
+        if (linked.rows[0]) return { error: "organization_already_linked" as const };
+        const updated = await client.query(
+          `UPDATE platform.customers SET tenant_id=$2::uuid,updated_at=now()
+           WHERE id=$1::uuid
+           RETURNING id,tenant_id AS "organizationId"`, [customerId, organizationId],
+        );
+        const row = updated.rows[0] as { id: string; organizationId: string } | undefined;
+        if (!row) throw new Error("customer_link_update_failed");
+        await audit(client, userId, "crm.customer.organization_linked", "customer", customerId, { organizationId });
+        return row;
+      });
+      if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      const value = scoped.value as { error?: string } | undefined;
+      if (value?.error === "customer_not_found" || value?.error === "organization_not_found") { reply(res, 404, { error: value.error }); return true; }
+      if (value?.error === "customer_already_linked" || value?.error === "organization_already_linked") { reply(res, 409, { error: value.error }); return true; }
+      reply(res, 200, { data: scoped.value });
+    } catch (error) {
+      const code = errorCode(error);
+      reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? "organization_already_linked" : "customer_organization_link_failed" });
     }
     return true;
   }
@@ -204,27 +254,39 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
           return row;
         }
         const customerCode = `CUS-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${randomUUID().slice(0,8).toUpperCase()}`;
+        const organizationId = typeof body.organizationId === "string" ? body.organizationId : null;
+        if (organizationId) {
+          const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid", [organizationId]);
+          if (!organization.rows[0]) return { error: "organization_not_found" as const };
+          const linked = await client.query("SELECT id FROM platform.customers WHERE tenant_id=$1::uuid LIMIT 1", [organizationId]);
+          if (linked.rows[0]) return { error: "organization_already_linked" as const };
+        }
         const result = await client.query(
           `INSERT INTO platform.customers
-            (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,account_owner_user_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'prospect',$8::uuid)
+            (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,account_owner_user_id,tenant_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'prospect',$8::uuid,$9::uuid)
            RETURNING id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
             entity_type AS "entityType",billing_email AS "billingEmail",billing_phone AS "billingPhone",billing_address AS "billingAddress",
-            status,created_at AS "createdAt"`,
+            tenant_id AS "organizationId",status,created_at AS "createdAt"`,
           [customerCode,String(body.legalName).trim(),String(body.displayName).trim(),body.entityType ?? "institution",
            body.billingEmail ? String(body.billingEmail).trim().toLowerCase() : null,body.billingPhone ?? null,
-           JSON.stringify(body.billingAddress ?? {}),userId],
+           JSON.stringify(body.billingAddress ?? {}),userId,organizationId],
         );
         const row = result.rows[0] as { id: string } | undefined;
         if (!row) throw new Error("customer_insert_failed");
-        await audit(client,userId,"crm.customer.created","customer",row.id,{entityType:body.entityType ?? "institution"});
+        await audit(client,userId,"crm.customer.created","customer",row.id,{entityType:body.entityType ?? "institution",organizationId});
         return row;
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+      const value = scoped.value as { error?: string } | undefined;
+      if (value?.error === "organization_not_found") { reply(res, 404, { error: value.error }); return true; }
+      if (value?.error === "organization_already_linked") { reply(res, 409, { error: value.error }); return true; }
       reply(res, 201, { data: scoped.value });
     } catch (error) {
       const code = errorCode(error);
-      reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? "duplicate_platform_record" : "platform_erp_create_failed" });
+      const constraint = error && typeof error === "object" && "constraint" in error ? String((error as { constraint?: unknown }).constraint ?? "") : "";
+      const conflictError = constraint === "platform_customers_one_per_tenant" ? "organization_already_linked" : "duplicate_platform_record";
+      reply(res, code === "23505" ? 409 : code === "42P01" ? 503 : 500, { error: code === "23505" ? conflictError : "platform_erp_create_failed" });
     }
     return true;
   }

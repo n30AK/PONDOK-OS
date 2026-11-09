@@ -62,6 +62,10 @@ jobs:
         run: node apps/api/scripts/test-platform-control-plane.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify platform customer-to-tenant link integrity
+        run: node apps/api/scripts/test-customer-tenant-link.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Verify client observability, backup and maintenance controls
         run: node apps/api/scripts/test-observability-backup-maintenance.mjs
         env:
