@@ -89,3 +89,88 @@
 .record-detail-field dt{font-size:9px;font-weight:800;color:#7c8a81;margin-bottom:6px}
 .record-detail-field dd{font-size:11px;line-height:1.55;color:#304b3d;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:560px){.record-detail-grid{grid-template-columns:1fr}.record-detail-heading{align-items:flex-start;flex-direction:column}.record-detail-heading .outline-button{width:100%}}
+
+
+/* Mobile workspace navigation: sidebar becomes an off-canvas drawer, never part of the form flow. */
+.topbar-leading{display:flex;align-items:center;gap:12px;min-width:0}
+.topbar-crumbs{display:flex;align-items:center;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.topbar-crumbs strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mobile-menu-toggle{display:none;flex:0 0 38px;width:38px;height:38px;align-items:center;justify-content:center;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--green);padding:8px}
+.mobile-menu-toggle span{display:block;width:17px;height:2px;border-radius:2px;background:currentColor}
+.sidebar-backdrop{display:none}
+@media(max-width:760px){
+  .app-shell{display:block;min-height:100vh;min-height:100dvh;width:100%;overflow-x:clip}
+  .main-area{width:100%;min-width:0}
+  .sidebar{
+    position:fixed;inset:0 auto 0 0;z-index:1001;
+    width:min(86vw,310px);height:100vh;height:100dvh;max-height:none;min-height:0;
+    display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:4px;
+    padding:20px 14px 16px;overflow-x:hidden;overflow-y:auto;
+    overscroll-behavior:contain;box-shadow:18px 0 45px #102b242e;
+    transform:translateX(-105%);visibility:hidden;pointer-events:none;
+    transition:transform .24s ease,visibility .24s ease;
+  }
+  .mobile-nav-open .sidebar{transform:translateX(0);visibility:visible;pointer-events:auto}
+  .sidebar .brand-lockup{width:100%;flex:0 0 auto;padding:0 8px 22px}
+  .sidebar .side-label,.sidebar .side-label.second{display:block;flex:0 0 auto;margin:12px 0 2px;padding:0 10px 8px}
+  .sidebar>.nav-item,.sidebar .nav-item.subdued{
+    display:flex;flex:0 0 auto;width:100%;min-height:42px;align-items:center;
+    padding:10px 12px;margin:1px 0;font-size:12px;white-space:normal;
+  }
+  .sidebar>.nav-item span{display:inline-block;flex:0 0 20px}
+  .sidebar .sidebar-bottom{display:block;flex:0 0 auto;margin-top:auto;padding-top:18px}
+  .sidebar .secure-note{line-height:1.6}
+  .sidebar .profile{min-width:0}
+  .sidebar-backdrop{
+    display:block;position:fixed;inset:0;z-index:1000;width:100%;height:100%;
+    border:0;border-radius:0;background:#10251f80;backdrop-filter:blur(2px);
+  }
+  .mobile-menu-toggle{display:inline-flex}
+  .topbar{height:60px;min-height:60px;padding:0 14px;gap:10px;position:sticky;top:0;z-index:20}
+  .topbar-leading{flex:1;gap:9px}
+  .topbar-crumbs{font-size:10px}
+  .topbar-crumbs .crumb-sep{margin:0 6px}
+  .topbar-crumbs strong{font-size:10px;max-width:min(48vw,240px)}
+  .top-actions{flex:0 0 auto;gap:7px}
+  .top-actions .outline-button{padding:8px 10px;font-size:10px}
+  .content{width:100%;max-width:100%;padding:22px 14px 18px;overflow-x:clip}
+  .page-heading{min-width:0;margin-bottom:18px}
+  .page-heading>div{min-width:0}
+  .page-heading h1{font-size:clamp(21px,6vw,27px);overflow-wrap:anywhere}
+  .page-heading p{font-size:11px;line-height:1.6}
+  .date-chip{display:none}
+  .table-card,.student-form,.form-section{min-width:0;max-width:100%}
+  .table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  .table-wrap table{min-width:680px}
+  .form-grid,.form-section .form-grid,.admissions-panel .form-section .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .form-grid>*{min-width:0}
+  .student-form input,.student-form select,.student-form textarea,
+  .form-section input,.form-section select,.form-section textarea,
+  .operations-form input,.operations-form select,.operations-form textarea{width:100%;max-width:100%;min-width:0}
+  .form-section .wide-field,.form-grid .form-field-wide{grid-column:span 2}
+  .form-actions{flex-wrap:wrap}
+  .form-actions button{flex:1 1 130px}
+  .operations-tabs,.ppdb-tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:10px}
+  .operation-tab{flex:0 0 auto;min-width:130px}
+  .ppdb-period-grid,.ppdb-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ppdb-period-card,.ppdb-period-card dl,.ppdb-period-card dl div{min-width:0}
+}
+@media(max-width:420px){
+  .topbar{padding:0 10px}
+  .topbar-crumbs .breadcrumb{display:none}
+  .topbar-crumbs .crumb-sep{display:none}
+  .topbar-crumbs strong{max-width:48vw;font-size:10px}
+  .top-actions .outline-button{padding:7px 8px}
+  .content{padding:18px 11px 16px}
+  .form-grid,.form-section .form-grid,.admissions-panel .form-section .form-grid{grid-template-columns:minmax(0,1fr)}
+  .form-section .wide-field,.form-grid .form-field-wide{grid-column:auto}
+  .ppdb-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .table-card{padding:12px}
+  .student-form,.form-section{padding:13px}
+  .welcome-copy{padding:24px 18px}
+  .welcome-copy h1{font-size:29px}
+  .org-choice{padding:13px;gap:10px}
+}
+@media(prefers-reduced-motion:reduce){
+  .sidebar{transition:none}
+}
