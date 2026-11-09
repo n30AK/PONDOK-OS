@@ -89,6 +89,26 @@ test("invoice issue posts balanced journal entries and marks invoice issued in o
  assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")));
  assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
+test("fully verified recurring invoice advances next billing date in the same transaction",async()=>{
+ const subscriptionId="523e4567-e89b-42d3-a456-426614174000",creatorId="923e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql,values)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,customer_id,invoice_id,amount,payment_method,status"))return{rows:[{id:paymentId,customer_id:userId,invoice_id:invoiceId,amount:"100.00",payment_method:"bank_transfer",status:"pending"}]};
+  if(sql.startsWith("SELECT actor_user_id"))return{rows:[{actor_user_id:creatorId}]};
+  if(sql.startsWith("SELECT status,grand_total,amount_paid,subscription_id,billing_period_end"))return{rows:[{status:"issued",grand_total:"100.00",amount_paid:"0.00",subscription_id:subscriptionId,billing_period_end:"2026-11-30"}]};
+  if(sql.startsWith("SELECT id FROM platform.chart_of_accounts"))return{rows:[{id:`account-${values[0]}`}]};
+  if(sql.startsWith("INSERT INTO platform.journal_entries"))return{rows:[{id:"823e4567-e89b-42d3-a456-426614174000"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformBillingRequest(req(`/v1/platform/erp/payments/${paymentId}/verify`,"PATCH"),res,pool,userId);
+ assert.equal(res.status,200);
+ const advance=calls.find(x=>x.sql.startsWith("UPDATE platform.subscriptions SET next_billing_at"));
+ assert.ok(advance,"subscription must advance only after full invoice settlement");
+ assert.equal(advance.values[0],subscriptionId);
+ assert.equal(advance.values[1],"2026-11-30");
+ assert.ok(calls.some(x=>x.sql.startsWith("UPDATE platform.invoices SET amount_paid")));
+});
 test("payment creator cannot verify their own payment",async()=>{
  const {pool,calls}=createPool(async(sql)=>{
   if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
