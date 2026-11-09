@@ -199,7 +199,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
           return { error: "customer_already_linked" as const };
         }
         const organization = await client.query<{ id: string; name: string; slug: string }>(
-          `SELECT id,name,slug FROM core.organizations WHERE id=$1::uuid FOR KEY SHARE`, [organizationId],
+          `SELECT id,name,slug FROM core.organizations WHERE id=$1::uuid`, [organizationId],
         );
         if (!organization.rows[0]) return { error: "organization_not_found" as const };
         const linked = await client.query(
@@ -256,7 +256,7 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
         const customerCode = `CUS-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${randomUUID().slice(0,8).toUpperCase()}`;
         const organizationId = typeof body.organizationId === "string" ? body.organizationId : null;
         if (organizationId) {
-          const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid FOR KEY SHARE", [organizationId]);
+          const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid", [organizationId]);
           if (!organization.rows[0]) return { error: "organization_not_found" as const };
           const linked = await client.query("SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [organizationId]);
           if (linked.rows[0]) return { error: "organization_already_linked" as const };
