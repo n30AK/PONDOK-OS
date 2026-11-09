@@ -20,7 +20,8 @@ A controlled pilot may be prepared only after the pilot-entry gates in section 7
 
 - Development implementation-status snapshot records 67 organization-owned tables with RLS ENABLE and FORCE.
 - A direct read-only Development query on 9 November 2026 reconfirmed 67/67 organization-owned tables with RLS ENABLE and FORCE, 26 migration ledger entries, and zero rows in organizations, organization memberships, student profiles, HR employees, platform customers, module entitlements and module orders.
-- The same live inspection confirmed `core.organization_memberships` itself has RLS ENABLE + FORCE with platform-controlled insert and self/active-tenant or Super Admin read policies. This does not replace the pending two-tenant API isolation test.
+- The same live inspection confirmed `core.organization_memberships` itself has RLS ENABLE + FORCE with platform-controlled insert and self/active-tenant or Super Admin read policies.
+- A direct read-only transaction assuming the actual runtime roles confirmed `pondok_runtime` is NOLOGIN/NOBYPASSRLS with 63/63 tenant-owned tables covered by FORCE RLS and the `tenant_isolation` policy; `pondok_platform_runtime` is NOLOGIN/NOBYPASSRLS with 79/79 platform tables (excluding the separately owner-checked `platform.super_admins` authority table) covered by FORCE RLS and policies. This does not replace the pending two-tenant API isolation test.
 - The implementation-status audit records 45 distinct read/write permission keys referenced by 44 module resources.
 - The workspace/API contract records 44 module resources: 42 generic tenant-scoped resources plus dedicated encrypted student identity-document and health-profile handlers.
 - Development snapshot records zero organizations, memberships, student profiles, and HR employees; no fabricated tenant or personal records have been seeded.
@@ -147,7 +148,7 @@ A module cannot be marked operational or included in a commercial package until 
 
 | Gate | Required evidence | Current status |
 |---|---|---|
-| G0 — Engineering baseline | Main build, CI, API bundle, Pages/release artifacts and no unresolved critical defects | Partial; PR #144 CI and API bundle passed; post-merge release evidence still needs checking |
+| G0 — Engineering baseline | Main build, CI, API bundle, Pages/release artifacts and no unresolved critical defects | Partial; PR #152 merged, CI #1327 passed and Development Function deployment #52 is completed; direct HTTP readiness check and full post-merge Pages/release evidence still need confirmation |
 | G1 — Security baseline | Two-tenant isolation, identity-key lifecycle, audit, backup/restore and access review | Blocked |
 | G2 — Institution onboarding | Verified institution, authorized Super Admin approval, tenant activation, owner handover | Blocked; Development has no institution tenant in the last audit |
 | G3 — Core operational UAT | Student/guardian/PPDB, academic, boarding, finance and HR flows for pilot scope | Blocked |
@@ -183,3 +184,13 @@ Do not mark the entire platform ready when only selected modules have passed. Co
 - PR #149 merged as `db446339cceb88ae0100fb0f6954b046c0e3615e`. CI #1312 and Neon Function bundle #231 passed. PPDB now captures the applicant-declared guardian relationship and, on accepted-applicant conversion, atomically creates the student profile, a primary guardian contact, and the student–guardian link. Guardian communication consent starts as pending. Legal-guardian, emergency-contact and pickup flags remain false until evidence-based verification. This is not yet a complete PPDB registration/payment-to-active-student workflow.
 - PR #150 merged as `2b5d0d9e4ae7d145db8861fba028f5df85dd6cc1`. CI #1320 and Neon Function bundle #234 passed. Central Command overview now reads aggregate commercial/operational metrics from platform tables through a Super Admin-only, read-only API. The Development snapshot currently returns zeros because no customer, subscription, invoice, installation, support or backup records are present.
 - Both changes are code/test/UI changes only. No Neon Development or Production writes, schema changes, migrations, or seed records were performed. Post-merge Pages/Release Bundle deployment evidence remains to be independently checked.
+
+
+## Update after PR #152 (2026-11-09)
+
+- PR #152 merged as `8357efe3e9a550df04d355b73c2c51a8d7e258db`; PONDOK OS CI #1327 passed and Neon Function bundle #236 passed.
+- `GET /health/ready` now checks database connectivity, transaction-local assumption of `pondok_runtime` and `pondok_platform_runtime`, NOLOGIN/NOBYPASSRLS attributes, tenant table FORCE RLS + `tenant_isolation` policy coverage, membership RLS, and platform-table FORCE RLS + policy coverage. It fails closed with HTTP 503 when these checks fail.
+- The exact checks were executed read-only against Neon Development under both runtime roles: tenant 63/63 and platform 79/79, with both roles NOLOGIN/NOBYPASSRLS. No database writes or migrations were performed.
+- Neon Development Function `pondokapi` deployment #52 is reported completed. Direct HTTP health verification could not be completed from the available inspection path, so do not claim the endpoint response was independently confirmed.
+- Current Function environment metadata still lists `STUDENT_HEALTH_ENCRYPTION_KEY` but not `STUDENT_IDENTITY_ENCRYPTION_KEY`. Identity-document writes must remain fail-closed. The key must not be generated/configured without an approved secure secret and recoverable-backup/rotation process.
+- No Neon Production changes or data seeding occurred. Two-real-tenant API acceptance, institution UAT and commercial lifecycle remain release blockers.
