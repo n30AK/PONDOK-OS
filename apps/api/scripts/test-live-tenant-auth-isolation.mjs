@@ -89,7 +89,7 @@ async function verifyTenant(label, token, ownOrganization, foreignOrganization, 
   assert.equal(wrongWrite.status, 403, `${label}: cross-tenant writes must be denied before payload validation`);
 }
 
-const [a, b] = await Promise.all([
+await Promise.all([
   verifyTenant("Tenant A", tokenA, organizationA, organizationB,
     process.env.TENANT_A_SENTINEL_PROGRAM_CODE?.trim() || null,
     process.env.TENANT_B_SENTINEL_PROGRAM_CODE?.trim() || null),
