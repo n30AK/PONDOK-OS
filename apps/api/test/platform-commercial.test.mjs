@@ -69,3 +69,109 @@ test("quote requester cannot approve their own pending approval request",async()
  assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.approval_requests")));
  assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
+
+
+test("active contract creates one scheduled subscription per recurring quote line with immutable price snapshot",async()=>{
+ const contractId="423e4567-e89b-42d3-a456-426614174000";
+ const quoteLineId="523e4567-e89b-42d3-a456-426614174000";
+ const productId="623e4567-e89b-42d3-a456-426614174000";
+ const subscriptionId="723e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,customer_id,quote_id,status,starts_on,ends_on"))return{rows:[{id:contractId,customer_id:customerId,quote_id:quoteId,status:"active",starts_on:"2027-01-01",ends_on:"2027-12-31"}]};
+  if(sql.startsWith("SELECT status,currency FROM platform.quotes"))return{rows:[{status:"approved",currency:"IDR"}]};
+  if(sql.startsWith("SELECT ql.id,ql.product_id"))return{rows:[{id:quoteLineId,product_id:productId,quantity:"2.000",unit_price:"100000.00",discount_amount:"5000.00",tax_amount:"0.00",line_total:"195000.00",product_type:"subscription",billing_interval:"monthly",is_active:true}]};
+  if(sql.startsWith("SELECT id,status FROM platform.subscriptions WHERE quote_line_id"))return{rows:[]};
+  if(sql.startsWith("INSERT INTO platform.subscriptions"))return{rows:[{id:subscriptionId,status:"scheduled",quoteLineId,productId,startsAt:"2027-01-01T00:00:00.000Z"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/contracts/${contractId}/subscriptions`,"POST",{}),res,pool,userId);
+ assert.equal(res.status,201);
+ const data=JSON.parse(res.body).data;
+ assert.equal(data.created,1);
+ assert.equal(data.items[0].id,subscriptionId);
+ assert.equal(data.entitlementsGranted,false);
+ const insert=calls.find(x=>x.sql.startsWith("INSERT INTO platform.subscriptions"));
+ assert.ok(insert);
+ assert.equal(insert.values[4],"scheduled");
+ assert.equal(insert.values[8],"100000.00");
+ assert.equal(insert.values[9],"5000.00");
+ assert.equal(insert.values[11],"195000.00");
+ assert.equal(insert.values[13],"monthly");
+ assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")&&x.values[1]==="commercial.subscription.created"));
+ assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+
+test("subscription generation requires an active contract and approved quote",async()=>{
+ const contractId="423e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,customer_id,quote_id,status,starts_on,ends_on"))return{rows:[{id:contractId,customer_id:customerId,quote_id:quoteId,status:"review",starts_on:null,ends_on:null}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/contracts/${contractId}/subscriptions`,"POST",{}),res,pool,userId);
+ assert.equal(res.status,409);
+ assert.equal(JSON.parse(res.body).error,"contract_must_be_active");
+ assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.subscriptions")));
+});
+
+test("subscription generation rejects contracts without recurring catalog lines",async()=>{
+ const contractId="423e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,customer_id,quote_id,status,starts_on,ends_on"))return{rows:[{id:contractId,customer_id:customerId,quote_id:quoteId,status:"active",starts_on:null,ends_on:null}]};
+  if(sql.startsWith("SELECT status,currency FROM platform.quotes"))return{rows:[{status:"approved",currency:"IDR"}]};
+  if(sql.startsWith("SELECT ql.id,ql.product_id"))return{rows:[]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/contracts/${contractId}/subscriptions`,"POST",{}),res,pool,userId);
+ assert.equal(res.status,409);
+ assert.equal(JSON.parse(res.body).error,"contract_has_no_recurring_products");
+ assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.subscriptions")));
+});
+
+test("subscription generation is idempotent for an existing quote-line subscription",async()=>{
+ const contractId="423e4567-e89b-42d3-a456-426614174000";
+ const quoteLineId="523e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT id,customer_id,quote_id,status,starts_on,ends_on"))return{rows:[{id:contractId,customer_id:customerId,quote_id:quoteId,status:"active",starts_on:null,ends_on:null}]};
+  if(sql.startsWith("SELECT status,currency FROM platform.quotes"))return{rows:[{status:"approved",currency:"IDR"}]};
+  if(sql.startsWith("SELECT ql.id,ql.product_id"))return{rows:[{id:quoteLineId,product_id:"623e4567-e89b-42d3-a456-426614174000",quantity:"1.000",unit_price:"100.00",discount_amount:"0.00",tax_amount:"0.00",line_total:"100.00",product_type:"module",billing_interval:"yearly",is_active:true}]};
+  if(sql.startsWith("SELECT id,status FROM platform.subscriptions WHERE quote_line_id"))return{rows:[{id:"723e4567-e89b-42d3-a456-426614174000",status:"active"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/contracts/${contractId}/subscriptions`,"POST",{}),res,pool,userId);
+ assert.equal(res.status,200);
+ assert.equal(JSON.parse(res.body).data.created,0);
+ assert.equal(JSON.parse(res.body).data.existing,1);
+ assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.subscriptions")));
+});
+
+test("non Super Admin cannot generate subscriptions",async()=>{
+ const contractId="423e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async()=>({rows:[{allowed:false}]}));
+ const res=response();
+ await handlePlatformCommercialRequest(req(`/v1/platform/erp/contracts/${contractId}/subscriptions`,"POST",{}),res,pool,userId);
+ assert.equal(res.status,403);
+ assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,customer_id,quote_id,status")));
+ assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
+});
+
+test("subscription list is Super Admin-only and uses the platform runtime role",async()=>{
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT s.id"))return{rows:[{id:"723e4567-e89b-42d3-a456-426614174000",status:"active",billingInterval:"monthly"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformCommercialRequest(req("/v1/platform/erp/subscriptions"),res,pool,userId);
+ assert.equal(res.status,200);
+ assert.equal(JSON.parse(res.body).data.items[0].status,"active");
+ assert.ok(calls.some(x=>x.sql==="SET LOCAL ROLE pondok_platform_runtime"));
+ assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
