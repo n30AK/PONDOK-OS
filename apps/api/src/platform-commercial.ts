@@ -117,7 +117,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
    if(scoped.forbidden){reply(res,403,{error:"platform_super_admin_required"});return true;}
    if(!scoped.value){reply(res,404,{error:"resource_not_found"});return true;}
    if("notFound"in scoped.value&&scoped.value.notFound){reply(res,404,{error:"quote_not_found"});return true;}
-   if("item"in scoped.value&&!scoped.value.item){reply(res,404,{error:"contract_not_found"});return true;}
+   if("item"in scoped.value&&!scoped.value.item){reply(res,404,{error:subscriptionItem?"subscription_not_found":"contract_not_found"});return true;}
    reply(res,200,{data:scoped.value});
   }catch(e){reply(res,errorCode(e)==="42P01"?503:500,{error:"platform_commercial_read_failed"});}
   return true;
@@ -177,6 +177,8 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
   return true;
  }
 
+ if(contractSubscriptions&&req.method!=="POST"){reply(res,405,{error:"method_not_allowed"});return true;}
+
  if(req.method==="POST"&&contractSubscriptions){
   const body=await readJson(req);if(!body){reply(res,400,{error:"invalid_json_or_body_too_large"});return true;}
   if(Object.keys(body).length){reply(res,422,{error:"subscription_generation_does_not_accept_overrides"});return true;}
@@ -203,8 +205,9 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
 
     const startsAt=k.starts_on?new Date(`${String(k.starts_on).slice(0,10)}T00:00:00.000Z`):new Date();
     const endsAt=k.ends_on?new Date(`${String(k.ends_on).slice(0,10)}T23:59:59.999Z`):null;
-    if(endsAt&&endsAt.getTime()<startsAt.getTime())return{error:"contract_period_invalid" as const};
     const now=Date.now();
+    if(endsAt&&endsAt.getTime()<startsAt.getTime())return{error:"contract_period_invalid" as const};
+    if(endsAt&&endsAt.getTime()<now)return{error:"contract_period_expired" as const};
     const status=startsAt.getTime()>now?"scheduled":"active";
     const results:Record<string,unknown>[]=[];
     let created=0;
