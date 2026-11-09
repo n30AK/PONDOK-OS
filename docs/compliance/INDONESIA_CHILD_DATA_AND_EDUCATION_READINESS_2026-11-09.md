@@ -48,6 +48,9 @@ Official references:
 
 - Publish minimum-age and age-band information in clear Indonesian before account activation.
 - Classify every child-facing or child-accessible feature by age band and risk profile. Do not apply one global age rule to every feature.
+- For account-based products/features, implement the specific Permenkomdigi 9/2026 age gates: under 13 may hold an account only on a child-designed, low-risk feature with parent consent; ages 13 to under 16 may hold an account only on a low-risk feature with parent consent; ages 16 to under 18 may hold an account with parent consent. The relevant risk profile is the profile determined under the regulation, not a self-assigned product label.
+- Any account-based child experience must provide effective technology and operational steps for the parent/legal guardian to supervise the child's use. If a child feature permits contact with unknown people, provide parental controls for allowing or refusing that contact.
+- Assess whether any chat, social, public-posting, group or user-generated-content feature meets the regulatory definition of a social-networking service. Such services are generally high-risk unless determined otherwise; the regulation requires disabling accounts for children under 16 where the service is classified as a social-networking service. Do not add open social features without a separate legal/risk review.
 - Implement verified parent/legal-guardian consent before a child is allowed to use features where consent is required. Store who consented, their verified relationship/authority, which child and feature, purpose, notice version, timestamp, method, status, withdrawal and evidence.
 - Keep legal guardianship, parent/contact relationship, emergency contact and permission to pick up a santri as separate authority concepts. A phone number or family relationship alone must not grant pickup authority.
 - On refusal or withdrawal, suspend the relevant child feature and stop the consent-based processing within the statutory period; apply deletion/retention exceptions only where a documented legal basis requires it.
@@ -134,7 +137,7 @@ The evidence above is an engineering snapshot, not a statement that the product 
 
 ## 6. Non-negotiable product defaults
 
-- No child account without the required age/guardian checks and consent.
+- No child account without the correct age-band/risk eligibility, verified guardian consent and working parent supervision controls.
 - No default sharing of child profiles across institutions or public display.
 - No precise geolocation collection from children.
 - No child profiling or automated consequential decision without legally reviewed basis and human safeguards.
