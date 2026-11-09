@@ -15,15 +15,20 @@ type Resource = {
 type Row = Record<string, unknown>;
 type Lookup = { id: string; label: string };
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-// Keep the "Master Data Santri" workspace strictly scoped to student and guardian records.
-// The catalog also describes institution, employee, academic, and other master data; flattening
-// every catalog descriptor here caused unrelated resources to appear under the student menu.
+// Keep the institution's core reference data together while leaving operational
+// workflows (admissions, attendance, payroll, boarding, etc.) in their own domains.
 const MASTER_DATA_KEYS = new Set([
+  "campuses",
   "student-details",
   "student-identity-documents",
   "student-health-profiles",
   "guardians",
   "student-guardians",
+  "employees",
+  "instructor-profiles",
+  "hr-departments",
+  "hr-positions",
+  "employee-assignments",
 ]);
 
 const F = (key:string,label:string,type:Field["type"]="text",required=false,extra:Partial<Field>={}):Field=>({key,label,type,required,...extra});
