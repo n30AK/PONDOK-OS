@@ -383,7 +383,7 @@ export default function App() {
         </section>
         <section className="panel"><PanelTitle title="Sumber hukum resmi" subtitle="Prioritaskan dokumen primer, bukan ringkasan pihak ketiga"/><div className="source-list"><a href="https://jdih.kemenag.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kementerian Agama</b><span>Peraturan Menteri Agama, Keputusan Menteri Agama, dan keputusan/produk hukum Kemenag.</span></a><a href="https://peraturan.bpk.go.id/" target="_blank" rel="noreferrer"><b>Database Peraturan BPK</b><span>Metadata, status, relasi perubahan/pencabutan, dan dokumen peraturan.</span></a><a href="https://peraturan.go.id/" target="_blank" rel="noreferrer"><b>Portal Peraturan Perundang-undangan</b><span>Penelusuran peraturan nasional dan metadata pengundangan.</span></a><a href="https://jdih.kemendikdasmen.go.id/" target="_blank" rel="noreferrer"><b>JDIH Kemendikdasmen</b><span>Standar dan regulasi pendidikan dasar dan menengah.</span></a></div><p className="muted">Keputusan Menteri Agama (KMA), Keputusan Direktur Jenderal, surat edaran, dan petunjuk teknis akan dimasukkan per nomor dan tahun setelah naskah serta status keberlakuannya diverifikasi pada JDIH penerbit. Tidak ada nomor keputusan yang ditebak.</p></section>
       </>}
-      {section === "crm" && <CRMWorkspace/>}
+      {section === "crm" && <CRMWorkspace tenants={tenants}/>}
       {section === "catalog" && <ProductCatalogWorkspace/>}
       {section === "contracts" && <CommercialWorkspace/>}
       {section === "billing" && <BillingWorkspace/>}
@@ -407,7 +407,7 @@ export default function App() {
 }
 
 type CrmLead = { id:string; leadNumber:string; organizationName:string; contactName:string; email?:string|null; phone?:string|null; source:string; stage:string; estimatedValue?:number|null; currency:string; nextFollowUpAt?:string|null; createdAt:string };
-type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; createdAt:string };
+type CrmCustomer = { id:string; customerCode:string; legalName:string; displayName:string; entityType:string; billingEmail?:string|null; billingPhone?:string|null; status:string; organizationId?:string|null; organizationName?:string|null; organizationSlug?:string|null; createdAt:string };
 type CrmContact = {id:string;customerId:string;fullName:string;positionTitle?:string|null;email?:string|null;phone?:string|null;isPrimary:boolean};
 
 type CatalogProduct={id:string;productCode:string;productName:string;description?:string|null;productType:string;basePrice:string|number;currency:string;billingInterval?:string|null;isActive:boolean;createdAt:string};
@@ -603,7 +603,7 @@ function ProductCatalogWorkspace(){
  </section><p className="muted">Produk katalog belum otomatis ditagihkan. Penjualan modul harus melewati penawaran, persetujuan, kontrak/pesanan, invoice, pembayaran, dan posting akuntansi sesuai hak pelanggan.</p></div>;
 }
 
-function CRMWorkspace(){
+function CRMWorkspace({tenants}:{tenants:Tenant[]}){
   const [leads,setLeads]=useState<CrmLead[]>([]);
   const [customers,setCustomers]=useState<CrmCustomer[]>([]);
   const [contacts,setContacts]=useState<CrmContact[]>([]);
@@ -615,8 +615,9 @@ function CRMWorkspace(){
   const [notice,setNotice]=useState("");
   const [query,setQuery]=useState("");
   const [stageDrafts,setStageDrafts]=useState<Record<string,string>>({});
+  const [customerOrgDrafts,setCustomerOrgDrafts]=useState<Record<string,string>>({});
   const [lead,setLead]=useState({organizationName:"",contactName:"",email:"",phone:"",source:"manual",stage:"new",estimatedValue:"",notes:""});
-  const [customer,setCustomer]=useState({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:""});
+  const [customer,setCustomer]=useState({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:"",organizationId:""});
   const load=useCallback(async()=>{
     setBusy(true);setError("");
     try{
@@ -679,11 +680,24 @@ function CRMWorkspace(){
       await request<CrmCustomer>("/v1/platform/erp/customers",{method:"POST",body:JSON.stringify({
         legalName:customer.legalName,displayName:customer.displayName,entityType:customer.entityType,
         ...(customer.billingEmail?{billingEmail:customer.billingEmail}:{}),
-        ...(customer.billingPhone?{billingPhone:customer.billingPhone}:{})
+        ...(customer.billingPhone?{billingPhone:customer.billingPhone}:{}),
+        ...(customer.organizationId?{organizationId:customer.organizationId}:{})
       })});
-      setCustomer({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:""});
+      setCustomer({legalName:"",displayName:"",entityType:"institution",billingEmail:"",billingPhone:"",organizationId:""});
       setNotice("Data pelanggan berhasil disimpan.");await load();
     }catch(e){setError(e instanceof Error?e.message:"Pelanggan gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+  async function linkCustomerOrganization(item:CrmCustomer){
+    const organizationId=customerOrgDrafts[item.id]??"";
+    if(!organizationId||item.organizationId)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await request(`/v1/platform/erp/customers/${item.id}`,{method:"PATCH",body:JSON.stringify({organizationId})});
+      setCustomerOrgDrafts(current=>{const next={...current};delete next[item.id];return next;});
+      setNotice(`Pelanggan ${item.customerCode} berhasil ditautkan ke tenant.`);
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"Penautan pelanggan ke tenant gagal.");}
     finally{setSaving(false);}
   }
   const visibleLeads=leads.filter(x=>`${x.organizationName} ${x.contactName} ${x.email??""} ${x.leadNumber}`.toLowerCase().includes(query.toLowerCase()));
@@ -718,14 +732,15 @@ function CRMWorkspace(){
           <label>Jenis entitas<select value={customer.entityType} onChange={e=>setCustomer({...customer,entityType:e.target.value})}><option value="institution">Lembaga</option><option value="foundation">Yayasan</option><option value="company">Perusahaan</option><option value="government">Pemerintah</option><option value="individual">Perorangan</option><option value="other">Lainnya</option></select></label>
           <label>Email penagihan<input type="email" value={customer.billingEmail} onChange={e=>setCustomer({...customer,billingEmail:e.target.value})}/></label>
           <label>Telepon penagihan<input value={customer.billingPhone} onChange={e=>setCustomer({...customer,billingPhone:e.target.value})}/></label>
-          <p className="muted">Pelanggan baru dibuat sebagai prospek. Aktivasi layanan, kontrak, lisensi, dan penagihan tetap melalui persetujuan serta alur komersial tersendiri.</p>
+          <label>Hubungkan ke tenant (opsional)<select value={customer.organizationId} onChange={e=>setCustomer({...customer,organizationId:e.target.value})}><option value="">Belum ditautkan · prospek</option>{tenants.map(x=><option key={x.organizationId} value={x.organizationId}>{x.name} · {x.slug}</option>)}</select></label>
+          <p className="muted">Satu tenant hanya dapat memiliki satu profil pelanggan komersial. Prospek dapat ditautkan setelah tenant disetujui; kontrak, lisensi dan penagihan tetap melalui alur terpisah.</p>
           <button className="primary" disabled={saving}>Simpan pelanggan</button>
         </form>
       </div>
       <div className="toolbar crm-toolbar"><input placeholder="Cari prospek atau pelanggan…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="secondary" onClick={()=>void load()} disabled={busy}>{busy?"Memuat…":"Muat ulang"}</button></div>
     </section>
     <section className="panel"><PanelTitle title="Pipeline prospek" subtitle="Data aktual dari platform.crm_leads"/>{busy?<div className="empty">Memuat data…</div>:visibleLeads.length===0?<Empty text="Belum ada prospek yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Organisasi</th><th>Kontak</th><th>Tahap</th><th>Estimasi</th><th>Dibuat</th></tr></thead><tbody>{visibleLeads.map(x=><tr key={x.id}><td>{x.leadNumber}</td><td><b>{x.organizationName}</b><small>{x.email||"—"}</small></td><td>{x.contactName}<small>{x.phone||"—"}</small></td><td><div className="inline-actions"><select aria-label={`Tahap prospek ${x.leadNumber}`} value={stageDrafts[x.id]??x.stage} onChange={e=>setStageDrafts(current=>({...current,[x.id]:e.target.value}))}>{["new","qualified","discovery","demo","proposal","negotiation","won","lost","dormant"].map(stage=><option key={stage} value={stage}>{label(stage)}</option>)}</select>{(stageDrafts[x.id]??x.stage)!==x.stage&&<button className="primary" disabled={saving} onClick={()=>void updateLeadStage(x)}>Simpan</button>}</div></td><td>{x.estimatedValue==null?"—":new Intl.NumberFormat("id-ID",{style:"currency",currency:x.currency||"IDR",maximumFractionDigits:0}).format(x.estimatedValue)}</td><td>{date(x.createdAt)}{x.nextFollowUpAt&&<small>Follow-up: {date(x.nextFollowUpAt)}</small>}</td></tr>)}</tbody></table></div>}</section>
-    <section className="panel"><PanelTitle title="Daftar pelanggan" subtitle="Data aktual dari platform.customers"/>{busy?<div className="empty">Memuat data…</div>:visibleCustomers.length===0?<Empty text="Belum ada pelanggan yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama legal</th><th>Nama tampilan</th><th>Jenis</th><th>Status</th><th>Dibuat</th></tr></thead><tbody>{visibleCustomers.map(x=><tr key={x.id}><td>{x.customerCode}</td><td>{x.legalName}</td><td><b>{x.displayName}</b><small>{x.billingEmail||"—"}</small></td><td>{label(x.entityType)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
+    <section className="panel"><PanelTitle title="Daftar pelanggan" subtitle="Data aktual dari platform.customers"/>{busy?<div className="empty">Memuat data…</div>:visibleCustomers.length===0?<Empty text="Belum ada pelanggan yang cocok."/>:<div className="table-wrap"><table><thead><tr><th>Kode</th><th>Nama legal</th><th>Nama tampilan</th><th>Jenis</th><th>Tenant</th><th>Status</th><th>Dibuat</th></tr></thead><tbody>{visibleCustomers.map(x=><tr key={x.id}><td>{x.customerCode}</td><td>{x.legalName}</td><td><b>{x.displayName}</b><small>{x.billingEmail||"—"}</small></td><td>{label(x.entityType)}</td><td>{x.organizationId?<><b>{x.organizationName||"Tenant tertaut"}</b><small>{x.organizationSlug||x.organizationId}</small></>:<div className="inline-actions"><select aria-label={`Tenant untuk ${x.customerCode}`} value={customerOrgDrafts[x.id]??""} onChange={e=>setCustomerOrgDrafts(current=>({...current,[x.id]:e.target.value}))}><option value="">Pilih tenant</option>{tenants.map(t=><option key={t.organizationId} value={t.organizationId}>{t.name} · {t.slug}</option>)}</select><button className="secondary" disabled={saving||!customerOrgDrafts[x.id]} onClick={()=>void linkCustomerOrganization(x)}>Tautkan</button></div>}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{date(x.createdAt)}</td></tr>)}</tbody></table></div>}</section>
 
     <section className="panel"><PanelTitle title="Kontak & Customer 360" subtitle="Kontak resmi pelanggan, penanggung jawab, dan kanal komunikasi."/>
       <div className="crm-contact-toolbar"><label>Pilih pelanggan<select value={selectedCustomerId} onChange={e=>setSelectedCustomerId(e.target.value)}><option value="">Pilih pelanggan</option>{customers.map(x=><option key={x.id} value={x.id}>{x.displayName} · {x.customerCode}</option>)}</select></label></div>
