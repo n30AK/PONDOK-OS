@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getAccessToken } from "./auth";
 import { getModuleGuidance } from "./module-catalog";
+import { isSensitiveStudentHealthField } from "./sensitive-display.js";
 import { getStudentFormSections } from "./student-form-metadata";
 
 type Props = { organizationId: string; permissions: string[]; initialResourceKey?: string; onResourceChange?: (key: string) => void; preview?: boolean };
@@ -306,7 +307,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   const value=row[field.key]??row[fieldColumn(field.key)];
   if(value===undefined||value===null||value==="")return "—";
   if(resource?.key==="student-identity-documents"&&field.key==="documentNumber"&&typeof value==="string")return value.length>4?`••••••••${value.slice(-4)}`:"••••";
-  if(resource?.key==="student-health-profiles"&&["allergyData","medicalHistory","medicationData","emergencyInstructions"].includes(field.key)&&!showSensitiveDetail)return "•••••••• (terbatas)";
+  if(isSensitiveStudentHealthField(resource?.key??"",field.key)&&!showSensitiveDetail)return "•••••••• (terbatas)";
   if(field.type==="relation"&&typeof value==="string"){
    const option=(lookups[field.source??""]??[]).find(item=>item.id===value);
    if(option)return option.label;
@@ -316,6 +317,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  };
  const displayCell=(column:string,value:unknown)=>{
   if(resource?.key==="student-identity-documents"&&column==="document_number"&&typeof value==="string")return value.length>4?`••••••••${value.slice(-4)}`:"••••";
+  if(isSensitiveStudentHealthField(resource?.key??"",column))return "•••••••• (terbatas)";
   const field=resource?.fields.find(item=>item.type==="relation"&&item.key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`)===column);
   if(field&&typeof value==="string"){
    const option=(lookups[field.source??""]??[]).find(item=>item.id===value);
