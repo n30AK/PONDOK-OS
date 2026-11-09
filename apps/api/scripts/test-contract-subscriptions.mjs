@@ -39,10 +39,26 @@ try {
     "SELECT indexdef FROM pg_indexes WHERE schemaname='platform' AND indexname='platform_subscriptions_one_per_quote_line'",
   );
   assert.equal(uniqueIndex.rowCount, 1, "one subscription per approved quote line must be enforced");
+  const contractIndex = await client.query(
+    "SELECT indexdef FROM pg_indexes WHERE schemaname='platform' AND indexname='platform_contracts_one_per_quote'",
+  );
+  assert.equal(contractIndex.rowCount, 1, "one contract per quote must be enforced");
   const columns = await client.query(
     "SELECT column_name FROM information_schema.columns WHERE table_schema='platform' AND table_name='subscriptions' AND column_name IN ('quote_line_id','billing_interval','discount_amount','tax_amount','line_total')",
   );
   assert.equal(columns.rowCount, 5, "subscription must retain quote-line and recurring price snapshots");
+
+  await client.query("SAVEPOINT duplicate_quote_contract");
+  await assert.rejects(
+    () => client.query(
+      "INSERT INTO platform.contracts (contract_number,customer_id,quote_id,status,created_by) VALUES ('CI-SUB-CONTRACT-2',$1,$2,'draft',$3)",
+      [customer.rows[0].id, quote.rows[0].id, admin],
+    ),
+    (error) => error?.code === "23505",
+    "an approved quote cannot create duplicate contracts",
+  );
+  await client.query("ROLLBACK TO SAVEPOINT duplicate_quote_contract");
+  await client.query("RELEASE SAVEPOINT duplicate_quote_contract");
 
   const subscription = await client.query(
     `INSERT INTO platform.subscriptions
@@ -87,7 +103,7 @@ try {
   await client.query("RELEASE SAVEPOINT invalid_billing_interval");
 
   await client.query("ROLLBACK");
-  process.stdout.write("Contract subscription integrity passed: quote-line FK, unique conversion, scheduled status, interval and immutable price snapshots.\n");
+  process.stdout.write("Contract subscription integrity passed: one contract per quote, one subscription per quote line, scheduled status, interval and immutable price snapshots.\n");
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
   throw error;
