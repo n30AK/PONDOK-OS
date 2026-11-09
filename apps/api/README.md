@@ -17,7 +17,7 @@ Never commit populated environment files or print database URLs in logs. Never m
 ## Implemented endpoint groups
 
 - `GET /health/live`: process liveness.
-- `GET /health/ready`: database connectivity readiness; this does not prove schema completeness or business workflow acceptance.
+- `GET /health/ready`: verifies database connectivity, the transaction-local restricted tenant/platform runtime roles, and RLS policy coverage. It still does not prove schema completeness or business workflow acceptance.
 - `GET /v1/tenant/context`: verify Neon JWT, active organization membership, and resolve server-side roles/permissions.
 - `/v1/academic/*`: student and academic foundation endpoints.
 - `/v1/finance/*`: chart of accounts, fiscal periods and journal workflows.
