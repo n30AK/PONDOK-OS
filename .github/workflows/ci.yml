@@ -70,6 +70,10 @@ jobs:
         run: node apps/api/scripts/test-contract-subscriptions.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
+      - name: Verify recurring invoice period integrity
+        run: node apps/api/scripts/test-recurring-invoice-periods.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondok_test
       - name: Verify client observability, backup and maintenance controls
         run: node apps/api/scripts/test-observability-backup-maintenance.mjs
         env:
