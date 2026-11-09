@@ -179,8 +179,8 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
      `SELECT s.id,s.customer_id,cu.status AS customer_status,s.contract_id,k.status AS contract_status,
        s.product_id,p.product_name,s.status,s.starts_at,s.ends_at,s.next_billing_at,s.quantity,
        s.unit_price::text,s.discount_amount::text,s.tax_amount::text,s.line_total::text,s.currency,s.billing_interval,
-       to_char(s.next_billing_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD') AS period_start,
-       CASE WHEN s.ends_at IS NULL THEN NULL ELSE to_char(s.ends_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD') END AS subscription_end_date
+       to_char(s.next_billing_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS period_start,
+       CASE WHEN s.ends_at IS NULL THEN NULL ELSE to_char(s.ends_at AT TIME ZONE 'UTC','YYYY-MM-DD') END AS subscription_end_date
       FROM platform.subscriptions s
       JOIN platform.customers cu ON cu.id=s.customer_id
       LEFT JOIN platform.contracts k ON k.id=s.contract_id
@@ -188,7 +188,7 @@ export async function handlePlatformBillingRequest(req:IncomingMessage,res:Serve
       WHERE s.id=$1::uuid FOR UPDATE OF s`,[subscriptionId]);
     const s=found.rows[0];
     if(!s)return{error:"subscription_not_found" as const};
-    if(s.status!=="active"||s.customer_status!=="active"||s.contract_status!=="active")return{error:"active_subscription_customer_and_contract_required" as const};
+    if(s.status!=="active"||["suspended","former"].includes(s.customer_status)||s.contract_status!=="active")return{error:"active_subscription_and_contract_with_billable_customer_required" as const};
     if(!s.billing_interval||!["monthly","quarterly","yearly"].includes(s.billing_interval))return{error:"recurring_billing_interval_required" as const};
     if(!s.next_billing_at||new Date(s.next_billing_at).getTime()>Date.now())return{error:"subscription_not_due" as const};
     const periodStart=s.period_start;
