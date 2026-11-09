@@ -58,8 +58,8 @@ The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carr
 
 ## Recurring subscription invoices
 
-- `POST /v1/platform/erp/subscriptions/:id/invoices` creates a draft invoice for a due, active recurring subscription whose customer and source contract are also active.
-- The request accepts only `dueOn`. The billing period is derived from the subscription's immutable `next_billing_at` and billing interval (monthly, quarterly or yearly); callers cannot override price, quantity, discount, tax or period.
+- `POST /v1/platform/erp/subscriptions/:id/invoices` creates a draft invoice for a due, active recurring subscription with an active source contract and a customer that is not suspended or former.
+- The request accepts only `dueOn`. The billing period uses the UTC calendar dates in the subscription's immutable `next_billing_at` and billing interval (monthly, quarterly or yearly); callers cannot override price, quantity, discount, tax or period.
 - Invoice lines and totals use the subscription's stored quote snapshot. A period extending beyond the subscription end date is rejected until proration is implemented.
 - Migration `0030_platform_recurring_invoice_periods.sql` stores inclusive billing-period dates and enforces one invoice per subscription period plus at most one open invoice per subscription.
 - Repeating the request for the same period returns the existing invoice. A second open invoice is rejected. The new invoice remains draft until an authorized Super Admin issues it through the existing invoice workflow.
