@@ -23,6 +23,8 @@ test("direct database tenant bootstrap tooling is removed", async () => {
   const pkg = JSON.parse(await read("apps/api/package.json"));
   assert.equal(Object.hasOwn(pkg.scripts, "db:bootstrap"), false);
   await assert.rejects(read("apps/api/src/bootstrap-organization.ts"), { code: "ENOENT" });
+  await assert.rejects(read("apps/api/src/first-organization-bootstrap.ts"), { code: "ENOENT" });
+  await assert.rejects(read("apps/api/test/first-organization-bootstrap.test.mjs"), { code: "ENOENT" });
   await assert.rejects(read("scripts/create-bootstrap-token.mjs"), { code: "ENOENT" });
 });
 
