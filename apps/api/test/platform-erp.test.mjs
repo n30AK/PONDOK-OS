@@ -215,3 +215,19 @@ test("customer tenant linking is denied to non Super Admin before tenant reads",
   assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,name,slug FROM core.organizations")));
   assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
 });
+
+
+test("a tenant cannot be linked to a second commercial customer",async()=>{
+  const organizationId="323e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id FROM core.organizations")) return {rows:[{id:organizationId}]};
+    if(sql.startsWith("SELECT id FROM platform.customers WHERE organization_id")) return {rows:[{id:"523e4567-e89b-42d3-a456-426614174000"}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/customers","POST",{legalName:"Yayasan Kedua",displayName:"Pondok Kedua",organizationId}),res,pool,userId);
+  assert.equal(res.status,409);
+  assert.equal(JSON.parse(res.body).error,"organization_already_linked");
+  assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.customers")));
+});
