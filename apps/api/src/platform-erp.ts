@@ -254,33 +254,27 @@ export async function handlePlatformErpRequest(req: IncomingMessage, res: Server
           return row;
         }
         const customerCode = `CUS-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${randomUUID().slice(0,8).toUpperCase()}`;
+        const organizationId = typeof body.organizationId === "string" ? body.organizationId : null;
+        if (organizationId) {
+          const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid FOR KEY SHARE", [organizationId]);
+          if (!organization.rows[0]) return { error: "organization_not_found" as const };
+          const linked = await client.query("SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [organizationId]);
+          if (linked.rows[0]) return { error: "organization_already_linked" as const };
+        }
         const result = await client.query(
-          const organizationId = typeof body.organizationId === "string" ? body.organizationId : null;
-          if (organizationId) {
-            const organization = await client.query("SELECT id FROM core.organizations WHERE id=$1::uuid FOR KEY SHARE", [organizationId]);
-            if (!organization.rows[0]) return { error: "organization_not_found" as const };
-            const linked = await client.query("SELECT id FROM platform.customers WHERE organization_id=$1::uuid LIMIT 1", [organizationId]);
-            if (linked.rows[0]) return { error: "organization_already_linked" as const };
-          }
-          const result = await client.query(
-            `INSERT INTO platform.customers
-              (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,account_owner_user_id,organization_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'prospect',$8::uuid,$9::uuid)
-             RETURNING id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
-              entity_type AS "entityType",billing_email AS "billingEmail",billing_phone AS "billingPhone",billing_address AS "billingAddress",
-              organization_id AS "organizationId",status,created_at AS "createdAt"`,
-            [customerCode,String(body.legalName).trim(),String(body.displayName).trim(),body.entityType ?? "institution",
-             body.billingEmail ? String(body.billingEmail).trim().toLowerCase() : null,body.billingPhone ?? null,
-             JSON.stringify(body.billingAddress ?? {}),userId,organizationId],
-          );
-          const row = result.rows[0] as { id: string } | undefined;
-          if (!row) throw new Error("customer_insert_failed");
-          await audit(client,userId,"crm.customer.created","customer",row.id,{entityType:body.entityType ?? "institution",organizationId});
-          return row;
+          `INSERT INTO platform.customers
+            (customer_code,legal_name,display_name,entity_type,billing_email,billing_phone,billing_address,status,account_owner_user_id,organization_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,'prospect',$8::uuid,$9::uuid)
+           RETURNING id,customer_code AS "customerCode",legal_name AS "legalName",display_name AS "displayName",
+            entity_type AS "entityType",billing_email AS "billingEmail",billing_phone AS "billingPhone",billing_address AS "billingAddress",
+            organization_id AS "organizationId",status,created_at AS "createdAt"`,
+          [customerCode,String(body.legalName).trim(),String(body.displayName).trim(),body.entityType ?? "institution",
+           body.billingEmail ? String(body.billingEmail).trim().toLowerCase() : null,body.billingPhone ?? null,
+           JSON.stringify(body.billingAddress ?? {}),userId,organizationId],
         );
         const row = result.rows[0] as { id: string } | undefined;
         if (!row) throw new Error("customer_insert_failed");
-        await audit(client,userId,"crm.customer.created","customer",row.id,{entityType:body.entityType ?? "institution"});
+        await audit(client,userId,"crm.customer.created","customer",row.id,{entityType:body.entityType ?? "institution",organizationId});
         return row;
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
