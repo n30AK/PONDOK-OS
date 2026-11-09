@@ -173,7 +173,7 @@ export async function handlePlatformCommercialRequest(req:IncomingMessage,res:Se
    if(scoped.value && "invalidState" in scoped.value && scoped.value.invalidState){reply(res,409,{error:"quote_must_be_approved_before_contract"});return true;}
    if(scoped.value && "duplicate" in scoped.value && scoped.value.duplicate){reply(res,409,{error:"contract_already_exists_for_quote"});return true;}
    reply(res,201,{data:scoped.value?.item});
-  }catch(e){reply(res,500,{error:"contract_create_failed"});}
+  }catch(e){reply(res,errorCode(e)==="23505"?409:500,{error:errorCode(e)==="23505"?"contract_already_exists_for_quote":"contract_create_failed"});}
   return true;
  }
 
