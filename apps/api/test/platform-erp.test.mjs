@@ -26,7 +26,7 @@ test("lead validation rejects invalid email, stage, and negative value",()=>{
 });
 
 test("customer validation accepts a tenant UUID and rejects malformed tenant identifiers",()=>{
-  assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"not-a-uuid"}),"invalid_tenant_id");
+  assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"not-a-uuid"}),"invalid_organization_id");
   assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"323e4567-e89b-42d3-a456-426614174000"}),null);
 });
 
