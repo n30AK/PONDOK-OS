@@ -27,6 +27,95 @@ export interface ApiDependencies {
   pool?: TenantDatabase;
 }
 
+async function verifyDatabaseSecurity(pool: TenantDatabase): Promise<boolean> {
+  if (!pool.connect) return false;
+  const client = await pool.connect();
+  let transaction = false;
+  try {
+    await client.query("BEGIN");
+    transaction = true;
+    await client.query("SET LOCAL ROLE pondok_runtime");
+    const tenant = await client.query<{
+      runtime_role: string;
+      role_can_login: boolean;
+      role_bypasses_rls: boolean;
+      memberships_rls: boolean;
+      tenant_table_count: number;
+      protected_table_count: number;
+    }>(
+      `SELECT current_user::text AS runtime_role,
+              r.rolcanlogin AS role_can_login,
+              (r.rolsuper OR r.rolbypassrls) AS role_bypasses_rls,
+              (SELECT c.relrowsecurity AND c.relforcerowsecurity
+                 FROM pg_class c WHERE c.oid='core.organization_memberships'::regclass) AS memberships_rls,
+              (SELECT count(*)::int
+                 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname IN ('academic','admissions','assets','audit','boarding','cms','config','core','crm','finance','hr','inventory','library','procurement','sync')
+                  AND c.relkind='r'
+                  AND NOT (n.nspname='core' AND c.relname='organization_memberships')
+                  AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='organization_id' AND a.attnum>0 AND NOT a.attisdropped)) AS tenant_table_count,
+              (SELECT count(*)::int
+                 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname IN ('academic','admissions','assets','audit','boarding','cms','config','core','crm','finance','hr','inventory','library','procurement','sync')
+                  AND c.relkind='r'
+                  AND NOT (n.nspname='core' AND c.relname='organization_memberships')
+                  AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='organization_id' AND a.attnum>0 AND NOT a.attisdropped)
+                  AND c.relrowsecurity AND c.relforcerowsecurity
+                  AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid AND p.polname='tenant_isolation')) AS protected_table_count
+         FROM pg_roles r WHERE r.rolname=current_user`,
+    );
+    await client.query("ROLLBACK");
+    transaction = false;
+
+    await client.query("BEGIN");
+    transaction = true;
+    await client.query("SET LOCAL ROLE pondok_platform_runtime");
+    const platform = await client.query<{
+      runtime_role: string;
+      role_can_login: boolean;
+      role_bypasses_rls: boolean;
+      platform_table_count: number;
+      protected_platform_table_count: number;
+    }>(
+      `SELECT current_user::text AS runtime_role,
+              r.rolcanlogin AS role_can_login,
+              (r.rolsuper OR r.rolbypassrls) AS role_bypasses_rls,
+              (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='platform' AND c.relkind='r' AND c.relname <> 'super_admins') AS platform_table_count,
+              (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='platform' AND c.relkind='r' AND c.relname <> 'super_admins'
+                  AND c.relrowsecurity AND c.relforcerowsecurity
+                  AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid)) AS protected_platform_table_count
+         FROM pg_roles r WHERE r.rolname=current_user`,
+    );
+    await client.query("ROLLBACK");
+    transaction = false;
+
+    const tenantState = tenant.rows[0];
+    const platformState = platform.rows[0];
+    return Boolean(
+      tenantState
+      && tenantState.runtime_role === "pondok_runtime"
+      && tenantState.role_can_login === false
+      && tenantState.role_bypasses_rls === false
+      && tenantState.memberships_rls === true
+      && Number(tenantState.tenant_table_count) > 0
+      && Number(tenantState.protected_table_count) === Number(tenantState.tenant_table_count)
+      && platformState
+      && platformState.runtime_role === "pondok_platform_runtime"
+      && platformState.role_can_login === false
+      && platformState.role_bypasses_rls === false
+      && Number(platformState.platform_table_count) > 0
+      && Number(platformState.protected_platform_table_count) === Number(platformState.platform_table_count)
+    );
+  } catch {
+    if (transaction) await client.query("ROLLBACK").catch(() => undefined);
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, {
     "content-type": "application/json; charset=utf-8",
@@ -96,7 +185,16 @@ export async function handleRequest(
     }
     try {
       await dependencies.pool.query("SELECT 1");
-      sendJson(response, 200, { status: "ready", service: SERVICE_NAME, dependencies: { database: "ok" } });
+      const securityReady = await verifyDatabaseSecurity(dependencies.pool);
+      if (!securityReady) {
+        sendJson(response, 503, { status: "not_ready", dependency: "database_security_controls_unavailable" });
+        return;
+      }
+      sendJson(response, 200, {
+        status: "ready",
+        service: SERVICE_NAME,
+        dependencies: { database: "ok", tenantSecurity: "ok", platformSecurity: "ok" },
+      });
     } catch {
       sendJson(response, 503, { status: "not_ready", dependency: "database_unavailable" });
     }
