@@ -185,3 +185,33 @@ test("customer link cannot be silently reassigned to a different tenant",async()
   assert.equal(JSON.parse(res.body).error,"customer_already_linked");
   assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET organization_id")));
 });
+
+
+test("customer registry reads expose only the linked tenant identity",async()=>{
+  const organizationId="323e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.includes("LEFT JOIN core.organizations")) return {rows:[{
+      id:"423e4567-e89b-42d3-a456-426614174000",customerCode:"CUS-1",legalName:"Yayasan Contoh",
+      displayName:"Pondok Contoh",organizationId,organizationName:"Pondok Contoh",organizationSlug:"pondok-contoh"
+    }]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/customers"),res,pool,userId);
+  assert.equal(res.status,200);
+  const customer=JSON.parse(res.body).data.items[0];
+  assert.equal(customer.organizationId,organizationId);
+  assert.equal(customer.organizationName,"Pondok Contoh");
+  assert.ok(calls.some(x=>x.sql.includes("LEFT JOIN core.organizations")));
+});
+
+test("customer tenant linking is denied to non Super Admin before tenant reads",async()=>{
+  const {pool,calls}=poolWithClient(async()=>({rows:[{allowed:false}]}));
+  const res=response();
+  await handlePlatformErpRequest(request("/v1/platform/erp/customers/423e4567-e89b-42d3-a456-426614174000","PATCH",{organizationId:"323e4567-e89b-42d3-a456-426614174000"}),res,pool,userId);
+  assert.equal(res.status,403);
+  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,organization_id")));
+  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,name,slug FROM core.organizations")));
+  assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
+});
