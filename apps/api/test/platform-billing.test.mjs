@@ -65,7 +65,7 @@ test("subscription invoice generation is idempotent for the same period",async()
  const res=response();
  await handlePlatformBillingRequest(req(`/v1/platform/erp/subscriptions/${subscriptionId}/invoices`,"POST",{dueOn:"2026-11-23"}),res,pool,userId);
  assert.equal(res.status,200);
- assert.equal(JSON.parse(res.body).alreadyExists,true);
+ assert.equal(JSON.parse(res.body).data.alreadyExists,true);
  assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.invoices")));
 });
 test("payment validation rejects invalid amount and method",()=>{
@@ -103,7 +103,7 @@ test("fully verified recurring invoice advances next billing date in the same tr
  const res=response();
  await handlePlatformBillingRequest(req(`/v1/platform/erp/payments/${paymentId}/verify`,"PATCH"),res,pool,userId);
  assert.equal(res.status,200);
- const advance=calls.find(x=>x.sql.startsWith("UPDATE platform.subscriptions SET next_billing_at"));
+ const advance=calls.find(x=>x.sql.includes("UPDATE platform.subscriptions")&&x.sql.includes("SET next_billing_at"));
  assert.ok(advance,"subscription must advance only after full invoice settlement");
  assert.equal(advance.values[0],subscriptionId);
  assert.equal(advance.values[1],"2026-11-30");
