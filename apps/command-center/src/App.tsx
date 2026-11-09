@@ -493,6 +493,7 @@ function CommercialWorkspace(){
  const [busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [quoteForm,setQuoteForm]=useState({customerId:"",productId:"",quantity:"1",unitPrice:"0",discountAmount:"0",taxAmount:"0",validUntil:""});
  const [contractForm,setContractForm]=useState({quoteId:"",startsOn:"",endsOn:"",renewalMode:"manual"});
+ const [invoiceDueDates,setInvoiceDueDates]=useState<Record<string,string>>({});
  const load=useCallback(async()=>{
   setBusy(true);setError("");
   try{
@@ -546,6 +547,15 @@ function CommercialWorkspace(){
   }catch(e){setError(e instanceof Error?e.message:"Pembuatan langganan dari kontrak gagal.");}
   finally{setSaving(false);}
  }
+ async function createSubscriptionInvoice(id:string){
+  const dueOn=invoiceDueDates[id];if(!dueOn){setError("Tentukan tanggal jatuh tempo invoice.");return;}
+  setSaving(true);setError("");setNotice("");
+  try{
+   const result=await request<{alreadyExists?:boolean;data:{invoiceNumber?:string;billingPeriodStart?:string;billingPeriodEnd?:string}}>(`/v1/platform/erp/subscriptions/${id}/invoices`,{method:"POST",body:JSON.stringify({dueOn})});
+   setNotice(result.alreadyExists?"Invoice untuk periode ini sudah pernah dibuat; tidak dibuat duplikat.":`Draft invoice recurring dibuat untuk periode ${result.data.billingPeriodStart} s.d. ${result.data.billingPeriodEnd}.`);
+  }catch(e){setError(e instanceof Error?e.message:"Invoice subscription gagal dibuat.");}
+  finally{setSaving(false);}
+ }
  async function contractAction(id:string,action:"submit"|"approve"|"reject"){
   setSaving(true);setError("");setNotice("");
   try{await request<{id:string;status:string}>(`/v1/platform/erp/contracts/${id}/${action}`,{method:"PATCH"});setNotice(`Kontrak berhasil diproses: ${action}.`);await load();}
@@ -589,9 +599,9 @@ function CommercialWorkspace(){
   {contracts.length===0?<Empty text="Belum ada kontrak."/>:<div className="table-wrap"><table><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Periode</th><th>Perpanjangan</th><th>Status</th><th>Subscription</th><th>Aksi</th></tr></thead><tbody>{contracts.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.startsOn?date(x.startsOn):"—"} – {x.endsOn?date(x.endsOn):"—"}</td><td>{label(x.renewalMode)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td><td>{(()=>{const count=subscriptions.filter(s=>s.contractId===x.id).length;return count?count+" langganan":x.status==="active"?<button className="secondary" disabled={saving} onClick={()=>void createSubscriptions(x.id)}>Buat langganan</button>:"Menunggu kontrak aktif";})()}</td><td>{x.status==="draft"?<button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"submit")}>Ajukan aktivasi</button>:x.status==="review"?<div className="inline-actions"><button className="primary" disabled={saving} onClick={()=>void contractAction(x.id,"approve")}>Aktifkan</button><button className="secondary" disabled={saving} onClick={()=>void contractAction(x.id,"reject")}>Tolak</button></div>:"—"}</td></tr>)}</tbody></table></div>}
  </section>
  <section className="panel"><PanelTitle title="Subscription pelanggan" subtitle="Dibuat dari baris recurring pada kontrak aktif; harga, diskon, pajak, dan interval disimpan sebagai snapshot."/>
-  {subscriptions.length===0?<Empty text="Belum ada subscription."/>:<div className="table-wrap"><table><thead><tr><th>Kontrak</th><th>Pelanggan</th><th>Produk</th><th>Periode</th><th>Kuantitas</th><th>Nilai per periode</th><th>Status</th></tr></thead><tbody>{subscriptions.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.productName}</td><td>{label(x.billingInterval)}<small>{date(x.startsAt)} – {x.endsAt?date(x.endsAt):"Tanpa akhir"}</small></td><td>{x.quantity}</td><td>{money(x.lineTotal,x.currency)}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span></td></tr>)}</tbody></table></div>}
+  {subscriptions.length===0?<Empty text="Belum ada subscription."/>:<div className="table-wrap"><table><thead><tr><th>Kontrak</th><th>Pelanggan</th><th>Produk</th><th>Interval & periode</th><th>Kuantitas</th><th>Nilai per periode</th><th>Tagihan berikutnya</th><th>Status / tindakan</th></tr></thead><tbody>{subscriptions.map(x=><tr key={x.id}><td>{x.contractNumber}</td><td>{x.customerName}</td><td>{x.productName}</td><td>{label(x.billingInterval)}<small>{date(x.startsAt)} – {x.endsAt?date(x.endsAt):"Tanpa akhir"}</small></td><td>{x.quantity}</td><td>{money(x.lineTotal,x.currency)}</td><td>{x.nextBillingAt?date(x.nextBillingAt):"—"}</td><td><span className={`pill ${x.status==="active"?"success":"neutral"}`}>{label(x.status)}</span>{x.status==="active"&&<div className="inline-actions"><input type="date" aria-label={`Jatuh tempo invoice ${x.productName}`} value={invoiceDueDates[x.id]??""} onChange={e=>setInvoiceDueDates(s=>({...s,[x.id]:e.target.value}))}/><button className="secondary" disabled={saving||!invoiceDueDates[x.id]} onClick={()=>void createSubscriptionInvoice(x.id)}>Buat invoice</button></div>}</td></tr>)}</tbody></table></div>}
  </section>
- <p className="muted">Subscription tidak otomatis membuat invoice, menerima pembayaran, memposting jurnal, atau memberikan entitlement modul. Penagihan berkala dan provisioning akses tetap melalui workflow terpisah.</p>
+ <p className="muted">Invoice recurring dapat dibuat manual saat tanggal tagih subscription tiba; periode dan harga memakai snapshot kontrak. Invoice tetap draft sampai diterbitkan, dan tanggal tagih berikutnya hanya maju setelah seluruh invoice diverifikasi lunas. Scheduler otomatis, prorata, dan entitlement provisioning belum diaktifkan.</p>
  </div>;
 }
 
