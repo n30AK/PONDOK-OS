@@ -260,8 +260,8 @@ test("activation token cannot be redeemed by another user or replayed after cons
   assert.equal(JSON.parse(res.body).error, "activation_token_invalid_expired_or_used");
   assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO core.organizations")));
   assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO core.organization_memberships")));
-  assert.ok(calls.some((call) => call.sql === "ROLLBACK"));
-  assert.ok(!calls.some((call) => call.sql === "COMMIT"));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"), "a rejected read-only token lookup closes its transaction cleanly");
+  assert.ok(!calls.some((call) => call.sql === "ROLLBACK"));
 });
 
 test("activation redemption rolls back all tenant creation when a later insert fails", async () => {
