@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handlePlatformBillingRequest, validateInvoiceInput, validatePaymentInput } from "../dist/platform-billing.js";
+import { handlePlatformBillingRequest, validateInvoiceInput, validatePaymentInput, validateSubscriptionInvoiceInput } from "../dist/platform-billing.js";
 const userId="123e4567-e89b-42d3-a456-426614174000";
 const invoiceId="223e4567-e89b-42d3-a456-426614174000";
 const paymentId="323e4567-e89b-42d3-a456-426614174000";
@@ -11,6 +11,62 @@ test("invoice validation requires active contract id and real due date",()=>{
  assert.equal(validateInvoiceInput({contractId:"bad",dueOn:"2026-12-01"}),"invalid_contract_id");
  assert.equal(validateInvoiceInput({contractId:invoiceId,dueOn:"2026-02-30"}),"invalid_due_date");
  assert.equal(validateInvoiceInput({contractId:invoiceId,dueOn:"2026-12-01"}),null);
+});
+test("subscription invoice validation accepts only a real due date",()=>{
+ assert.equal(validateSubscriptionInvoiceInput({dueOn:"2026-12-01"}),null);
+ assert.equal(validateSubscriptionInvoiceInput({dueOn:"2026-02-30"}),"invalid_due_date");
+ assert.equal(validateSubscriptionInvoiceInput({dueOn:"2026-12-01",amount:100}),"unsupported_subscription_invoice_field");
+});
+test("due active subscription creates one draft invoice with immutable billing period snapshot",async()=>{
+ const subscriptionId="523e4567-e89b-42d3-a456-426614174000",invoiceId="623e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql,values)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT s.id,s.customer_id"))return{rows:[{id:subscriptionId,customer_id:userId,customer_status:"active",contract_id:"423e4567-e89b-42d3-a456-426614174000",contract_status:"active",product_id:"723e4567-e89b-42d3-a456-426614174000",product_name:"PONDOK OS Core",status:"active",starts_at:"2026-11-09T00:00:00.000Z",ends_at:null,next_billing_at:"2026-11-09T00:00:00.000Z",quantity:2,unit_price:"100000.00",discount_amount:"5000.00",tax_amount:"0.00",line_total:"195000.00",currency:"IDR",billing_interval:"monthly",period_start:"2026-11-09",subscription_end_date:null}]};
+  if(sql.startsWith("SELECT id,invoice_number,status FROM platform.invoices"))return{rows:[]};
+  if(sql.startsWith("SELECT id FROM platform.invoices WHERE subscription_id"))return{rows:[]};
+  if(sql.startsWith("INSERT INTO platform.invoices"))return{rows:[{id:invoiceId,invoiceNumber:"INV-CI-1",customerId:userId,contractId:"423e4567-e89b-42d3-a456-426614174000",subscriptionId,status:"draft",currency:"IDR",dueOn:"2026-11-23",billingPeriodStart:"2026-11-09",billingPeriodEnd:"2026-12-08",grandTotal:"195000.00"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformBillingRequest(req(`/v1/platform/erp/subscriptions/${subscriptionId}/invoices`,"POST",{dueOn:"2026-11-23"}),res,pool,userId);
+ assert.equal(res.status,201);
+ const data=JSON.parse(res.body).data;
+ assert.equal(data.subscriptionId,subscriptionId);
+ assert.equal(data.billingPeriodStart,"2026-11-09");
+ assert.equal(data.billingPeriodEnd,"2026-12-08");
+ const insert=calls.find(x=>x.sql.startsWith("INSERT INTO platform.invoices"));
+ assert.ok(insert.sql.includes("billing_period_start,billing_period_end"));
+ assert.deepEqual(insert.values.slice(6,8),["2026-11-09","2026-12-08"]);
+ assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.invoice_lines")));
+ assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")&&x.values[1]==="billing.subscription_invoice.created"));
+ assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+test("subscription invoice generation rejects a future billing date before writing",async()=>{
+ const subscriptionId="523e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT s.id,s.customer_id"))return{rows:[{id:subscriptionId,customer_id:userId,customer_status:"active",contract_id:"423e4567-e89b-42d3-a456-426614174000",contract_status:"active",product_id:"723e4567-e89b-42d3-a456-426614174000",product_name:"PONDOK OS Core",status:"active",starts_at:"2026-12-01T00:00:00.000Z",ends_at:null,next_billing_at:"2099-12-01T00:00:00.000Z",quantity:1,unit_price:"100.00",discount_amount:"0.00",tax_amount:"0.00",line_total:"100.00",currency:"IDR",billing_interval:"monthly",period_start:"2099-12-01",subscription_end_date:null}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformBillingRequest(req(`/v1/platform/erp/subscriptions/${subscriptionId}/invoices`,"POST",{dueOn:"2099-12-15"}),res,pool,userId);
+ assert.equal(res.status,409);
+ assert.equal(JSON.parse(res.body).error,"subscription_not_due");
+ assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.invoices")));
+});
+test("subscription invoice generation is idempotent for the same period",async()=>{
+ const subscriptionId="523e4567-e89b-42d3-a456-426614174000",invoiceId="623e4567-e89b-42d3-a456-426614174000";
+ const {pool,calls}=createPool(async(sql)=>{
+  if(sql.startsWith("SELECT EXISTS"))return{rows:[{allowed:true}]};
+  if(sql.startsWith("SELECT s.id,s.customer_id"))return{rows:[{id:subscriptionId,customer_id:userId,customer_status:"active",contract_id:"423e4567-e89b-42d3-a456-426614174000",contract_status:"active",product_id:"723e4567-e89b-42d3-a456-426614174000",product_name:"PONDOK OS Core",status:"active",starts_at:"2026-11-09T00:00:00.000Z",ends_at:null,next_billing_at:"2026-11-09T00:00:00.000Z",quantity:1,unit_price:"100.00",discount_amount:"0.00",tax_amount:"0.00",line_total:"100.00",currency:"IDR",billing_interval:"monthly",period_start:"2026-11-09",subscription_end_date:null}]};
+  if(sql.startsWith("SELECT id,invoice_number,status FROM platform.invoices"))return{rows:[{id:invoiceId,invoice_number:"INV-CI-1",status:"draft"}]};
+  return{rows:[]};
+ });
+ const res=response();
+ await handlePlatformBillingRequest(req(`/v1/platform/erp/subscriptions/${subscriptionId}/invoices`,"POST",{dueOn:"2026-11-23"}),res,pool,userId);
+ assert.equal(res.status,200);
+ assert.equal(JSON.parse(res.body).alreadyExists,true);
+ assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.invoices")));
 });
 test("payment validation rejects invalid amount and method",()=>{
  assert.equal(validatePaymentInput({invoiceId,amount:0,paymentMethod:"cash"}),"invalid_payment_amount");
