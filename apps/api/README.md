@@ -33,9 +33,9 @@ Each protected operation must verify identity, active organization membership or
 
 - Neon project: `frosty-cherry-92983148`.
 - Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, Development deployment #57, Node.js 24 (completed).
+- Function: `pondokapi`, Development deployment #59, Node.js 24 (completed).
 - Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced. The wider application catalog has 145 tables with RLS enabled and forced. Runtime-role policy coverage is 63/63 tenant tables and 79/79 platform tables.
-- Live migration ledger: through 0026. Migrations 0024–0026 were applied to Development on 2026-11-08 in one atomic transaction with an advisory lock; source-file SHA-256 checksums are recorded.
+- Live migration ledger: through 0027. Migrations 0024–0026 were applied to Development on 2026-11-08; migration 0027 was applied on 2026-11-09 in one atomic transaction with a transaction-scoped advisory lock. Exact source-file SHA-256 checksums are recorded.
 - `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
 - No organizations, memberships, student profiles, HR employees, platform customers, subscriptions, module entitlements or module orders exist yet.
 - CI now exercises actual API-level isolation with two signed synthetic JWT identities against disposable PostgreSQL. Live Neon Auth two-user/two-tenant acceptance and institution UAT are still pending.
@@ -49,7 +49,7 @@ The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carr
 
 ## Commercial customer ↔ institution tenant link
 
-The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect.
+The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` is applied on Development. It adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect. The live Development registry still contains zero customer records.
 
 - `POST /v1/platform/erp/customers` accepts optional `organizationId`; when supplied, the API verifies the tenant exists and is not already linked.
 - `GET /v1/platform/erp/customers` and `GET /v1/platform/erp/customers/:id` return only the linked tenant's name and slug in addition to customer fields.
@@ -67,7 +67,7 @@ Run `pnpm db:migrate` only after:
 
 The runner serializes execution with a PostgreSQL advisory lock, verifies SHA-256 checksums, and applies each migration in its own transaction. Never run it against Production as part of this project workflow. Do not manually patch schema objects to bypass the migration ledger.
 
-Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026-11-08. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
+Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026-11-08; migration 0027 is recorded as applied on 2026-11-09. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
 
 ## Central activation and company administration
 
@@ -89,4 +89,4 @@ The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode fr
 
 ## Readiness boundary
 
-A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #57 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #59 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
