@@ -231,3 +231,80 @@ test("a tenant cannot be linked to a second commercial customer",async()=>{
   assert.equal(JSON.parse(res.body).error,"organization_already_linked");
   assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.customers")));
 });
+
+
+test("won CRM lead converts to one prospect customer in a single audited transaction",async()=>{
+  const leadId="623e4567-e89b-42d3-a456-426614174000";
+  const customerId="723e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id,stage,organization_name")) return {rows:[{id:leadId,stage:"won",organizationName:"Pondok Contoh",email:"admin@example.org",phone:"08123456789"}]};
+    if(sql.startsWith("SELECT id,customer_code AS")) return {rows:[]};
+    if(sql.startsWith("INSERT INTO platform.customers")) return {rows:[{id:customerId,customerCode:"CUS-1",legalName:"Yayasan Contoh",displayName:"Pondok Contoh",status:"prospect",sourceLeadId:leadId,organizationId:null}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/leads/${leadId}/convert`,"POST",{legalName:"Yayasan Contoh",displayName:"Pondok Contoh"}),res,pool,userId);
+  assert.equal(res.status,201);
+  const data=JSON.parse(res.body).data;
+  assert.equal(data.customer.id,customerId);
+  assert.equal(data.customer.status,"prospect");
+  const insert=calls.find(x=>x.sql.startsWith("INSERT INTO platform.customers"));
+  assert.ok(insert);
+  assert.equal(insert.values[4],"admin@example.org");
+  assert.equal(insert.values[5],"08123456789");
+  assert.ok(calls.some(x=>x.sql.includes("crm.lead.converted")));
+  assert.ok(calls.some(x=>x.sql.includes("crm.customer.created_from_lead")));
+  assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+
+test("CRM lead conversion rejects leads that have not reached won stage",async()=>{
+  const leadId="623e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id,stage,organization_name")) return {rows:[{id:leadId,stage:"negotiation",organizationName:"Pondok Contoh",email:null,phone:null}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/leads/${leadId}/convert`,"POST",{legalName:"Yayasan Contoh",displayName:"Pondok Contoh"}),res,pool,userId);
+  assert.equal(res.status,409);
+  assert.equal(JSON.parse(res.body).error,"lead_not_won");
+  assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.customers")));
+  assert.ok(calls.some(x=>x.sql==="COMMIT"));
+});
+
+test("CRM lead conversion is idempotent and returns the existing customer",async()=>{
+  const leadId="623e4567-e89b-42d3-a456-426614174000";
+  const customerId="723e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async(sql)=>{
+    if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
+    if(sql.startsWith("SELECT id,stage,organization_name")) return {rows:[{id:leadId,stage:"won",organizationName:"Pondok Contoh",email:null,phone:null}]};
+    if(sql.startsWith("SELECT id,customer_code AS")) return {rows:[{id:customerId,customerCode:"CUS-1",organizationId:null}]};
+    return {rows:[]};
+  });
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/leads/${leadId}/convert`,"POST",{legalName:"Yayasan Contoh",displayName:"Pondok Contoh"}),res,pool,userId);
+  assert.equal(res.status,200);
+  assert.equal(JSON.parse(res.body).data.alreadyConverted,true);
+  assert.equal(JSON.parse(res.body).data.customer.id,customerId);
+  assert.ok(!calls.some(x=>x.sql.startsWith("INSERT INTO platform.customers")));
+});
+
+test("non Super Admin cannot convert a CRM lead",async()=>{
+  const leadId="623e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async()=>({rows:[{allowed:false}]}));
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/leads/${leadId}/convert`,"POST",{legalName:"Yayasan Contoh",displayName:"Pondok Contoh"}),res,pool,userId);
+  assert.equal(res.status,403);
+  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,stage,organization_name")));
+  assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
+});
+
+test("CRM lead conversion route only accepts POST",async()=>{
+  const leadId="623e4567-e89b-42d3-a456-426614174000";
+  const {pool,calls}=poolWithClient(async()=>({rows:[{allowed:true}]}));
+  const res=response();
+  await handlePlatformErpRequest(request(`/v1/platform/erp/leads/${leadId}/convert`,"GET"),res,pool,userId);
+  assert.equal(res.status,405);
+  assert.equal(calls.length,0);
+});
