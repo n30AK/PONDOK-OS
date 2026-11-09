@@ -20,11 +20,11 @@ try {
   );
 
   const column = await client.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_schema='platform' AND table_name='customers' AND column_name='organization_id'",
+    "SELECT column_name FROM information_schema.columns WHERE table_schema='platform' AND table_name='customers' AND column_name='tenant_id'",
   );
-  assert.equal(column.rowCount, 1, "platform.customers.organization_id must exist");
+  assert.equal(column.rowCount, 1, "platform.customers.tenant_id must exist");
   const index = await client.query(
-    "SELECT indexdef FROM pg_indexes WHERE schemaname='platform' AND indexname='platform_customers_one_per_organization'",
+    "SELECT indexdef FROM pg_indexes WHERE schemaname='platform' AND indexname='platform_customers_one_per_tenant'",
   );
   assert.equal(index.rowCount, 1, "one customer per tenant must be enforced by a unique index");
   assert.equal(
@@ -37,14 +37,14 @@ try {
   await client.query("SELECT set_config('app.user_id',$1,true)", [admin]);
 
   const customer = await client.query(
-    "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,organization_id) VALUES ('CI-CUSTOMER-LINK-1','Yayasan CI','Yayasan CI','prospect',$1::uuid) RETURNING id,organization_id",
+    "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,tenant_id) VALUES ('CI-CUSTOMER-LINK-1','Yayasan CI','Yayasan CI','prospect',$1::uuid) RETURNING id,tenant_id",
     [organization],
   );
   assert.equal(customer.rowCount, 1);
-  assert.equal(customer.rows[0].organization_id, organization);
+  assert.equal(customer.rows[0].tenant_id, organization);
 
   const joined = await client.query(
-    "SELECT c.id,o.name,o.slug FROM platform.customers c JOIN core.organizations o ON o.id=c.organization_id WHERE c.id=$1::uuid",
+    "SELECT c.id,o.name,o.slug FROM platform.customers c JOIN core.organizations o ON o.id=c.tenant_id WHERE c.id=$1::uuid",
     [customer.rows[0].id],
   );
   assert.equal(joined.rowCount, 1);
@@ -54,7 +54,7 @@ try {
   await client.query("SAVEPOINT duplicate_tenant_customer");
   await assert.rejects(
     () => client.query(
-      "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,organization_id) VALUES ('CI-CUSTOMER-LINK-2','Duplicate CI','Duplicate CI','prospect',$1::uuid)",
+      "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,tenant_id) VALUES ('CI-CUSTOMER-LINK-2','Duplicate CI','Duplicate CI','prospect',$1::uuid)",
       [organization],
     ),
     (error) => error?.code === "23505",
@@ -66,7 +66,7 @@ try {
   await client.query("SAVEPOINT invalid_tenant_customer");
   await assert.rejects(
     () => client.query(
-      "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,organization_id) VALUES ('CI-CUSTOMER-LINK-3','Invalid CI','Invalid CI','prospect','99999999-9999-4999-8999-999999999999'::uuid)",
+      "INSERT INTO platform.customers (customer_code,legal_name,display_name,status,tenant_id) VALUES ('CI-CUSTOMER-LINK-3','Invalid CI','Invalid CI','prospect','99999999-9999-4999-8999-999999999999'::uuid)",
     ),
     (error) => error?.code === "23503",
     "a customer tenant link must reference a real institution",
