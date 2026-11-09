@@ -26,7 +26,7 @@ test("lead validation rejects invalid email, stage, and negative value",()=>{
 });
 
 test("customer validation accepts a tenant UUID and rejects malformed tenant identifiers",()=>{
-  assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"not-a-uuid"}),"invalid_organization_id");
+  assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"not-a-uuid"}),"invalid_tenant_id");
   assert.equal(validateCustomerInput({legalName:"Yayasan Contoh",displayName:"Pondok Contoh",organizationId:"323e4567-e89b-42d3-a456-426614174000"}),null);
 });
 
@@ -123,7 +123,7 @@ test("customer creation validates tenant existence and stores the tenant link at
   const {pool,calls}=poolWithClient(async(sql)=>{
     if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
     if(sql.startsWith("SELECT id FROM core.organizations")) return {rows:[{id:organizationId}]};
-    if(sql.startsWith("SELECT id FROM platform.customers WHERE organization_id")) return {rows:[]};
+    if(sql.startsWith("SELECT id FROM platform.customers WHERE tenant_id")) return {rows:[]};
     if(sql.startsWith("INSERT INTO platform.customers")) return {rows:[{id:customerId,customerCode:"CUS-1",organizationId}]};
     return {rows:[]};
   });
@@ -157,17 +157,17 @@ test("existing CRM customer can be linked to exactly one tenant with an audit ev
   const customerId="423e4567-e89b-42d3-a456-426614174000";
   const {pool,calls}=poolWithClient(async(sql)=>{
     if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
-    if(sql.startsWith("SELECT id,organization_id")) return {rows:[{id:customerId,organizationId:null}]};
+    if(sql.startsWith("SELECT id,tenant_id")) return {rows:[{id:customerId,organizationId:null}]};
     if(sql.startsWith("SELECT id,name,slug FROM core.organizations")) return {rows:[{id:organizationId,name:"Pondok Contoh",slug:"pondok-contoh"}]};
-    if(sql.startsWith("SELECT id FROM platform.customers WHERE organization_id")) return {rows:[]};
-    if(sql.startsWith("UPDATE platform.customers SET organization_id")) return {rows:[{id:customerId,organizationId}]};
+    if(sql.startsWith("SELECT id FROM platform.customers WHERE tenant_id")) return {rows:[]};
+    if(sql.startsWith("UPDATE platform.customers SET tenant_id")) return {rows:[{id:customerId,organizationId}]};
     return {rows:[]};
   });
   const res=response();
   await handlePlatformErpRequest(request(`/v1/platform/erp/customers/${customerId}`,"PATCH",{organizationId}),res,pool,userId);
   assert.equal(res.status,200);
   assert.equal(JSON.parse(res.body).data.organizationId,organizationId);
-  assert.ok(calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET organization_id")));
+  assert.ok(calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET tenant_id")));
   assert.ok(calls.some(x=>x.sql.startsWith("INSERT INTO platform.audit_events")));
   assert.ok(calls.some(x=>x.sql==="COMMIT"));
 });
@@ -176,14 +176,14 @@ test("customer link cannot be silently reassigned to a different tenant",async()
   const customerId="423e4567-e89b-42d3-a456-426614174000";
   const {pool,calls}=poolWithClient(async(sql)=>{
     if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
-    if(sql.startsWith("SELECT id,organization_id")) return {rows:[{id:customerId,organizationId:"523e4567-e89b-42d3-a456-426614174000"}]};
+    if(sql.startsWith("SELECT id,tenant_id")) return {rows:[{id:customerId,organizationId:"523e4567-e89b-42d3-a456-426614174000"}]};
     return {rows:[]};
   });
   const res=response();
   await handlePlatformErpRequest(request(`/v1/platform/erp/customers/${customerId}`,"PATCH",{organizationId:"623e4567-e89b-42d3-a456-426614174000"}),res,pool,userId);
   assert.equal(res.status,409);
   assert.equal(JSON.parse(res.body).error,"customer_already_linked");
-  assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET organization_id")));
+  assert.ok(!calls.some(x=>x.sql.startsWith("UPDATE platform.customers SET tenant_id")));
 });
 
 
@@ -211,7 +211,7 @@ test("customer tenant linking is denied to non Super Admin before tenant reads",
   const res=response();
   await handlePlatformErpRequest(request("/v1/platform/erp/customers/423e4567-e89b-42d3-a456-426614174000","PATCH",{organizationId:"323e4567-e89b-42d3-a456-426614174000"}),res,pool,userId);
   assert.equal(res.status,403);
-  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,organization_id")));
+  assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,tenant_id")));
   assert.ok(!calls.some(x=>x.sql.startsWith("SELECT id,name,slug FROM core.organizations")));
   assert.ok(calls.some(x=>x.sql==="ROLLBACK"));
 });
@@ -222,7 +222,7 @@ test("a tenant cannot be linked to a second commercial customer",async()=>{
   const {pool,calls}=poolWithClient(async(sql)=>{
     if(sql.startsWith("SELECT EXISTS")) return {rows:[{allowed:true}]};
     if(sql.startsWith("SELECT id FROM core.organizations")) return {rows:[{id:organizationId}]};
-    if(sql.startsWith("SELECT id FROM platform.customers WHERE organization_id")) return {rows:[{id:"523e4567-e89b-42d3-a456-426614174000"}]};
+    if(sql.startsWith("SELECT id FROM platform.customers WHERE tenant_id")) return {rows:[{id:"523e4567-e89b-42d3-a456-426614174000"}]};
     return {rows:[]};
   });
   const res=response();
