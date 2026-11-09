@@ -46,6 +46,17 @@ The Development deployment workflow and deployment script are scoped to the Deve
 
 The Development catalog audit verifies ENABLE + FORCE RLS for all 67 tables carrying `organization_id`. This is a database catalog result, not a substitute for API-level authorization testing. CI exercises RLS behavior against disposable PostgreSQL; live two-tenant API acceptance still requires two independently authenticated users and two actual non-production organizations.
 
+
+## Commercial customer ↔ institution tenant link
+
+The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` adds an optional `platform.customers.organization_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect.
+
+- `POST /v1/platform/erp/customers` accepts optional `organizationId`; when supplied, the API verifies the tenant exists and is not already linked.
+- `GET /v1/platform/erp/customers` and `GET /v1/platform/erp/customers/:id` return only the linked tenant's name and slug in addition to customer fields.
+- `PATCH /v1/platform/erp/customers/:id` accepts exactly `{ "organizationId": "<uuid>" }` to link an existing prospect. The link is idempotent for the same tenant, cannot be reassigned or removed through this endpoint, and is audited.
+- All operations require an active company Super Administrator and run through the restricted platform runtime role/RLS policy.
+- This association does not create a contract, subscription, invoice, installation or module entitlement, and does not grant tenant module access.
+
 ## Migrations
 
 Run `pnpm db:migrate` only after:
