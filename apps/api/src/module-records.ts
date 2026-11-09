@@ -220,11 +220,20 @@ type HealthRow = {
   encryption_key_version: string | null; created_at: Date; updated_at: Date; legal_name?: string;
 };
 
-function getStudentHealthKey(): { key: Buffer; version: string } | null {
-  const encoded = process.env.STUDENT_HEALTH_ENCRYPTION_KEY ?? "";
+function decodeAes256Key(encoded: string, configuredVersion: string | undefined): { key: Buffer; version: string } | null {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(encoded)) return null;
   const key = Buffer.from(encoded, "base64");
-  if (key.length !== 32) return null;
-  return { key, version: process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION ?? "v1" };
+  if (key.length !== 32 || key.toString("base64") !== encoded) return null;
+  const version = configuredVersion ?? "v1";
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(version)) return null;
+  return { key, version };
+}
+
+function getStudentHealthKey(): { key: Buffer; version: string } | null {
+  return decodeAes256Key(
+    process.env.STUDENT_HEALTH_ENCRYPTION_KEY ?? "",
+    process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION,
+  );
 }
 
 function encryptHealthValue(value: unknown, key: Buffer): Buffer | null {
@@ -410,10 +419,10 @@ type StudentIdentityDocumentRow = {
 };
 
 function getStudentIdentityKey(): { key: Buffer; version: string } | null {
-  const encoded = process.env.STUDENT_IDENTITY_ENCRYPTION_KEY ?? "";
-  const key = Buffer.from(encoded, "base64");
-  if (key.length !== 32) return null;
-  return { key, version: process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION ?? "v1" };
+  return decodeAes256Key(
+    process.env.STUDENT_IDENTITY_ENCRYPTION_KEY ?? "",
+    process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION,
+  );
 }
 
 function serializeStudentIdentityDocument(row: StudentIdentityDocumentRow, key: Buffer): Record<string, unknown> {

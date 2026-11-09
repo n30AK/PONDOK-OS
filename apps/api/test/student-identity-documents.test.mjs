@@ -86,3 +86,43 @@ test("fails closed when identity document access audit cannot be written", async
     if(previousVersion===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION=previousVersion;
   }
 });
+
+
+test("fails closed when the student identity encryption key is missing", async () => {
+  const previousKey=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY;
+  const previousVersion=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION;
+  delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY;
+  const pool={async query(sql) {
+    if(sql.includes("FROM core.organization_memberships")) return {rows:[tenantRow(["academic.students.identity.read"])]};
+    throw new Error("no identity data query should run without a key");
+  }};
+  try {
+    const res=responseDouble();
+    await handleModuleRecordsRequest(request("GET","/v1/modules/student-identity-documents"),res,pool,userId,organizationId);
+    assert.equal(res.statusCode,503);
+    assert.equal(JSON.parse(res.body).error,"student_identity_encryption_not_configured");
+  } finally {
+    if(previousKey===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=previousKey;
+    if(previousVersion===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION=previousVersion;
+  }
+});
+
+test("fails closed for malformed or non-canonical student identity key material", async () => {
+  const previousKey=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY;
+  const previousVersion=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=Buffer.alloc(32,7).toString("base64")+"!!!!";
+  process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION="identity-test-v1";
+  const pool={async query(sql) {
+    if(sql.includes("FROM core.organization_memberships")) return {rows:[tenantRow(["academic.students.identity.read"])]};
+    throw new Error("no identity data query should run with malformed key");
+  }};
+  try {
+    const res=responseDouble();
+    await handleModuleRecordsRequest(request("GET","/v1/modules/student-identity-documents"),res,pool,userId,organizationId);
+    assert.equal(res.statusCode,503);
+    assert.equal(JSON.parse(res.body).error,"student_identity_encryption_not_configured");
+  } finally {
+    if(previousKey===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=previousKey;
+    if(previousVersion===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION=previousVersion;
+  }
+});

@@ -31,6 +31,25 @@ Never put the generated value in Git, frontend `VITE_*` variables, browser stora
 
 The health API is permission-gated by `academic.students.health.read` and `academic.students.health.write`. The `health_officer` system role receives only basic student lookup and health permissions; it does not receive payroll, identity-document, or general HR access. Institution owners/admins retain governance access.
 
+## Identity-document encryption
+
+Identity-document numbers (including NIK, KK and passport numbers) use a separate AES-256-GCM key from health data. The API expects:
+
+- `STUDENT_IDENTITY_ENCRYPTION_KEY`: canonical standard Base64 encoding of exactly 32 random bytes (44 characters, ending in one `=`).
+- `STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION`: stable version label containing 1–64 letters, digits, dots, underscores or hyphens; for example `identity-v1`.
+
+The Development Function environment does not currently list `STUDENT_IDENTITY_ENCRYPTION_KEY`. Identity-document reads and writes must remain fail-closed until the key is provisioned and its recovery path is verified.
+
+Provisioning checklist:
+1. Generate the key in a trusted operator environment with `openssl rand -base64 32`.
+2. Store the value in the approved secrets vault and create a separately protected recovery copy before configuring the Function.
+3. Add both variables only to the Development Function's server-side environment; never use frontend variables, Git, chat, screenshots or logs.
+4. Deploy a new Function version and verify the environment variable names are present without displaying their values.
+5. Test authorized create/read/update, missing-key denial, malformed-key denial, wrong-tenant denial and audit failure behavior using synthetic test data in an isolated test environment.
+6. Test backup restoration with the matching key available and document who may recover it.
+
+Identity-key rotation is not automated. Do not replace the key while encrypted records exist. A future rotation must retain the old key version for decryption until a tested re-encryption and rollback procedure is accepted.
+
 ## Guardian legal-authority verification
 
 Ordinary student/guardian relationship CRUD must not set legal-guardian or pickup-authority flags. Migration 0026 adds the dedicated `academic.students.guardians.verify` permission and an audit-backed verification action. Only institution owner/admin system roles receive this permission by default. The verifier must record an evidence note; the audit event records the authority flags and the fact that evidence was supplied, but never copies the evidence note itself. A relationship outside its effective date range cannot be verified. Re-check the source documents and applicable custody/authorization instrument; a family relationship label alone is not sufficient proof.
