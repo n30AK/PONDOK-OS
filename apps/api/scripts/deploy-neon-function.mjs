@@ -62,6 +62,4 @@ if (!deployedFunction.invocation_url) {
 console.log(`NEON_FUNCTION_URL=${deployedFunction.invocation_url}`);
 console.log("Runtime: nodejs24");
 console.log("Target: development branch br-proud-paper-b312lfxi");
-console.log(bootstrapDigest
-  ? "A temporary bootstrap digest is configured; remove the GitHub secret and redeploy immediately after first setup."
-  : "No bootstrap digest configured; first-organization setup remains disabled.");
+console.log("Legacy bootstrap is disabled; first-tenant provisioning is handled through Central Command activation.");
