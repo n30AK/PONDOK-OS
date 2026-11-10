@@ -248,7 +248,8 @@ test("activation redemption creates the tenant atomically and consumes a user-bo
   assert.ok(tokenConsume < membershipInsert && membershipInsert < campusInsert);
   const trialLicense = calls.find((call) => call.sql.startsWith("INSERT INTO platform.tenant_licenses"));
   assert.ok(trialLicense, "redeeming the approved activation must issue a trial license");
-  assert.ok(trialLicense.sql.includes("14 days"));
+  assert.ok(trialLicense.sql.includes("NULL"), "trial entitlement remains pending until first workspace access");
+  assert.ok(!trialLicense.sql.includes("14 days"), "activation must not start the 14-day countdown");
   assert.deepEqual(trialLicense.values, [organizationId, userId]);
   assert.ok(calls.indexOf(trialLicense) > campusInsert, "trial entitlement is issued inside the tenant activation transaction");
   assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
