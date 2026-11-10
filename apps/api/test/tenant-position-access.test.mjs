@@ -33,3 +33,17 @@ test("tenant administrators see a dedicated role management workspace",async()=>
  assert.match(ui,/Simpan hak akses/);
  assert.match(ui,/ROLE_OPTIONS/);
 });
+
+test("tenant administrators can add only verified existing accounts with allowed roles",async()=>{
+ const migration=await read("database/migrations/0037_verified_tenant_member_addition.sql");
+ const api=await read("apps/api/src/tenant-members.ts");
+ const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
+ assert.match(migration,/SECURITY DEFINER/);
+ assert.match(migration,/emailVerified/);
+ assert.match(migration,/core\.members\.manage/);
+ assert.match(migration,/GRANT EXECUTE ON FUNCTION core\.add_tenant_member_by_email/);
+ assert.match(api,/req\.method==="POST"/);
+ assert.match(api,/add_tenant_member_by_email/);
+ assert.match(ui,/Tambah anggota lembaga/);
+ assert.match(ui,/newEmail/);
+});
