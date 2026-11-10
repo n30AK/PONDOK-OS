@@ -178,7 +178,33 @@ export default function Operations({ organizationId, permissions, initialArea = 
         {item === "finance" ? "Keuangan & Akuntansi" : item === "inventory" ? "Inventaris" : "SDM & Payroll"}
       </button>)}
     </div>
-    {error && <div className="alert error">{error}</div>}
+    <div className="operations-tabs">
+      {availableAreas.map((item) => <button key={item} className={area === item ? "operation-tab active" : "operation-tab"} onClick={() => { setArea(item); setShowForm(false); setForm({}); }}>
+        {item === "finance" ? "Keuangan & Akuntansi" : item === "inventory" ? "Inventaris" : "SDM & Payroll"}
+      </button>)}
+    </div>
+
+    <section className="module-extension-panel">
+      <div className="module-extension-heading"><div><span className="module-page-kicker">PENGEMBANGAN BERTAHAP</span><h3>Ruang peningkatan modul</h3><p>Fitur berikut dapat ditambahkan sebagai paket lanjutan tanpa mengganti data inti. Pengaktifan dilakukan sesuai kebutuhan lembaga, ruang lingkup kontrak, dan persetujuan administrator.</p></div><span className="module-extension-version">Dapat dikembangkan</span></div>
+      <ul>{(area === "finance" ? [
+        "Akuntansi akrual penuh, buku besar, neraca saldo, jurnal penyesuaian, tutup buku dan audit trail.",
+        "Anggaran per unit/program, pagu, realisasi, revisi, persetujuan berjenjang dan analisis varians.",
+        "Kas dan bank multi-rekening, rekonsiliasi bank, kuitansi, tagihan, piutang, utang dan arus kas.",
+        "Pembatasan dana per sumber (SPP, BOS/BOP bila relevan, donasi/wakaf, usaha) dan laporan pertanggungjawaban.",
+        "Konsolidasi yayasan–pesantren–sekolah–unit usaha serta ekspor laporan untuk auditor."
+      ] : area === "inventory" ? [
+        "Permintaan pembelian, perbandingan vendor, purchase order, penerimaan dan retur barang.",
+        "Stok minimum, batch/nomor seri, tanggal kedaluwarsa, stok opname dan penyesuaian dengan persetujuan.",
+        "Aset tetap, lokasi penanggung jawab, penyusutan, pemeliharaan dan penghapusan.",
+        "Anggaran pengadaan, biaya perolehan, integrasi ke jurnal dan pelacakan sumber dana."
+      ] : [
+        "Kontrak, struktur jabatan, kompetensi, sertifikasi, evaluasi dan riwayat penugasan.",
+        "Presensi multi-shift, izin/cuti, lembur, jadwal piket dan persetujuan atasan.",
+        "Payroll lengkap: komponen tetap/variabel, potongan, PPh 21, BPJS, THR dan slip gaji.",
+        "Rekonsiliasi pembayaran, penguncian periode, koreksi terotorisasi dan laporan biaya SDM."
+      ]).map((item,index)=><li key={index}>{item}</li>)}</ul>
+      <small>Ini adalah opsi pengembangan lanjutan, bukan klaim bahwa seluruh fitur sudah aktif pada versi saat ini.</small>
+    </section>    {error && <div className="alert error">{error}</div>}
     {notice && <div className="alert success">{notice}</div>}
     {allowedForms.length > 0 && <div className="operations-actions">
       <label>Jenis data<select value={selectedForm} onChange={(event) => setForm({ kind: event.target.value })}>{allowedForms.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
