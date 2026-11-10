@@ -3,6 +3,7 @@ import { createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import { Pool } from "pg";
 import { readBearerToken, verifyAccessToken } from "./identity.js";
 import { loadTenantContext } from "./tenant-access.js";
+import { handleTenantMembersRequest } from "./tenant-members.js";
 import { handleAcademicRequest } from "./academic.js";
 import { handleAdmissionsRequest } from "./admissions.js";
 import { handleSyncRequest } from "./sync.js";
@@ -366,6 +367,25 @@ export async function handleRequest(
       sendTenantScopeError(response, reason, "tenant_context_unavailable");
     }
     return;
+  }
+
+  if (pathname.startsWith("/v1/tenant/members")) {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response,503,{error:"identity_or_database_not_configured"}); return;
+    }
+    const token=readBearerToken(request.headers.authorization);
+    if(!token){sendJson(response,401,{error:"unauthorized"});return;}
+    const organizationId=request.headers["x-organization-id"];
+    if(typeof organizationId!=="string"||!UUID_PATTERN.test(organizationId)){sendJson(response,400,{error:"invalid_organization_id"});return;}
+    let identity;
+    try{identity=await verifyAccessToken(token,dependencies.jwks,dependencies.issuer);}
+    catch{sendJson(response,401,{error:"invalid_token"});return;}
+    try{
+      const handled=await withTenantScope(dependencies.pool,identity.userId,organizationId,
+        (tenantPool)=>handleTenantMembersRequest(request,response,tenantPool,identity.userId,organizationId));
+      if(handled)return;
+      sendJson(response,404,{error:"tenant_member_route_not_found"});return;
+    }catch(reason){sendTenantScopeError(response,reason,"tenant_members_service_unavailable");return;}
   }
 
   if (pathname.startsWith("/v1/academic/")) {
