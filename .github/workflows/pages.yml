@@ -6,6 +6,7 @@ on:
     paths:
       - "apps/web/**"
       - "apps/command-center/**"
+      - "apps/marketing/**"
       - "packages/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/pages.yml"
