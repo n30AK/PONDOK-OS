@@ -28,6 +28,7 @@ test("tenant administrators see a dedicated role management workspace",async()=>
  const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
  assert.match(app,/tenant\?\.permissions\.includes\("core\.members\.manage"\)/);
  assert.match(app,/TenantAccessAdmin organizationId=/);
+ assert.match(app,/hidden=\{Boolean\(tenant && !tenant\.permissions\.includes/);
  assert.match(ui,/Jabatan & hak akses/);
  assert.match(ui,/Simpan hak akses/);
  assert.match(ui,/ROLE_OPTIONS/);
