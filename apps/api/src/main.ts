@@ -294,6 +294,8 @@ export async function handleRequest(
       const scoped = await withTenantScope(dependencies.pool, identity.userId, organizationId, async (tenantPool) => {
         const context = await loadTenantContext(tenantPool, identity.userId, organizationId);
         if (!context) return null;
+        // Start a pending 14-day trial exactly once, on the first authenticated workspace access.
+        await tenantPool.query("SELECT platform.start_tenant_trial_on_first_access($1::uuid)", [organizationId]);
         // Prove that this request is executing under the restricted tenant role,
         // with the expected transaction-local tenant and a complete RLS policy set.
         const security = await tenantPool.query<{
