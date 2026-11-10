@@ -177,6 +177,12 @@ test("first tenant bootstrap is super-admin-only, verified-user-bound and atomic
   assert.equal(data.organizationId, "323e4567-e89b-42d3-a456-426614174000");
   assert.ok(calls.some(call => call.sql.startsWith("SELECT pg_advisory_xact_lock")));
   assert.ok(calls.some(call => call.sql.startsWith("INSERT INTO core.membership_roles")));
+  const trialLicense = calls.find(call => call.sql.startsWith("INSERT INTO platform.tenant_licenses"));
+  assert.ok(trialLicense, "first tenant bootstrap must issue a pending 14-day trial license");
+  assert.deepEqual(trialLicense.values, ["323e4567-e89b-42d3-a456-426614174000", userId]);
+  assert.match(trialLicense.sql, /'trial-14d', 'trial', now\(\), NULL/);
+  assert.ok(calls.findIndex(call => call.sql.startsWith("INSERT INTO platform.tenant_licenses")) >
+    calls.findIndex(call => call.sql.startsWith("INSERT INTO core.campuses")));
   assert.ok(calls.some(call => call.sql.startsWith("INSERT INTO audit.audit_events")));
   assert.ok(calls.some(call => call.sql.startsWith("INSERT INTO platform.audit_events")));
   assert.ok(calls.some(call => call.sql === "COMMIT"));
