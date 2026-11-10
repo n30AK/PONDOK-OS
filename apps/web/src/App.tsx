@@ -487,7 +487,27 @@ export default function App() {
     {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Tutup menu navigasi" onClick={() => setMobileNavOpen(false)} />}
     <main className="main-area">
       <header className="topbar"><div className="topbar-leading"><button type="button" className="mobile-menu-toggle" aria-label={mobileNavOpen ? "Tutup menu navigasi" : "Buka menu navigasi"} aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar" onClick={() => setMobileNavOpen(value => !value)}><span /><span /><span /></button><div className="topbar-crumbs"><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : "Ringkasan"}</strong></div></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
-      {tenant?.license?.status === "trial" && tenant.license.endsAt && <TrialCountdown key={tenant.license.endsAt} endsAt={tenant.license.endsAt} serverNow={tenant.serverNow} />}
+      {tenant?.license?.status === "trial" && tenant.license.endsAt ? (
+        <TrialCountdown key={tenant.license.endsAt} endsAt={tenant.license.endsAt} serverNow={tenant.serverNow} />
+      ) : tenant?.license?.status === "trial" ? (
+        <section className="trial-countdown-bar trial-status-notice" role="status" aria-label="Status masa percobaan PONDOK OS">
+          <div className="trial-countdown-copy">
+            <span className="trial-countdown-kicker">TRIAL GRATIS PONDOK OS · 14 HARI</span>
+            <strong>Lisensi trial terdeteksi, waktu mulai belum tercatat</strong>
+            <small>Hitung mundur akan aktif setelah server menetapkan waktu mulai. Muat ulang workspace; jika pesan ini tetap muncul, administrator perlu memeriksa aktivasi trial.</small>
+          </div>
+          <div className="trial-status-chip">Menunggu waktu mulai</div>
+        </section>
+      ) : tenant && !tenant.license ? (
+        <section className="trial-countdown-bar trial-status-notice trial-status-missing" role="status" aria-label="Status lisensi PONDOK OS">
+          <div className="trial-countdown-copy">
+            <span className="trial-countdown-kicker">STATUS LISENSI PONDOK OS</span>
+            <strong>Lisensi trial 14 hari belum ditemukan</strong>
+            <small>Workspace terbuka, tetapi server belum mengirim data lisensi. Hitung mundur tidak dapat dimulai sebelum lisensi trial diterbitkan oleh proses aktivasi.</small>
+          </div>
+          <div className="trial-status-chip">Perlu pemeriksaan admin</div>
+        </section>
+      ) : null}
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
