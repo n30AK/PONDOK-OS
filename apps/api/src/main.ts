@@ -16,7 +16,7 @@ import { handlePlatformOperationsRequest } from "./platform-operations.js";
 import { handlePlatformCommercialRequest } from "./platform-commercial.js";
 import { handlePlatformBillingRequest } from "./platform-billing.js";
 import { handlePlatformCustomerCatalogRequest } from "./platform-customer-catalog.js";
-import { withTenantScope, type TenantDatabase } from "./tenant-db.js";
+import { TenantLicenseExpiredError, withTenantScope, type TenantDatabase } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -114,6 +114,14 @@ async function verifyDatabaseSecurity(pool: TenantDatabase): Promise<boolean> {
   } finally {
     client.release();
   }
+}
+
+function sendTenantScopeError(response: ServerResponse, reason: unknown, fallback: string): void {
+  if (reason instanceof TenantLicenseExpiredError) {
+    sendJson(response, 402, { error: "tenant_trial_expired", message: "Masa trial PONDOK OS telah berakhir. Data tetap tersimpan dan akses dapat dipulihkan setelah aktivasi lisensi." });
+    return;
+  }
+  sendJson(response, 500, { error: fallback });
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
@@ -317,7 +325,10 @@ export async function handleRequest(
                       AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='organization_id' AND a.attnum>0 AND NOT a.attisdropped)) AS tenant_table_count`,
           [organizationId],
         );
-        return { context, security: security.rows[0] };
+        const license = await tenantPool.query<{ license: { status: string; planCode: string; startsAt: string; endsAt: string | null } | null }>(
+          "SELECT platform.tenant_license_summary($1::uuid) AS license", [organizationId],
+        );
+        return { context, security: security.rows[0], license: license.rows[0]?.license ?? null };
       });
       if (!scoped) {
         sendJson(response, 403, { error: "active_membership_required" });
@@ -346,9 +357,10 @@ export async function handleRequest(
           protectedTables: Number(security.protected_table_count),
           tenantTables: Number(security.tenant_table_count),
         },
+        license: scoped.license,
       });
-    } catch {
-      sendJson(response, 500, { error: "tenant_context_unavailable" });
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "tenant_context_unavailable");
     }
     return;
   }
@@ -372,8 +384,8 @@ export async function handleRequest(
     }
     try {
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleAcademicRequest(request, response, tenantPool, identity.userId, organizationId))) return;
-    } catch {
-      sendJson(response, 500, { error: "academic_service_unavailable" }); return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "academic_service_unavailable"); return;
     }
   }
 
@@ -396,8 +408,8 @@ export async function handleRequest(
     }
     try {
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleAdmissionsRequest(request, response, tenantPool, identity.userId, organizationId))) return;
-    } catch {
-      sendJson(response, 500, { error: "admissions_service_unavailable" }); return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "admissions_service_unavailable"); return;
     }
   }
 
@@ -420,8 +432,8 @@ export async function handleRequest(
     }
     try {
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleSyncRequest(request, response, tenantPool, identity.userId, organizationId))) return;
-    } catch {
-      sendJson(response, 500, { error: "sync_service_unavailable" }); return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "sync_service_unavailable"); return;
     }
   }
 
@@ -447,8 +459,8 @@ export async function handleRequest(
           await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleFinanceRequest(request, response, tenantPool, identity.userId, organizationId))) return;
       if (pathname.startsWith("/v1/inventory/") &&
           await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleInventoryRequest(request, response, tenantPool, identity.userId, organizationId))) return;
-    } catch {
-      sendJson(response, 500, { error: "operational_service_unavailable" }); return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "operational_service_unavailable"); return;
     }
   }
 
@@ -471,8 +483,8 @@ export async function handleRequest(
     }
     try {
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleHrRequest(request, response, tenantPool, identity.userId, organizationId))) return;
-    } catch {
-      sendJson(response, 500, { error: "hr_service_unavailable" }); return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "hr_service_unavailable"); return;
     }
   }
 
@@ -496,8 +508,8 @@ export async function handleRequest(
     try {
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) =>
         handleModuleRecordsRequest(request, response, tenantPool, identity.userId, organizationId))) return;
-    } catch {
-      sendJson(response, 500, { error: "module_service_unavailable" }); return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "module_service_unavailable"); return;
     }
   }
 
