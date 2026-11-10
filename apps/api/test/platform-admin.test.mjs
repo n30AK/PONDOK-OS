@@ -71,6 +71,10 @@ test("applicant request is created and audited under the restricted platform rol
   assert.equal(res.status, 201);
   assert.equal(JSON.parse(res.body).data.status, "pending");
   assert.ok(calls.some((call) => call.sql === "SET LOCAL ROLE pondok_platform_runtime"));
+  const trialLicense = calls.find((call) => call.sql.startsWith("INSERT INTO platform.tenant_licenses"));
+  assert.ok(trialLicense, "redeeming the approved activation must issue a trial license");
+  assert.ok(trialLicense.sql.includes("14 days"));
+  assert.deepEqual(trialLicense.values, [organizationId, userId]);
   assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
   assert.ok(calls.some((call) => call.sql === "COMMIT"));
   assert.doesNotMatch(res.body, /activationToken|organizationId/);
