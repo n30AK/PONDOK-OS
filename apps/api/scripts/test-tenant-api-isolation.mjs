@@ -40,6 +40,11 @@ try {
        RETURNING id, organization_id`,
       [tenantA, userA, tenantB, userB],
     );
+    await client.query(
+      `INSERT INTO platform.tenant_licenses (organization_id,plan_code,status,starts_at,ends_at,created_by)
+       VALUES ($1,'ci-active','active',now(),NULL,$2),($3,'ci-active','active',now(),NULL,$4)`,
+      [tenantA, userA, tenantB, userB],
+    );
     const ownerRole = await client.query(
       "SELECT id FROM core.roles WHERE organization_id IS NULL AND role_key='institution_owner' AND is_system=true LIMIT 1",
     );
