@@ -27,3 +27,10 @@ a:focus-visible,.menu-toggle:focus-visible{outline-color:#6e9d6f}
 @media(max-width:640px){.nav{height:70px}.nav-links{top:69px}.hero{padding-top:52px;padding-bottom:48px}.hero h1{font-size:clamp(45px,12vw,62px)}.hero-visual{height:420px;margin:8px 0 0;border-radius:3px}.dashboard{width:320px;padding:17px}.float-left{left:3px}.float-right{right:3px}.section{padding-top:78px;padding-bottom:78px}.section-heading h2,.security-copy h2,.architecture-inner h2,.closing h2{font-size:37px}.modules-section{padding:78px 0}.module-grid{grid-template-columns:repeat(2,1fr)}.module-card{min-height:180px;padding:16px}.workflow-section{padding:78px 0}.workflow-inner{gap:25px}.workflow-intro h2{font-size:39px}.workflow-step{grid-template-columns:30px 1fr 18px;gap:10px;padding:20px 0}.workflow-step b{font-size:14px}.architecture-section{padding:78px 0}.architecture-options>div{min-height:160px}.closing{padding-top:80px;padding-bottom:85px}}
 @media(max-width:380px){.module-grid{grid-template-columns:1fr}.hero-visual{transform:none}.architecture-options{grid-template-columns:1fr}.architecture-options>div{min-height:unset}.architecture-options small{min-height:unset}}
 @media(prefers-reduced-motion:reduce){.module-card,.button{transition:none}}
+
+
+/* Original PONDOK OS hero artwork */
+.hero-visual{height:auto;min-height:0;display:block;position:relative;isolation:isolate}
+.hero-art{display:block;width:100%;height:auto;max-height:590px;object-fit:contain;border-radius:22px;filter:drop-shadow(0 24px 35px #173f3218)}
+@media(max-width:900px){.hero{grid-template-columns:1fr;gap:28px;padding-top:55px}.hero-visual{width:min(100%,680px);margin:0 auto}.hero-art{max-height:520px}}
+@media(max-width:560px){.hero{padding-top:42px;padding-bottom:55px}.hero-art{border-radius:14px}.hero-visual{margin-top:4px}}
