@@ -880,7 +880,7 @@ export async function handlePlatformRequest(
         await client.query(
           `INSERT INTO platform.tenant_licenses
             (organization_id, plan_code, status, starts_at, ends_at, created_by, trial_granted_to)
-           VALUES ($1::uuid, 'trial-14d', 'trial', now(), now() + interval '14 days', $2::uuid, $2::uuid)`,
+           VALUES ($1::uuid, 'trial-14d', 'trial', now(), NULL, $2::uuid, $2::uuid)`,
           [organizationId, userId],
         );
         await auditPlatform(client, userId, "activation.trial_issued", "tenant_license", organizationId, { trialDays: 14 });
