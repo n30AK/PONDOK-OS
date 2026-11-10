@@ -23,6 +23,7 @@ async function setupServer(context, membershipRows, securityRow = { runtime_role
         return { rows: membershipRows };
       }
       if (sql.includes("current_user::text AS runtime_role")) return { rows: [securityRow] };
+      if (sql.includes("platform.start_tenant_trial_on_first_access")) return { rows: [{ start_tenant_trial_on_first_access: null }] };
       if (sql.includes("platform.tenant_license_summary")) return { rows: [{ license: null }] };
       throw new Error("unexpected tenant-context query");
     },
@@ -70,7 +71,10 @@ test("tenant context returns roles and permissions from database membership", as
     "x-organization-id": organizationId,
   });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
+  const body = await response.json();
+  const { serverNow, ...tenantContext } = body;
+  assert.ok(Number.isFinite(Date.parse(serverNow)), "tenant context includes an authoritative server timestamp");
+  assert.deepEqual(tenantContext, {
     userId,
     organizationId,
     membershipId: "c9a8a4a4-0e4c-4a32-9d4f-5c30b1c8f6e3",

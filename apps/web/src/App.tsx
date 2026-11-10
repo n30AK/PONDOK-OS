@@ -5,7 +5,7 @@ import Admissions from "./Admissions";
 import ModuleWorkspace, { getModuleResourceLabel } from "./ModuleWorkspace";
 import InstitutionActivation from "./InstitutionActivation";
 
-type Tenant = { organizationId: string; membershipId: string; roles: string[]; permissions: string[]; security: { status: "protected"; runtimeRole: string; protectedTables: number; tenantTables: number }; license?: { status: string; planCode: string; startsAt: string; endsAt: string | null } | null };
+type Tenant = { organizationId: string; membershipId: string; roles: string[]; permissions: string[]; security: { status: "protected"; runtimeRole: string; protectedTables: number; tenantTables: number }; license?: { status: string; planCode: string; startsAt: string; endsAt: string | null } | null; serverNow?: string };
 type OrganizationChoice = { id: string; name: string; slug: string };
 type Student = {
   id: string; campusId: string; studentNumber: string; legalName: string;
@@ -54,6 +54,36 @@ async function apiRequest<T>(path: string, organizationId: string, init: Request
   return body as T;
 }
 
+function TrialCountdown({ endsAt, serverNow }: { endsAt: string; serverNow: string | undefined }) {
+  const [elapsed, setElapsed] = useState(() => performance.now());
+  const [startedAt] = useState(() => performance.now());
+  useEffect(() => {
+    setElapsed(performance.now());
+    const timer = window.setInterval(() => setElapsed(performance.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [endsAt, serverNow]);
+  const endTime = new Date(endsAt).getTime();
+  const serverTimeAtLoad = serverNow ? new Date(serverNow).getTime() : Date.now();
+  const monotonicNow = serverNow ? serverTimeAtLoad + Math.max(0, elapsed - startedAt) : Date.now();
+  const remainingSeconds = Number.isFinite(endTime) ? Math.max(0, Math.floor((endTime - monotonicNow) / 1000)) : 0;
+  const expired = remainingSeconds <= 0;
+  const parts = [
+    { label: "Hari", value: Math.floor(remainingSeconds / 86400) },
+    { label: "Jam", value: Math.floor((remainingSeconds % 86400) / 3600) },
+    { label: "Menit", value: Math.floor((remainingSeconds % 3600) / 60) },
+    { label: "Detik", value: remainingSeconds % 60 },
+  ];
+  return <section className={expired ? "trial-countdown-bar expired" : "trial-countdown-bar"} aria-label="Status masa percobaan PONDOK OS">
+    <div className="trial-countdown-copy">
+      <span className="trial-countdown-kicker">{expired ? "MASA PERCOBAAN BERAKHIR" : "TRIAL GRATIS PONDOK OS · 14 HARI"}</span>
+      <strong>{expired ? "Aktifkan lisensi untuk melanjutkan" : "Sisa masa percobaan Anda"}</strong>
+      <small>{expired ? "Data tetap tersimpan. Hubungi administrator untuk aktivasi lisensi." : "Berakhir pada " + new Date(endsAt).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" })}</small>
+    </div>
+    <div className="trial-countdown-clock" role="timer" aria-live="off" aria-label={expired ? "Masa trial berakhir" : parts.map(part => part.value + " " + part.label).join(", ")}>
+      {parts.map(part => <div className="trial-time-unit" key={part.label}><b>{String(part.value).padStart(2, "0")}</b><span>{part.label}</span></div>)}
+    </div>
+  </section>;
+}
 export default function App() {
   const [user, setUser] = useState<PondokUser | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -397,6 +427,7 @@ export default function App() {
           <div className="eyebrow">SELAMAT DATANG</div>
           <h2>Masuk ke PONDOK OS</h2>
           <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
+          <div className="trial-login-note"><strong>Uji coba gratis 14 hari untuk lembaga baru.</strong><span>Hitungan dimulai saat workspace pertama kali dibuka setelah aktivasi disetujui.</span></div>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
           <label>Kata sandi<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /><button type="button" className="password-visibility" aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
@@ -456,10 +487,10 @@ export default function App() {
     {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Tutup menu navigasi" onClick={() => setMobileNavOpen(false)} />}
     <main className="main-area">
       <header className="topbar"><div className="topbar-leading"><button type="button" className="mobile-menu-toggle" aria-label={mobileNavOpen ? "Tutup menu navigasi" : "Buka menu navigasi"} aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar" onClick={() => setMobileNavOpen(value => !value)}><span /><span /><span /></button><div className="topbar-crumbs"><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : "Ringkasan"}</strong></div></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
+      {tenant?.license?.status === "trial" && tenant.license.endsAt && <TrialCountdown key={tenant.license.endsAt} endsAt={tenant.license.endsAt} serverNow={tenant.serverNow} />}
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
-        {tenant?.license?.status === "trial" && tenant.license.endsAt && <div className="alert warning global-alert">Trial gratis PONDOK OS aktif sampai {new Date(tenant.license.endsAt).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" })}. Seluruh menu dan fungsi yang tersedia terbuka selama masa trial.</div>}
         {!tenant && !previewMode ? !platformAccessChecked ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">MEMERIKSA AKSES</div><h1>Memverifikasi sesi dan hak akses…</h1><p>Mohon tunggu. Formulir aktivasi tidak akan ditampilkan sebelum status akun berhasil diverifikasi.</p></div></section> : platformAccessError ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div><h1>Sesi belum dapat diverifikasi</h1><div className="alert error">{platformAccessError}</div><p className="muted">Jangan kirim permohonan aktivasi lembaga saat status hak akses akun belum berhasil diperiksa. Data lembaga Anda tidak perlu diisi ulang.</p><button type="button" className="primary" onClick={() => window.location.reload()}>Coba periksa kembali</button></div></section> : <><section className="welcome-card">
           <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1>
             {busy ? <p>Memuat daftar pesantren dan hak akses Anda…</p> : organizations.length > 1 ? <>
