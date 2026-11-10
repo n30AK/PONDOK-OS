@@ -16,7 +16,7 @@ test("tenant role assignment is tenant-scoped and prevents privilege escalation"
  assert.match(api,/core\.members\.manage/);
  assert.match(api,/SAFE_ASSIGNABLE_ROLES|ROLES/);
  assert.match(api,/self_role_change_forbidden/);
- assert.match(api,/owner_role_protected/);
+ assert.match(api,/privileged_role_protected/);
  assert.match(api,/institution_owner/);
  assert.match(api,/audit\.audit_events/);
  assert.match(main,/handleTenantMembersRequest/);
