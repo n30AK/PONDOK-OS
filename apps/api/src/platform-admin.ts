@@ -856,13 +856,7 @@ export async function handlePlatformRequest(
         );
         const membershipId = membership.rows[0]?.id;
         if (!membershipId) throw new Error("membership_insert_failed");
-        await client.query(
-          `INSERT INTO platform.tenant_licenses
-            (organization_id, plan_code, status, starts_at, ends_at, created_by, trial_granted_to)
-           VALUES ($1::uuid, 'trial-14d', 'trial', now(), now() + interval '14 days', $2::uuid, $2::uuid)`,
-          [organizationId, userId],
-        );
-        await auditPlatform(client, userId, "activation.redeemed", "activation_request", activation.request_id, { organizationId, trialDays: 14 });
+        await auditPlatform(client, userId, "activation.redeemed", "activation_request", activation.request_id, { organizationId });
         await client.query(
           "SELECT set_config('app.organization_id', $1, true)",
           [organizationId],
@@ -883,6 +877,13 @@ export async function handlePlatformRequest(
              jsonb_build_object('campus_id', $4::text, 'membership_id', $5::text, 'activation_request_id', $6::text))`,
           [organizationId, userId, organizationId, campusId, membershipId, activation.request_id],
         );
+        await client.query(
+          `INSERT INTO platform.tenant_licenses
+            (organization_id, plan_code, status, starts_at, ends_at, created_by, trial_granted_to)
+           VALUES ($1::uuid, 'trial-14d', 'trial', now(), now() + interval '14 days', $2::uuid, $2::uuid)`,
+          [organizationId, userId],
+        );
+        await auditPlatform(client, userId, "activation.trial_issued", "tenant_license", organizationId, { trialDays: 14 });
         return { organizationId, membershipId, campusId };
       });
       if (!scoped.value) { reply(res, 403, { error: "activation_token_invalid_expired_or_used" }); return true; }
