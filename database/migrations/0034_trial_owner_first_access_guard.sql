@@ -40,6 +40,8 @@ DECLARE
   v_user_id uuid := nullif(current_setting('app.user_id', true), '')::uuid;
   v_organization_id uuid := nullif(current_setting('app.organization_id', true), '')::uuid;
   v_started_at timestamptz;
+  v_trial_ends_at timestamptz;
+  v_trial_owner uuid;
 BEGIN
   IF p_organization_id IS NULL
      OR p_organization_id <> v_organization_id
@@ -47,14 +49,23 @@ BEGIN
     RAISE EXCEPTION 'tenant trial can only start inside its authenticated tenant context';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
+  -- Paid/active tenants and already-started trials do not need a start transition.
+  SELECT l.starts_at, l.ends_at, l.trial_granted_to
+    INTO v_started_at, v_trial_ends_at, v_trial_owner
     FROM platform.tenant_licenses l
-    WHERE l.organization_id = p_organization_id
-      AND l.status = 'trial'
-      AND l.plan_code = 'trial-14d'
-      AND l.trial_granted_to = v_user_id
-  ) THEN
+   WHERE l.organization_id = p_organization_id
+     AND l.status = 'trial'
+     AND l.plan_code = 'trial-14d';
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_trial_ends_at IS NOT NULL THEN
+    RETURN v_started_at;
+  END IF;
+
+  IF v_trial_owner IS DISTINCT FROM v_user_id THEN
     RAISE EXCEPTION 'only the verified trial recipient can start this trial';
   END IF;
 
