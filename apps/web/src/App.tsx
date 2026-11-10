@@ -54,7 +54,7 @@ async function apiRequest<T>(path: string, organizationId: string, init: Request
   return body as T;
 }
 
-function TrialCountdown({ endsAt, serverNow }: { endsAt: string; serverNow?: string }) {
+function TrialCountdown({ endsAt, serverNow }: { endsAt: string; serverNow: string | undefined }) {
   const [elapsed, setElapsed] = useState(() => performance.now());
   const [startedAt] = useState(() => performance.now());
   useEffect(() => {
