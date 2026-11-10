@@ -77,9 +77,10 @@ test("applicant request is created and audited under the restricted platform rol
 });
 
 test("approval creates a high-entropy token and returns it once after commit", async () => {
+  const applicantUserId = "923e4567-e89b-42d3-a456-426614174000";
   const { pool, calls } = poolWithClient(async (sql) => {
     if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
-    if (sql.startsWith("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: userId, status: "pending" }] };
+    if (sql.startsWith("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: applicantUserId, status: "pending" }] };
     return { rows: [] };
   });
   const res = response();
@@ -95,6 +96,22 @@ test("approval creates a high-entropy token and returns it once after commit", a
   assert.equal(Buffer.isBuffer(insert.values[0]), true);
   assert.equal(insert.values[0].length, 32);
   assert.notEqual(insert.values[0].toString("utf8"), body.data.activationToken);
+  assert.equal(insert.values[2], applicantUserId, "activation token remains bound to the applicant, not the approver");
+});
+
+test("a Super Admin cannot approve their own institution activation request", async () => {
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: userId, status: "pending" }] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request(`/v1/platform/admin/activation-requests/${requestId}/approve`, "POST"), res, pool, userId);
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "activation_request_self_approval_forbidden");
+  assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO platform.activation_tokens")));
+  assert.ok(!calls.some((call) => call.sql.startsWith("UPDATE platform.activation_requests")));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
 });
 
 test("legacy public bootstrap endpoint is disabled by the centralized distribution model", async () => {
