@@ -4,7 +4,6 @@ BEGIN;
 
 ALTER POLICY tenant_licenses_trial_issue
   ON platform.tenant_licenses
-  FOR INSERT
   WITH CHECK (
     platform.is_active_super_admin()
     OR (
