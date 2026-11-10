@@ -15,7 +15,7 @@ AS $function$
     FROM platform.tenant_licenses l
     WHERE l.organization_id = p_organization_id
       AND (
-        l.status = 'active'
+        (l.status = 'active' AND (l.ends_at IS NULL OR l.ends_at > now()))
         OR (
           l.status = 'trial'
           AND (
