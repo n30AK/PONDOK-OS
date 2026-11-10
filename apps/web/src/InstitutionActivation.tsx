@@ -25,7 +25,14 @@ async function activationRequest<T>(path: string, init: RequestInit = {}): Promi
     cache: "no-store",
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? `Permintaan gagal (${response.status})`);
+  if (!response.ok) {
+    const knownErrors: Record<string, string> = {
+      trial_already_used: "Akun ini sudah pernah menggunakan trial gratis. Hubungi tim PONDOK OS untuk aktivasi lisensi.",
+      verified_email_required: "Verifikasi email akun terlebih dahulu.",
+      activation_request_already_open: "Permohonan aktivasi Anda masih diproses atau sudah disetujui.",
+    };
+    throw new Error(body.message ?? knownErrors[body.error] ?? body.error ?? `Permintaan gagal (${response.status})`);
+  }
   return body as T;
 }
 
