@@ -261,3 +261,13 @@
 .tenant-member-card>footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px}
 .tenant-member-card>footer small{color:var(--muted,#667085)}
 @media(max-width:640px){.tenant-access-page .page-heading,.tenant-member-card>header,.tenant-member-card>footer{display:grid}.member-current-roles{text-align:left;max-width:100%}.tenant-member-card>footer button{width:100%}}
+
+
+.tenant-add-member{display:grid;gap:14px;padding:18px;border:1px solid var(--line,#dce3e8);border-radius:14px;background:var(--surface,#fff)}
+.tenant-add-member h2{margin:0 0 5px;font-size:1.05rem}
+.tenant-add-member p{margin:0;color:var(--muted,#667085);font-size:.86rem;line-height:1.5}
+.tenant-member-email{display:grid;gap:6px;font-size:.85rem;font-weight:600;max-width:520px}
+.tenant-member-email input{width:100%;min-height:42px;padding:9px 11px;border:1px solid var(--line,#dce3e8);border-radius:9px;background:var(--surface,#fff);color:var(--text,#17212b)}
+.tenant-add-member footer{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.tenant-add-member footer small{color:var(--muted,#667085)}
+@media(max-width:640px){.tenant-add-member footer{display:grid}.tenant-add-member footer button{width:100%}}
