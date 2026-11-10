@@ -682,6 +682,7 @@ export async function handlePlatformRequest(
           );
           const request = locked.rows[0];
           if (!request) return { error: "activation_request_not_found" as const };
+          if (request.requested_by === userId) return { error: "activation_request_self_approval_forbidden" as const };
           if (request.status !== "pending") return { error: "activation_request_not_pending" as const };
           await client.query(
             "INSERT INTO platform.activation_tokens (token_hash, request_id, requested_by, expires_at, created_by) VALUES ($1, $2::uuid, $3::uuid, now() + interval '24 hours', $4::uuid)",
@@ -696,7 +697,9 @@ export async function handlePlatformRequest(
         });
         if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
         if (scoped.value && "error" in scoped.value) {
-          reply(res, scoped.value.error === "activation_request_not_found" ? 404 : 409, { error: scoped.value.error });
+          const statusCode = scoped.value.error === "activation_request_not_found" ? 404
+            : scoped.value.error === "activation_request_self_approval_forbidden" ? 403 : 409;
+          reply(res, statusCode, { error: scoped.value.error });
           return true;
         }
         reply(res, 200, { data: { requestId, expiresInHours: 24, activationToken: rawToken }, message: "Token ditampilkan satu kali. Salin dan kirim melalui kanal resmi kepada pemohon." });
