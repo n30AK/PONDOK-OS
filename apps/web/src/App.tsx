@@ -50,7 +50,7 @@ async function apiRequest<T>(path: string, organizationId: string, init: Request
     }
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? `Permintaan gagal (${response.status})`);
+  if (!response.ok) throw new Error(body.message ?? body.error ?? `Permintaan gagal (${response.status})`);
   return body as T;
 }
 
@@ -190,7 +190,7 @@ export default function App() {
           cache: "no-store",
         });
         const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error ?? "Gagal memuat daftar pesantren.");
+        if (!response.ok) throw new Error(body.message ?? body.error ?? "Gagal memuat daftar pesantren.");
         const available: OrganizationChoice[] = Array.isArray(body.data)
           ? body.data.map((item: Record<string, unknown>) => ({
               id: String(item.id),
