@@ -40,6 +40,13 @@ CREATE POLICY tenant_licenses_admin_select
   FOR SELECT
   USING (platform.is_active_super_admin());
 
+CREATE POLICY tenant_licenses_tenant_self_read
+  ON platform.tenant_licenses
+  FOR SELECT
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+GRANT SELECT ON platform.tenant_licenses TO pondok_runtime;
+
 CREATE POLICY tenant_licenses_trial_issue
   ON platform.tenant_licenses
   FOR INSERT
