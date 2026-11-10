@@ -187,3 +187,19 @@
 .forgot-password-link:hover,.auth-toggle:hover{text-decoration:underline}
 .login-card .password-field{margin-top:0}
 .login-card label .password-field{gap:0}
+
+/* Persistent, server-anchored trial countdown visible across every tenant workspace screen. */
+.trial-countdown-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:12px 4.5%;background:linear-gradient(100deg,#fff8e8,#fffdf7);border-bottom:1px solid #ecd9a9;box-shadow:0 5px 18px #173d3410}
+.trial-countdown-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.trial-countdown-kicker{font-size:9px;font-weight:800;letter-spacing:1.35px;color:#89651d}
+.trial-countdown-copy strong{font:800 13px Manrope,sans-serif;color:#34483d}
+.trial-countdown-copy small{font-size:10px;color:#7b796b;line-height:1.4}
+.trial-countdown-clock{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.trial-time-unit{min-width:54px;padding:6px 8px;border:1px solid #ead9ad;border-radius:9px;background:#fff;text-align:center;display:flex;flex-direction:column;gap:1px}
+.trial-time-unit b{font:800 19px/1.1 Manrope,sans-serif;font-variant-numeric:tabular-nums;color:#6c501b}
+.trial-time-unit span{font-size:8px;font-weight:700;letter-spacing:.4px;color:#8a8068;text-transform:uppercase}
+.trial-countdown-bar.expired{background:linear-gradient(100deg,#fff0ed,#fff8f6);border-color:#efc8c1}
+.trial-countdown-bar.expired .trial-countdown-kicker,.trial-countdown-bar.expired .trial-time-unit b{color:#a43d32}
+.trial-countdown-bar.expired .trial-time-unit{border-color:#efc8c1}
+@media(max-width:640px){.trial-countdown-bar{padding:10px 12px;gap:9px;align-items:stretch;flex-direction:column}.trial-countdown-copy strong{font-size:12px}.trial-countdown-copy small{font-size:9px}.trial-countdown-clock{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.trial-time-unit{min-width:0;padding:6px 3px}.trial-time-unit b{font-size:17px}.trial-time-unit span{font-size:7px}}
+@media(prefers-reduced-motion:reduce){.trial-countdown-bar{scroll-behavior:auto}}
