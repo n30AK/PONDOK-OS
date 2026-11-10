@@ -358,6 +358,7 @@ export async function handleRequest(
           tenantTables: Number(security.tenant_table_count),
         },
         license: scoped.license,
+        serverNow: new Date().toISOString(),
       });
     } catch (reason) {
       sendTenantScopeError(response, reason, "tenant_context_unavailable");
