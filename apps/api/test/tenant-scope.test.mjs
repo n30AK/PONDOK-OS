@@ -8,7 +8,7 @@ const tenantB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const userA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const userB = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
-function createPool() {
+function createPool(licenseAllowed = true) {
   const memberships = new Map([
     [`${userA}:${tenantA}`, {
       membership_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
@@ -40,6 +40,7 @@ function createPool() {
         state.organizationId = values[1];
         return { rows: [] };
       }
+      if (sql.includes("platform.tenant_license_allows_access")) return { rows: [{ allowed: licenseAllowed }] };
       if (sql.includes("FROM core.organization_memberships")) {
         assert.equal(state.role, "pondok_runtime", "membership lookup must run under restricted tenant role");
         assert.equal(state.userId, values[0], "verified user identity must be bound to the query");
@@ -93,6 +94,18 @@ test("pooled connection context is cleared before the next tenant request", asyn
   assert.equal(state.role, "");
   assert.equal(state.userId, "");
   assert.equal(state.organizationId, "");
+});
+
+test("expired tenant trial blocks all tenant-scoped API work and rolls back the transaction", async () => {
+  const { pool, state, calls } = createPool(false);
+  await assert.rejects(
+    () => withTenantScope(pool, userA, tenantA, async () => "must not run"),
+    (error) => error?.name === "TenantLicenseExpiredError" && error.message === "tenant_trial_expired",
+  );
+  assert.ok(calls.some((call) => call.sql.includes("platform.tenant_license_allows_access")));
+  assert.ok(calls.some((call) => call.sql === "ROLLBACK"));
+  assert.equal(state.releases, 1);
+  assert.equal(state.inTransaction, false);
 });
 
 test("invalid user or organization identifiers are rejected before acquiring a connection", async () => {

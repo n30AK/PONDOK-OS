@@ -25,7 +25,14 @@ async function activationRequest<T>(path: string, init: RequestInit = {}): Promi
     cache: "no-store",
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? `Permintaan gagal (${response.status})`);
+  if (!response.ok) {
+    const knownErrors: Record<string, string> = {
+      trial_already_used: "Akun ini sudah pernah menggunakan trial gratis. Hubungi tim PONDOK OS untuk aktivasi lisensi.",
+      verified_email_required: "Verifikasi email akun terlebih dahulu.",
+      activation_request_already_open: "Permohonan aktivasi Anda masih diproses atau sudah disetujui.",
+    };
+    throw new Error(body.message ?? knownErrors[body.error] ?? body.error ?? `Permintaan gagal (${response.status})`);
+  }
   return body as T;
 }
 
@@ -129,15 +136,15 @@ export default function InstitutionActivation() {
   return <section className="platform-console">
     <div className="platform-heading">
       <div><div className="eyebrow">AKTIVASI PESANTREN</div><h2>Registrasi & aktivasi lembaga</h2>
-        <p>Ajukan aktivasi lembaga. Workspace dibuat setelah perusahaan menyetujui permohonan Anda.</p></div>
+        <p>Ajukan aktivasi lembaga untuk memulai trial gratis 14 hari. Workspace dan akses penuh dibuka setelah perusahaan menyetujui permohonan dan Anda menggunakan token aktivasi.</p></div>
       <button type="button" className="outline-button" onClick={() => void load()} disabled={busy}>Muat ulang</button>
     </div>
     {error && <div className="alert error">{error}</div>}
     {notice && <div className="alert success">{notice}</div>}
 
     <div className="platform-panel">
-      <h3>Ajukan aktivasi PONDOK OS</h3>
-      <p className="muted">Permohonan terikat pada akun yang sedang login. Email adalah kontak administrasi, bukan kredensial atau token keamanan.</p>
+      <h3>Ajukan trial gratis 14 hari</h3>
+      <p className="muted">Permohonan terikat pada akun yang sedang login dan email terverifikasi. Tidak ada batasan modul selama trial; hitungan 14 hari baru dimulai setelah aktivasi disetujui dan berhasil digunakan.</p>
       <form className="platform-form" onSubmit={submitRequest}>
         <label>Nama penanggung jawab<input value={contactName} onChange={(event) => setContactName(event.target.value)} required maxLength={120}/></label>
         <label>Email akun terverifikasi<input type="email" value={contactEmail} readOnly required maxLength={254}/></label>
@@ -182,7 +189,7 @@ export default function InstitutionActivation() {
 
     {approved && <div className="platform-panel">
       <h3>Masukkan kode aktivasi</h3>
-      <p className="muted">Masukkan token resmi yang dikirim perusahaan untuk akun yang mengajukan permohonan ini.</p>
+      <p className="muted">Masukkan token resmi yang dikirim perusahaan. Saat token berhasil digunakan, workspace lembaga dibuat dan masa trial 14 hari langsung dimulai.</p>
       <form className="platform-redeem" onSubmit={redeem}>
         <input type="password" value={activationToken} onChange={(event) => setActivationToken(event.target.value)} minLength={40} maxLength={128} autoComplete="off" required placeholder="Token aktivasi sekali pakai"/>
         <button className="primary" disabled={busy}>Aktifkan lembaga</button>

@@ -23,6 +23,7 @@ async function setupServer(context, membershipRows, securityRow = { runtime_role
         return { rows: membershipRows };
       }
       if (sql.includes("current_user::text AS runtime_role")) return { rows: [securityRow] };
+      if (sql.includes("platform.tenant_license_summary")) return { rows: [{ license: null }] };
       throw new Error("unexpected tenant-context query");
     },
   };
@@ -76,6 +77,7 @@ test("tenant context returns roles and permissions from database membership", as
     roles: ["academic_admin"],
     permissions: ["academic.students.read", "academic.attendance.write"],
     security: { status: "protected", runtimeRole: "pondok_runtime", protectedTables: 63, tenantTables: 63 },
+    license: null,
   });
 });
 

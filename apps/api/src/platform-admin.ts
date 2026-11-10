@@ -124,6 +124,11 @@ function errorCode(reason: unknown): string {
     ? String((reason as { code: unknown }).code) : "";
 }
 
+function errorConstraint(reason: unknown): string {
+  return typeof reason === "object" && reason !== null && "constraint" in reason
+    ? String((reason as { constraint: unknown }).constraint) : "";
+}
+
 
 function isJsonRecord(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -872,13 +877,22 @@ export async function handlePlatformRequest(
              jsonb_build_object('campus_id', $4::text, 'membership_id', $5::text, 'activation_request_id', $6::text))`,
           [organizationId, userId, organizationId, campusId, membershipId, activation.request_id],
         );
+        await client.query(
+          `INSERT INTO platform.tenant_licenses
+            (organization_id, plan_code, status, starts_at, ends_at, created_by, trial_granted_to)
+           VALUES ($1::uuid, 'trial-14d', 'trial', now(), now() + interval '14 days', $2::uuid, $2::uuid)`,
+          [organizationId, userId],
+        );
+        await auditPlatform(client, userId, "activation.trial_issued", "tenant_license", organizationId, { trialDays: 14 });
         return { organizationId, membershipId, campusId };
       });
       if (!scoped.value) { reply(res, 403, { error: "activation_token_invalid_expired_or_used" }); return true; }
       reply(res, 201, { data: scoped.value, message: "Lembaga berhasil diaktifkan." });
     } catch (reason) {
       const code = errorCode(reason);
-      reply(res, code === "23505" ? 409 : 500, { error: code === "23505" ? "organization_slug_or_campus_code_exists" : "activation_failed" });
+      const constraint = errorConstraint(reason);
+      const duplicateTrial = code === "23505" && constraint === "tenant_licenses_one_trial_per_user";
+      reply(res, code === "23505" ? 409 : 500, { error: duplicateTrial ? "trial_already_used" : code === "23505" ? "organization_slug_or_campus_code_exists" : "activation_failed" });
     }
     return true;
   }

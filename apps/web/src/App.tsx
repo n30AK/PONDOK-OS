@@ -5,7 +5,7 @@ import Admissions from "./Admissions";
 import ModuleWorkspace, { getModuleResourceLabel } from "./ModuleWorkspace";
 import InstitutionActivation from "./InstitutionActivation";
 
-type Tenant = { organizationId: string; membershipId: string; roles: string[]; permissions: string[]; security: { status: "protected"; runtimeRole: string; protectedTables: number; tenantTables: number } };
+type Tenant = { organizationId: string; membershipId: string; roles: string[]; permissions: string[]; security: { status: "protected"; runtimeRole: string; protectedTables: number; tenantTables: number }; license?: { status: string; planCode: string; startsAt: string; endsAt: string | null } | null };
 type OrganizationChoice = { id: string; name: string; slug: string };
 type Student = {
   id: string; campusId: string; studentNumber: string; legalName: string;
@@ -50,7 +50,7 @@ async function apiRequest<T>(path: string, organizationId: string, init: Request
     }
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? `Permintaan gagal (${response.status})`);
+  if (!response.ok) throw new Error(body.message ?? body.error ?? `Permintaan gagal (${response.status})`);
   return body as T;
 }
 
@@ -75,7 +75,7 @@ export default function App() {
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("token") ?? "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [selfSignUp, setSelfSignUp] = useState(false);
+  const [selfSignUp, setSelfSignUp] = useState(() => new URLSearchParams(window.location.search).get("trial") === "14");
   const [adminName, setAdminName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(() => new URLSearchParams(window.location.search).has("error") ? "Tautan reset kata sandi tidak valid atau sudah kedaluwarsa. Minta tautan reset yang baru." : "");
@@ -190,7 +190,7 @@ export default function App() {
           cache: "no-store",
         });
         const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error ?? "Gagal memuat daftar pesantren.");
+        if (!response.ok) throw new Error(body.message ?? body.error ?? "Gagal memuat daftar pesantren.");
         const available: OrganizationChoice[] = Array.isArray(body.data)
           ? body.data.map((item: Record<string, unknown>) => ({
               id: String(item.id),
@@ -288,7 +288,7 @@ export default function App() {
       if (result.error) throw new Error(result.error.message);
       setPassword("");
       setSelfSignUp(false);
-      setNotice("Pendaftaran akun berhasil jika verifikasi Auth diaktifkan. Akun baru belum memiliki akses Workspace sampai administrator pesantren mengundang dan menetapkan keanggotaan serta perannya. Pendaftaran tidak membuat organisasi atau tenant.");
+      setNotice("Pendaftaran akun berhasil. Periksa email untuk verifikasi, lalu masuk kembali. Setelah itu ajukan aktivasi lembaga; trial gratis 14 hari dimulai setelah perusahaan menyetujui dan aktivasi berhasil digunakan.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Pendaftaran akun gagal.");
     } finally { setBusy(false); }
@@ -382,7 +382,7 @@ export default function App() {
         </form> : selfSignUp ? <form className="login-card" onSubmit={registerWorkspaceAccount}>
           <div className="eyebrow">PENDAFTARAN PENGGUNA</div>
           <h2>Buat akun PONDOK OS</h2>
-          <p className="muted">Buat identitas akun terlebih dahulu. Akses data pesantren hanya diberikan melalui undangan dan penetapan peran oleh administrator lembaga.</p>
+          <p className="muted">Buat akun untuk mengajukan trial gratis PONDOK OS selama 14 hari. Verifikasi email dan lengkapi data lembaga; masa trial dimulai setelah aktivasi disetujui dan digunakan.</p>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Nama lengkap<input value={adminName} onChange={(e) => setAdminName(e.target.value)} autoComplete="name" required maxLength={120} /></label>
           <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
@@ -390,7 +390,7 @@ export default function App() {
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Mendaftarkan akun…" : "Daftar akun"}</button>
-          <p className="login-note">Pendaftaran tidak membuat pesantren, tenant, atau hak administrator. Hubungi administrator lembaga untuk mendapatkan akses.</p>
+          <p className="login-note">Setelah email terverifikasi, masuk kembali untuk mengajukan aktivasi lembaga. Trial berlaku 14 hari sejak workspace diaktifkan.</p>
           <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(false); setError(""); setNotice(""); setPassword(""); }}>← Kembali ke login</button>
           <SupportLink />
         </form> : <form className="login-card" onSubmit={signIn}>
@@ -459,6 +459,7 @@ export default function App() {
       <div className="content">
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
+        {tenant?.license?.status === "trial" && tenant.license.endsAt && <div className="alert warning global-alert">Trial gratis PONDOK OS aktif sampai {new Date(tenant.license.endsAt).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" })}. Seluruh menu dan fungsi yang tersedia terbuka selama masa trial.</div>}
         {!tenant && !previewMode ? !platformAccessChecked ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">MEMERIKSA AKSES</div><h1>Memverifikasi sesi dan hak akses…</h1><p>Mohon tunggu. Formulir aktivasi tidak akan ditampilkan sebelum status akun berhasil diverifikasi.</p></div></section> : platformAccessError ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div><h1>Sesi belum dapat diverifikasi</h1><div className="alert error">{platformAccessError}</div><p className="muted">Jangan kirim permohonan aktivasi lembaga saat status hak akses akun belum berhasil diperiksa. Data lembaga Anda tidak perlu diisi ulang.</p><button type="button" className="primary" onClick={() => window.location.reload()}>Coba periksa kembali</button></div></section> : <><section className="welcome-card">
           <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1>
             {busy ? <p>Memuat daftar pesantren dan hak akses Anda…</p> : organizations.length > 1 ? <>
