@@ -2,8 +2,7 @@
 -- A pending trial has no expiry until the first tenant workspace context is opened.
 BEGIN;
 
-DROP POLICY IF EXISTS tenant_licenses_trial_issue ON platform.tenant_licenses;
-CREATE POLICY tenant_licenses_trial_issue
+ALTER POLICY tenant_licenses_trial_issue
   ON platform.tenant_licenses
   FOR INSERT
   WITH CHECK (
