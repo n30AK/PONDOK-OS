@@ -124,6 +124,11 @@ function errorCode(reason: unknown): string {
     ? String((reason as { code: unknown }).code) : "";
 }
 
+function errorConstraint(reason: unknown): string {
+  return typeof reason === "object" && reason !== null && "constraint" in reason
+    ? String((reason as { constraint: unknown }).constraint) : "";
+}
+
 
 function isJsonRecord(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -851,7 +856,13 @@ export async function handlePlatformRequest(
         );
         const membershipId = membership.rows[0]?.id;
         if (!membershipId) throw new Error("membership_insert_failed");
-        await auditPlatform(client, userId, "activation.redeemed", "activation_request", activation.request_id, { organizationId });
+        await client.query(
+          `INSERT INTO platform.tenant_licenses
+            (organization_id, plan_code, status, starts_at, ends_at, created_by, trial_granted_to)
+           VALUES ($1::uuid, 'trial-14d', 'trial', now(), now() + interval '14 days', $2::uuid, $2::uuid)`,
+          [organizationId, userId],
+        );
+        await auditPlatform(client, userId, "activation.redeemed", "activation_request", activation.request_id, { organizationId, trialDays: 14 });
         await client.query(
           "SELECT set_config('app.organization_id', $1, true)",
           [organizationId],
@@ -878,7 +889,9 @@ export async function handlePlatformRequest(
       reply(res, 201, { data: scoped.value, message: "Lembaga berhasil diaktifkan." });
     } catch (reason) {
       const code = errorCode(reason);
-      reply(res, code === "23505" ? 409 : 500, { error: code === "23505" ? "organization_slug_or_campus_code_exists" : "activation_failed" });
+      const constraint = errorConstraint(reason);
+      const duplicateTrial = code === "23505" && constraint === "tenant_licenses_one_trial_per_user";
+      reply(res, code === "23505" ? 409 : 500, { error: duplicateTrial ? "trial_already_used" : code === "23505" ? "organization_slug_or_campus_code_exists" : "activation_failed" });
     }
     return true;
   }
