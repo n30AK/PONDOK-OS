@@ -5,6 +5,10 @@ export type TenantDatabase = Pick<Pool, "query"> & Partial<Pick<Pool, "connect">
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export class TenantLicenseExpiredError extends Error {
+  constructor() { super("tenant_trial_expired"); this.name = "TenantLicenseExpiredError"; }
+}
+
 /**
  * Runs every authenticated tenant request on one checked-out connection.
  * The database owner can bypass RLS, so the request must first assume the
@@ -35,6 +39,11 @@ export async function withTenantScope<T>(
       "SELECT set_config('app.user_id', $1, true), set_config('app.organization_id', $2, true)",
       [userId, organizationId],
     );
+    const license = await client.query<{ allowed: boolean }>(
+      "SELECT platform.tenant_license_allows_access($1::uuid) AS allowed",
+      [organizationId],
+    );
+    if (license.rows[0]?.allowed !== true) throw new TenantLicenseExpiredError();
     const result = await work(client);
     await client.query("COMMIT");
     inTransaction = false;
