@@ -81,7 +81,18 @@ Institution onboarding uses the centralized approval model; it does not use the 
 
 The deployment workflow verifies that `POST /v1/bootstrap/organization` returns HTTP 410. The retired `PONDOK_BOOTSTRAP_TOKEN_SHA256` variable is not used by current application code or deployment configuration; remove any stale copy from the Development Function environment after the live 410 check passes. Never configure this variable for a new deployment.
 
-## 6. Remaining gates after hosting
+## 6. Trial entitlement security
+
+Migration 0034 hardens the 14-day trial boundary:
+
+- A pending trial (`ends_at IS NULL`) can be accessed only by the verified user recorded in `trial_granted_to`.
+- The verified trial recipient's first authenticated workspace access starts the 14-day period once; another active member cannot start it on the recipient's behalf.
+- A tenant with no license is denied tenant API access. Active licenses remain allowed; trial licenses require a non-expired server-side `ends_at`.
+- Re-login, browser changes, or client clock changes cannot reset the database timestamps.
+
+Apply migration 0034 to Neon Development using the repository migration runner, then verify that the pending owner can enter, a different tenant member cannot start the trial, and an expired trial is denied. Do not apply this migration to Production without separate approval.
+
+## 7. Remaining gates after hosting
 
 Hosting the API and static workspace does not activate database RLS or initialize an institution.
 
