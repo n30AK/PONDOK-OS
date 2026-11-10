@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" role="img" aria-labelledby="t d">
+<title id="t">PONDOK OS — Pesantren belajar dan bertumbuh</title>
+<desc id="d">Ilustrasi orisinal lingkungan pesantren dengan kubah masjid, pepohonan, santri belajar bersama menggunakan laptop dan buku.</desc>
+<defs>
+ <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#edf6ed"/><stop offset="1" stop-color="#d8eadc"/></linearGradient>
+ <linearGradient id="glass" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".96"/><stop offset="1" stop-color="#fff" stop-opacity=".68"/></linearGradient>
+ <linearGradient id="green" x2="1" y2="1"><stop stop-color="#2c8060"/><stop offset="1" stop-color="#17483e"/></linearGradient>
+ <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="15" flood-color="#173f32" flood-opacity=".14"/></filter>
+</defs>
+<rect width="900" height="700" rx="34" fill="url(#bg)"/>
+<circle cx="735" cy="110" r="115" fill="#fff" opacity=".42"/>
+<path d="M0 520Q150 450 290 500T590 480T900 485V700H0Z" fill="#c8dfc9"/>
+<path d="M90 380V250Q90 205 130 205H740Q780 205 780 250V490H90Z" fill="#f8fbf5" stroke="#d3e4d5" stroke-width="8"/>
+<path d="M340 205V155Q450 15 560 155V205Z" fill="#6eaa88"/>
+<path d="M365 178Q450 53 535 178Z" fill="#2d7557"/>
+<path d="M450 38V10M440 18H460" stroke="#2d7557" stroke-width="7" stroke-linecap="round"/>
+<path d="M120 270H750M120 375H750" stroke="#d8e7d9" stroke-width="8"/>
+<g fill="#dcebe0" stroke="#b8d2bf" stroke-width="5">
+ <path d="M145 490V330Q145 285 190 285T235 330V490Z"/><path d="M285 490V330Q285 285 330 285T375 330V490Z"/>
+ <path d="M525 490V330Q525 285 570 285T615 330V490Z"/><path d="M665 490V330Q665 285 710 285T755 330V490Z"/>
+</g>
+<path d="M395 490V335Q395 265 450 265T505 335V490Z" fill="#e6f1e8" stroke="#b8d2bf" stroke-width="6"/>
+<path d="M420 490V355Q420 300 450 300T480 355V490Z" fill="#2b7457"/>
+<g fill="#fff" opacity=".5"><path d="M162 365h56v8h-56zM302 365h56v8h-56zM542 365h56v8h-56zM682 365h56v8h-56z"/></g>
+<g fill="#4f8a62"><circle cx="72" cy="390" r="48"/><circle cx="115" cy="350" r="54"/><circle cx="65" cy="330" r="42"/><circle cx="820" cy="390" r="55"/><circle cx="780" cy="345" r="48"/><circle cx="845" cy="320" r="42"/></g>
+<g fill="#79aa75"><circle cx="48" cy="410" r="24"/><circle cx="120" cy="385" r="28"/><circle cx="805" cy="410" r="28"/><circle cx="855" cy="385" r="26"/></g>
+<path d="M0 580Q200 530 400 585T900 560V700H0Z" fill="#b8d7bb"/>
+<g filter="url(#shadow)">
+ <rect x="110" y="75" width="320" height="120" rx="20" fill="url(#glass)" stroke="#fff" stroke-width="3"/>
+ <circle cx="152" cy="117" r="18" fill="#d9eee0"/><path d="M143 118h18m-9-9v18" stroke="#277351" stroke-width="4" stroke-linecap="round"/>
+ <text x="185" y="116" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#173f32">Belajar &amp; Bertumbuh</text>
+ <text x="185" y="145" font-family="Arial,sans-serif" font-size="13" fill="#62796b">Ilmu, adab, dan tata kelola</text>
+ <rect x="620" y="95" width="210" height="72" rx="17" fill="url(#glass)" stroke="#fff" stroke-width="3"/>
+ <circle cx="654" cy="131" r="14" fill="#d9eee0"/><path d="M647 131l5 5 10-12" fill="none" stroke="#277351" stroke-width="3" stroke-linecap="round"/>
+ <text x="680" y="127" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#173f32">Terpadu &amp; Terarah</text>
+ <text x="680" y="147" font-family="Arial,sans-serif" font-size="11" fill="#62796b">Satu ekosistem</text>
+</g>
+<!-- study table -->
+<path d="M255 575H790L750 610H285Z" fill="#b98252"/><path d="M300 608V670M745 608V670" stroke="#8d603e" stroke-width="18" stroke-linecap="round"/>
+<!-- student left -->
+<g>
+ <path d="M270 480Q280 420 340 420Q400 420 410 480L430 570H245Z" fill="#fff"/>
+ <path d="M285 430Q280 390 330 380Q380 390 380 430L365 452H300Z" fill="#111d1b"/>
+ <ellipse cx="332" cy="435" rx="42" ry="52" fill="#bd805f"/>
+ <path d="M290 420Q300 370 340 380Q380 390 380 420Q350 400 290 420Z" fill="#111d1b"/>
+ <path d="M300 480Q330 505 370 480L390 570H280Z" fill="#f8fbf7"/>
+</g>
+<!-- student center -->
+<g>
+ <path d="M430 475Q440 415 505 415Q570 415 580 480L600 575H410Z" fill="#fff"/>
+ <path d="M450 420Q455 380 505 378Q555 382 560 425L545 447H465Z" fill="#101c1a"/>
+ <ellipse cx="505" cy="440" rx="43" ry="53" fill="#c78b68"/>
+ <path d="M462 420Q470 375 510 380Q550 383 550 420Q510 405 462 420Z" fill="#101c1a"/>
+ <path d="M465 485Q505 510 545 485L565 575H445Z" fill="#f7faf6"/>
+</g>
+<!-- laptop -->
+<rect x="435" y="505" width="170" height="95" rx="9" fill="#263d3a" transform="rotate(-4 520 550)"/>
+<rect x="446" y="516" width="148" height="73" rx="4" fill="#d9eee5" transform="rotate(-4 520 550)"/>
+<path d="M420 603H630L652 615H402Z" fill="#718a80"/>
+<!-- open book -->
+<path d="M650 550Q700 520 750 550V590Q700 565 650 590Z" fill="#fff8e8" stroke="#d6c8a7" stroke-width="3"/>
+<path d="M650 550V590M700 537V575" stroke="#d6c8a7" stroke-width="2"/>
+<g fill="#fff" opacity=".65"><circle cx="210" cy="620" r="7"/><circle cx="230" cy="640" r="5"/><circle cx="790" cy="635" r="8"/></g>
+</svg>
