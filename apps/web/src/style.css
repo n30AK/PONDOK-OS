@@ -217,3 +217,25 @@
 .trial-status-missing .trial-countdown-kicker{color:#a43d32}
 .trial-status-missing .trial-status-chip{border-color:#efc8c1;color:#9c3d33}
 @media(max-width:640px){.trial-status-notice{min-height:0}.trial-status-chip{align-self:flex-start;font-size:8px;padding:7px 9px}}
+
+
+/* Progressive module extension and library sticker-label workspace */
+.module-extension-panel{margin:18px 0;padding:18px 20px;border:1px solid var(--line,#dce3e8);border-radius:14px;background:var(--surface,#fff);color:var(--text,#17212b)}
+.module-extension-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.module-extension-heading h3{margin:5px 0 6px;font-size:1.05rem}
+.module-extension-heading p{margin:0;color:var(--muted,#667085);font-size:.9rem;line-height:1.5}
+.module-extension-panel ul{margin:12px 0;padding-left:20px;display:grid;gap:7px}
+.module-extension-panel li{font-size:.88rem;line-height:1.45}
+.module-extension-panel>small{display:block;color:var(--muted,#667085);font-size:.78rem;margin-top:10px}
+.module-extension-version{flex:0 0 auto;border:1px solid var(--line,#dce3e8);border-radius:999px;padding:5px 9px;font-size:.72rem;color:var(--muted,#667085)}
+.barcode-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}
+.barcode-toolbar label,.barcode-copy-row{display:flex;align-items:center;gap:9px}
+.barcode-toolbar>span{color:var(--muted,#667085);font-size:.85rem}
+.barcode-toolbar button{margin-left:auto}
+.barcode-copy-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px}
+.barcode-copy-row{padding:10px;border:1px solid var(--line,#dce3e8);border-radius:10px;min-width:0}
+.barcode-copy-row span{display:grid;min-width:0;gap:3px}
+.barcode-copy-row strong,.barcode-copy-row small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barcode-copy-row strong{font-size:.86rem}
+.barcode-copy-row small{font-size:.75rem;color:var(--muted,#667085)}
+@media(max-width:640px){.module-extension-heading{display:block}.module-extension-version{display:inline-block;margin-top:10px}.barcode-toolbar button{margin-left:0;width:100%}}
