@@ -427,6 +427,7 @@ export default function App() {
           <div className="eyebrow">SELAMAT DATANG</div>
           <h2>Masuk ke PONDOK OS</h2>
           <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
+          <div className="trial-login-note"><strong>Uji coba gratis 14 hari untuk lembaga baru.</strong><span>Hitungan dimulai saat workspace pertama kali dibuka setelah aktivasi disetujui.</span></div>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
           <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
           <label>Kata sandi<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /><button type="button" className="password-visibility" aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
