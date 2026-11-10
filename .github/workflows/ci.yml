@@ -144,7 +144,9 @@ jobs:
           curl -fsS http://127.0.0.1:8080/health/live >/dev/null
           nginx_config_status=$(docker exec pondok-web-smoke nginx -t 2>&1)
           printf '%s\\n' "$nginx_config_status"
-      - name: Check live Neon Auth acceptance script syntax
-        run: node --check apps/api/scripts/test-live-tenant-auth-isolation.mjs
+      - name: Check live Neon Auth and Development deployment script syntax
+        run: |
+          node --check apps/api/scripts/test-live-tenant-auth-isolation.mjs
+          node --check apps/api/scripts/deploy-neon-function.mjs
       - name: Run unit tests
         run: pnpm test
