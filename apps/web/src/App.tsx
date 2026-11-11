@@ -200,16 +200,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    // The institution app never loads the company-wide platform registry.
-    // Platform operators are kept out of tenant workspaces and use the separate operator application.
+    // Central Command remains a separate application. A platform Super Admin
+    // receives no implicit tenant access; however, the first-tenant bootstrap
+    // explicitly creates an institution_owner membership for that verified
+    // account. Resolve the same server-authorized membership list for every
+    // account so that this explicit tenant assignment is actually usable.
     if (!user || !platformAccessChecked || platformAccessError) return;
-    if (isSuperAdmin) {
-      setOrganizations([]);
-      setTenant(null);
-      setNotice("Akun ini tidak memiliki keanggotaan pada workspace pesantren. Masuklah menggunakan akun lembaga yang telah diundang administrator.");
-      setBusy(false);
-      return;
-    }
     let active = true;
     void (async () => {
       setBusy(true); setError(""); setNotice("");
@@ -244,7 +240,9 @@ export default function App() {
           setNotice("Pilih pesantren untuk melanjutkan ke workspace.");
         } else {
           setTenant(null);
-          setNotice("Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
+          setNotice(isSuperAdmin
+            ? "Akun Super Administrator belum memiliki keanggotaan lembaga. Akses workspace hanya diberikan setelah membership lembaga yang sah dibuat dan diverifikasi."
+            : "Akun Anda belum terhubung ke organisasi pesantren. Minta administrator pesantren mengundang atau mengaktifkan akun Anda.");
         }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : "Gagal memuat organisasi.");
