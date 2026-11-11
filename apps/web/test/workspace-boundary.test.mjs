@@ -11,3 +11,10 @@ test("Workspace never redirects or links into the separate Central Command app",
     /(?:window\.)?location\.(?:assign|replace)\s*\([^)]*command-center/i,
   );
 });
+
+test("platform administrators can open only tenant workspaces with explicit membership", () => {
+  assert.match(workspaceSource, /const organizations = await listUserOrganizations|\/v1\/tenant\/organizations/);
+  assert.match(workspaceSource, /isSuperAdmin[\s\S]{0,500}organization/i);
+  assert.doesNotMatch(workspaceSource, /if \(isSuperAdmin\) \{[\s\S]{0,300}setOrganizations\(\[\]\)/);
+  assert.match(workspaceSource, /\/v1\/tenant\/context/);
+});
