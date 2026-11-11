@@ -21,7 +21,7 @@ Never grant Super Admin based only on a submitted email, a tenant membership, or
 
 Development currently has one verified, active Super Administrator and no organization. The Super Administrator must use the **Inisialisasi lembaga pertama** form in Central Command and enter the real institution details; do not invent a tenant or create placeholder institution records.
 
-This bootstrap is only for the first Development tenant. Subsequent institutions must use the normal applicant → approval → one-time activation-token workflow.
+This bootstrap is only for the first Development tenant. It creates a pending `trial-14d` license bound to the verified Super Administrator; the 14-day countdown starts only when that owner first opens the authenticated tenant workspace. Subsequent institutions must use the normal applicant → approval → one-time activation-token workflow.
 
 ## Institution registration and approval
 

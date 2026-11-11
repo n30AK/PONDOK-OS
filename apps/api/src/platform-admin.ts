@@ -785,6 +785,15 @@ export async function handlePlatformRequest(
         const campusId = campus.rows[0]?.id;
         if (!campusId) throw new Error("campus_insert_failed");
         await client.query("INSERT INTO core.membership_roles (membership_id,role_id) VALUES ($1::uuid,$2::uuid)",[membershipId,ownerRole.rows[0].id]);
+        // The first real Development tenant receives the same pending 14-day
+        // trial entitlement as a token-activated tenant. The countdown starts
+        // only when the owner first opens the authenticated tenant workspace.
+        await client.query(
+          `INSERT INTO platform.tenant_licenses
+            (organization_id, plan_code, status, starts_at, ends_at, created_by, trial_granted_to)
+           VALUES ($1::uuid, 'trial-14d', 'trial', now(), NULL, $2::uuid, $2::uuid)`,
+          [organizationId, userId],
+        );
         await client.query(
           `INSERT INTO audit.audit_events (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
            VALUES ($1::uuid,$2::uuid,'organization.first_tenant_bootstrapped','organization',$3,
@@ -792,6 +801,7 @@ export async function handlePlatformRequest(
           [organizationId,userId,organizationId,campusId,membershipId],
         );
         await auditPlatform(client,userId,"organization.first_tenant_bootstrapped","organization",organizationId,{organizationType:body.organizationType});
+        await auditPlatform(client,userId,"activation.trial_issued","tenant_license",organizationId,{trialDays:14, pendingStart:true});
         return { organizationId, membershipId, campusId };
       });
       if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
