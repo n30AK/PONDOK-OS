@@ -204,6 +204,7 @@
 @media(max-width:640px){.trial-countdown-bar{padding:10px 12px;gap:9px;align-items:stretch;flex-direction:column}.trial-countdown-copy strong{font-size:12px}.trial-countdown-copy small{font-size:9px}.trial-countdown-clock{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.trial-time-unit{min-width:0;padding:6px 3px}.trial-time-unit b{font-size:17px}.trial-time-unit span{font-size:7px}}
 @media(prefers-reduced-motion:reduce){.trial-countdown-bar{scroll-behavior:auto}}
 
+.access-guidance{display:flex;flex-direction:column;gap:7px;text-align:left;padding:13px 14px;border:1px solid #dce8df;border-radius:10px;background:#f5f9f5;color:#50645a}.access-guidance strong{font:800 11px Manrope,sans-serif;color:#315b49}.access-guidance span{font-size:10px;line-height:1.6;color:#64766b}.access-guidance b{color:#315b49}
 .trial-login-note{display:flex;flex-direction:column;gap:4px;margin:16px 0 2px;padding:12px 13px;border:1px solid #ead9ad;border-left:3px solid #c49a43;border-radius:9px;background:#fffaf0;color:#5e512f}
 .trial-login-note strong{font:800 11px Manrope,sans-serif}
 .trial-login-note span{font-size:10px;line-height:1.55;color:#786d50}

@@ -486,7 +486,11 @@ export default function App() {
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
           <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(true); setAdminName(""); setError(""); setNotice(""); }}>Belum punya akun? Daftar akun</button>
-          <p className="login-note">Akses pengguna baru harus diberikan oleh administrator pesantren.</p>
+          <div className="login-note access-guidance">
+            <strong>Bagaimana peran dan hak akses diatur?</strong>
+            <span>Peran tidak dipilih pada halaman masuk. Setelah login, administrator lembaga mengatur anggota, jabatan, peran, dan izin melalui menu <b>Jabatan, Peran &amp; Hak Akses</b> di workspace.</span>
+            <span>Jika menu tersebut tidak terlihat, akun Anda belum memperoleh izin pengelolaan anggota atau peran. Hubungi administrator lembaga atau Super Administrator untuk pemeriksaan akses.</span>
+          </div>
           <SupportLink />
         </form>}
       </section>
