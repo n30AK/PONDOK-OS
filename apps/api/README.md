@@ -29,16 +29,17 @@ Never commit populated environment files or print database URLs in logs. Never m
 
 Each protected operation must verify identity, active organization membership or platform Super Admin authority, and the required permission. Tenant-owned queries must include organization scope. Authenticated tenant handlers use a checked-out PostgreSQL connection and transaction-local tenant context; runtime database roles are restricted to prevent owner-level RLS bypass.
 
-## Development deployment snapshot (2026-11-09)
+## Development deployment snapshot (2026-11-12)
 
-- Neon project: `frosty-cherry-92983148`.
-- Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, Development deployment #61, Node.js 24 (completed).
-- Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced. The wider application catalog has 145 tables with RLS enabled and forced. Runtime-role policy coverage is 63/63 tenant tables and 79/79 platform tables.
-- Live migration ledger: through 0028. Migrations 0024–0026 were applied to Development on 2026-11-08; migrations 0027–0028 were applied on 2026-11-09 in atomic transactions with transaction-scoped advisory locks. Exact source-file SHA-256 checksums are recorded.
-- `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
-- No organizations, memberships, student profiles, HR employees, platform customers, subscriptions, module entitlements or module orders exist yet.
-- CI now exercises actual API-level isolation with two signed synthetic JWT identities against disposable PostgreSQL. Live Neon Auth two-user/two-tenant acceptance and institution UAT are still pending.
+- Neon project: `frosty-cherry-92983148`; Development branch: `br-proud-paper-b312lfxi`. Production branch `br-late-cherry-b3uqtuvh` remains out of scope.
+- Neon Function `pondokapi`, Development deployment #78, Node.js 24, completed. Deployment workflow #78 passed live HTTP checks for `/health/live`, `/health/ready`, and confirmed the retired `POST /v1/bootstrap/organization` endpoint returns HTTP 410.
+- GitHub Pages #102, Release Bundle #158, and PONDOK OS CI #1792 all passed for main commit `710250c23d86a12a6ebe37121a61e77b07386651`.
+- Development migration ledger is recorded through `0039 tenant_audit_append_only`. Migration 0039 is applied only to Development.
+- The catalog contains 67 tables with `organization_id`; all 67 have ENABLE + FORCE RLS. Runtime-role policy coverage last verified: 63/63 tenant tables and 79/79 platform tables. These checks do not replace two-real-tenant acceptance.
+- Development contains one explicitly named demo institution, one active owner membership, five demo student profiles, five demo HR employees, one demo customer, one subscription, one module entitlement and one module order. These are demonstration records, not a real pilot institution or real personal-data acceptance.
+- `STUDENT_HEALTH_ENCRYPTION_KEY` and its version are configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; identity-document operations must remain fail-closed until the key is provisioned through an approved secret vault and recoverable backup/rotation are tested.
+- The demo backup policy is disabled. Its demo backup run failed and has no restore test. The backup executor, immutable/offsite storage and restore execution are not implemented; no backup readiness claim is permitted.
+- CI exercises tenant isolation with synthetic signed identities and disposable PostgreSQL. Live Neon Auth acceptance with two real users and two actual non-production tenants remains pending, as does institution UAT.
 
 The Development deployment workflow and deployment script are scoped to the Development project/branch. Do not repoint them to Production as part of routine work. Production branch `br-late-cherry-b3uqtuvh` must remain untouched.
 
@@ -78,7 +79,7 @@ A Super Admin can convert a CRM lead only after its stage is explicitly `won`:
 
 ## Commercial customer ↔ institution tenant link
 
-The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` is applied on Development. It adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect. The live Development registry still contains zero customer records.
+The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` is applied on Development. It adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect. The Development registry currently contains one demonstration customer linked to the demo tenant; it is not a real customer or commercial acceptance record.
 
 - `POST /v1/platform/erp/customers` accepts optional `organizationId`; when supplied, the API verifies the tenant exists and is not already linked.
 - `GET /v1/platform/erp/customers` and `GET /v1/platform/erp/customers/:id` return only the linked tenant's name and slug in addition to customer fields.
@@ -96,7 +97,7 @@ Run `pnpm db:migrate` only after:
 
 The runner serializes execution with a PostgreSQL advisory lock, verifies SHA-256 checksums, and applies each migration in its own transaction. Never run it against Production as part of this project workflow. Do not manually patch schema objects to bypass the migration ledger.
 
-Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026-11-08; migration 0027 is recorded as applied on 2026-11-09. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
+Migrations through 0039 are recorded as applied on Development as of 2026-11-12. Migration 0039 hardens tenant audit records as append-only. Migration application must continue to use ordered checksums and the repository migration runner. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
 
 ## Central activation and company administration
 
@@ -118,7 +119,7 @@ The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode fr
 
 ## Readiness boundary
 
-A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #61 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Development Function deployment #78 completed on 2026-11-12. Its deployment workflow passed live HTTP checks for liveness, readiness and HTTP 410 from the retired bootstrap endpoint. This confirms API process/dependency readiness, not institutional operational readiness. Development currently has one demo institution, one active demo owner membership, five demo student profiles, five demo HR employees, one demo customer, one subscription, one module entitlement and one module order. These records do not constitute a real pilot. Readiness still requires two real Neon Auth users and two actual non-production tenants, role-based end-to-end workflows, secure identity-key provisioning, working encrypted backup/restore and institution UAT.
 
 ## Live Neon Auth tenant acceptance
 

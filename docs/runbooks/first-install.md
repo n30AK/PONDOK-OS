@@ -17,11 +17,13 @@ The first Super Administrator is not self-service. On the current Development en
 
 Never grant Super Admin based only on a submitted email, a tenant membership, or a browser parameter. Production must remain untouched.
 
-## One-time first tenant bootstrap
+## Development demo tenant and real institution onboarding
 
-Development currently has one verified, active Super Administrator and no organization. The Super Administrator must use the **Inisialisasi lembaga pertama** form in Central Command and enter the real institution details; do not invent a tenant or create placeholder institution records.
+Development currently contains one explicit demo institution (`pondok-os-demo`) with a single active owner membership and demonstration records. Do not treat this tenant, its users or its student/employee records as a real pilot institution, and do not import real personal data into it.
 
-This bootstrap is only for the first Development tenant. It creates a pending `trial-14d` license bound to the verified Super Administrator; the 14-day countdown starts only when that owner first opens the authenticated tenant workspace. Subsequent institutions must use the normal applicant → approval → one-time activation-token workflow.
+The one-time first-tenant initialization path has already been exercised for the Development demo. Do not run it again or create another placeholder tenant. A real pilot institution must use the normal authenticated applicant → company Super Administrator review → user-bound, one-time activation-token flow below. Verify the institution's legal identity and the applicant's authority before approval.
+
+The demo tenant's 14-day trial/license state is not a commercial offer or a production entitlement. The real pilot requires an explicitly approved tenant activation and separate UAT/go-live acceptance.
 
 ## Institution registration and approval
 
@@ -52,6 +54,6 @@ This bootstrap is only for the first Development tenant. It creates a pending `t
 
 ## Legacy bootstrap
 
-`POST /v1/bootstrap/organization` is disabled in the API source and returns HTTP 410. The old token-based setup form and `PONDOK_BOOTSTRAP_TOKEN_SHA256` configuration have been retired from the application and deployment workflow. The Development Function metadata still showed a legacy value in deployment #56; remove that stale value only after the next Development deployment workflow passes its live HTTP 410 check. Do not set the variable again. Direct HTTP verification of the currently active deployment has not yet been independently confirmed.
+`POST /v1/bootstrap/organization` is disabled in the API source and returns HTTP 410. The old token-based setup form and `PONDOK_BOOTSTRAP_TOKEN_SHA256` configuration have been retired from the application and deployment workflow. The Development Function metadata still lists the retired variable, but current application code and deployment workflow no longer use it. Deployment workflow #78 completed the live HTTP 410 assertion successfully. Remove the stale variable only through an approved secret-management procedure that preserves all other required Function environment values; do not set or reuse it.
 
 No instruction in this runbook authorizes a Production database migration, Super Admin grant, Function deployment, or credential change.
