@@ -114,6 +114,37 @@ test("a Super Admin cannot approve their own institution activation request", as
   assert.ok(calls.some((call) => call.sql === "COMMIT"));
 });
 
+test("a Super Admin cannot reject their own institution activation request", async () => {
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: userId, status: "pending" }] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request(`/v1/platform/admin/activation-requests/${requestId}/reject`, "POST", { note: "Tidak dapat menilai permohonan sendiri." }), res, pool, userId);
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "activation_request_self_approval_forbidden");
+  assert.ok(!calls.some((call) => call.sql.startsWith("UPDATE platform.activation_requests")));
+  assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
+});
+
+test("a different Super Admin can reject a pending institution activation request", async () => {
+  const applicantUserId = "923e4567-e89b-42d3-a456-426614174000";
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT id, requested_by, status")) return { rows: [{ id: requestId, requested_by: applicantUserId, status: "pending" }] };
+    if (sql.startsWith("UPDATE platform.activation_requests")) return { rows: [{ id: requestId, status: "rejected" }] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request(`/v1/platform/admin/activation-requests/${requestId}/reject`, "POST", { note: "Dokumen belum lengkap." }), res, pool, userId);
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse(res.body).data.status, "rejected");
+  assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(calls.some((call) => call.sql === "COMMIT"));
+});
+
 test("legacy public bootstrap endpoint is disabled by the centralized distribution model", async () => {
   const req = { method: "POST", url: "/v1/bootstrap/organization", headers: {} };
   const res = response();
