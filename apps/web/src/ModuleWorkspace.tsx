@@ -137,6 +137,7 @@ function toFormValue(field:Field,row:Row):string|boolean{
 
 export function getModuleResourceReadPermission(key:string):string|null { return RESOURCES.find(resource=>resource.key===key)?.read??null; }
 export function hasReadableModuleResource(permissions:readonly string[]):boolean { return RESOURCES.some(resource=>permissions.includes(resource.read)); }
+export function hasReadableModuleGroup(key:string,permissions:readonly string[]):boolean { const group=RESOURCES.find(resource=>resource.key===key)?.group; return Boolean(group&&RESOURCES.some(resource=>resource.group===group&&permissions.includes(resource.read))); }
 export function getModuleResourceLabel(key:string):string { return key==="all"?"Semua Modul":RESOURCES.find(resource=>resource.key===key)?.label??"Modul"; }
 
 function csvCell(value: unknown): string {
