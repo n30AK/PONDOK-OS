@@ -54,6 +54,7 @@ test("tenant administrators have a permission-matrix workspace with custom roles
  assert.match(ui,/core\.members\.manage/);
  assert.match(ui,/core\.roles\.manage/);
  assert.match(ui,/selectedRole\.is_system/);
+ for(const role of ["academic_admin","finance_admin","hr_admin","read_only_auditor","foundation_chair","pondok_leader","finance_cashier","finance_verifier","librarian","admission_officer","boarding_supervisor","inventory_manager"])assert.ok(ui.includes(`"${role}"`),`assignment UI must include ${role}`);
 });
 
 test("tenant administrators can add only verified accounts and assign tenant custom roles",async()=>{
