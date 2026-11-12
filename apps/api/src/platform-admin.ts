@@ -717,6 +717,14 @@ export async function handlePlatformRequest(
       const reviewNote = body.note.trim();
       try {
         const scoped = await withPlatformScope(pool, userId, true, async (client) => {
+          const locked = await client.query<{ id: string; requested_by: string; status: string }>(
+            "SELECT id, requested_by, status FROM platform.activation_requests WHERE id = $1::uuid FOR UPDATE",
+            [requestId],
+          );
+          const request = locked.rows[0];
+          if (!request) return { error: "activation_request_not_found" as const };
+          if (request.requested_by === userId) return { error: "activation_request_self_approval_forbidden" as const };
+          if (request.status !== "pending") return { error: "activation_request_not_pending" as const };
           const result = await client.query(
             `UPDATE platform.activation_requests
              SET status = 'rejected', reviewed_by = $2::uuid, reviewed_at = now(),
@@ -725,13 +733,18 @@ export async function handlePlatformRequest(
              RETURNING id, status`,
             [requestId, userId, reviewNote],
           );
-          if (!result.rows[0]) return null;
+          if (!result.rows[0]) return { error: "activation_request_not_pending" as const };
           await auditPlatform(client, userId, "activation.rejected", "activation_request", requestId, { note: reviewNote });
-          return result.rows[0];
+          return { data: result.rows[0] };
         });
         if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
-        if (!scoped.value) { reply(res, 409, { error: "activation_request_not_pending" }); return true; }
-        reply(res, 200, { data: scoped.value });
+        if (scoped.value && "error" in scoped.value) {
+          const statusCode = scoped.value.error === "activation_request_not_found" ? 404
+            : scoped.value.error === "activation_request_self_approval_forbidden" ? 403 : 409;
+          reply(res, statusCode, { error: scoped.value.error });
+          return true;
+        }
+        reply(res, 200, { data: scoped.value && "data" in scoped.value ? scoped.value.data : null });
       } catch { reply(res, 500, { error: "activation_rejection_failed" }); }
       return true;
     }
