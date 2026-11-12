@@ -198,11 +198,123 @@ BEGIN
 END
 $function$;
 
+
+-- Membership role reads and writes are intentionally mediated by definer functions:
+-- runtime RLS exposes only the current user's membership_roles rows.
+CREATE OR REPLACE FUNCTION core.list_tenant_members()
+RETURNS TABLE(membership_id uuid,user_id uuid,membership_status text,roles text[],role_names text[])
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, core
+AS $function$
+DECLARE
+  v_actor uuid := nullif(current_setting('app.user_id',true),'')::uuid;
+  v_org uuid := nullif(current_setting('app.organization_id',true),'')::uuid;
+BEGIN
+  IF v_actor IS NULL OR v_org IS NULL OR NOT core.has_active_tenant_membership(v_org)
+     OR NOT EXISTS (
+       SELECT 1 FROM core.organization_memberships om
+       JOIN core.membership_roles mr ON mr.membership_id=om.id
+       JOIN core.role_permissions rp ON rp.role_id=mr.role_id
+       WHERE om.organization_id=v_org AND om.user_id=v_actor
+         AND om.membership_status='active' AND rp.permission_key='core.members.manage'
+     ) THEN
+    RAISE EXCEPTION 'member_management_permission_required' USING ERRCODE='42501';
+  END IF;
+  RETURN QUERY
+  SELECT om.id,om.user_id,om.membership_status,
+    COALESCE(array_agg(DISTINCT r.role_key) FILTER(WHERE r.id IS NOT NULL),ARRAY[]::text[]),
+    COALESCE(array_agg(DISTINCT r.role_name) FILTER(WHERE r.id IS NOT NULL),ARRAY[]::text[])
+  FROM core.organization_memberships om
+  LEFT JOIN core.membership_roles mr ON mr.membership_id=om.id
+  LEFT JOIN core.roles r ON r.id=mr.role_id
+  WHERE om.organization_id=v_org
+  GROUP BY om.id
+  ORDER BY om.created_at ASC
+  LIMIT 500;
+END
+$function$;
+
+CREATE OR REPLACE FUNCTION core.set_tenant_member_roles(p_membership_id uuid,p_role_keys text[])
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, core, audit
+AS $function$
+DECLARE
+  v_actor uuid := nullif(current_setting('app.user_id',true),'')::uuid;
+  v_org uuid := nullif(current_setting('app.organization_id',true),'')::uuid;
+  v_target_user uuid;
+  v_role_id uuid;
+  v_key text;
+BEGIN
+  IF v_actor IS NULL OR v_org IS NULL OR NOT core.has_active_tenant_membership(v_org)
+     OR NOT EXISTS (
+       SELECT 1 FROM core.organization_memberships om
+       JOIN core.membership_roles mr ON mr.membership_id=om.id
+       JOIN core.role_permissions rp ON rp.role_id=mr.role_id
+       WHERE om.organization_id=v_org AND om.user_id=v_actor
+         AND om.membership_status='active' AND rp.permission_key='core.members.manage'
+     ) THEN
+    RAISE EXCEPTION 'member_management_permission_required' USING ERRCODE='42501';
+  END IF;
+  IF p_membership_id IS NULL OR p_membership_id IN (
+    SELECT om.id FROM core.organization_memberships om
+    WHERE om.organization_id=v_org AND om.user_id=v_actor
+  ) THEN
+    RAISE EXCEPTION 'self_role_change_forbidden' USING ERRCODE='42501';
+  END IF;
+  IF p_role_keys IS NULL OR cardinality(p_role_keys)>12
+     OR cardinality(p_role_keys)<>(SELECT count(DISTINCT x) FROM unnest(p_role_keys) x)
+     OR EXISTS (
+       SELECT 1 FROM unnest(p_role_keys) requested(role_key)
+       WHERE requested.role_key IN ('institution_owner','institution_admin')
+          OR NOT EXISTS (SELECT 1 FROM core.roles r WHERE r.role_key=requested.role_key
+            AND ((r.organization_id IS NULL AND r.is_system=true)
+              OR (r.organization_id=v_org AND r.is_system=false)))
+     ) THEN
+    RAISE EXCEPTION 'invalid_role_keys' USING ERRCODE='22023';
+  END IF;
+  SELECT om.user_id INTO v_target_user
+  FROM core.organization_memberships om
+  WHERE om.id=p_membership_id AND om.organization_id=v_org
+    AND om.membership_status='active'
+    AND NOT EXISTS (
+      SELECT 1 FROM core.membership_roles mr JOIN core.roles r ON r.id=mr.role_id
+      WHERE mr.membership_id=om.id AND r.role_key IN ('institution_owner','institution_admin')
+    )
+  FOR UPDATE;
+  IF v_target_user IS NULL THEN
+    IF EXISTS (SELECT 1 FROM core.organization_memberships om WHERE om.id=p_membership_id AND om.organization_id=v_org) THEN
+      RAISE EXCEPTION 'privileged_role_protected' USING ERRCODE='42501';
+    END IF;
+    RAISE EXCEPTION 'active_member_not_found' USING ERRCODE='P0002';
+  END IF;
+
+  DELETE FROM core.membership_roles WHERE membership_id=p_membership_id;
+  FOREACH v_key IN ARRAY p_role_keys LOOP
+    SELECT r.id INTO v_role_id FROM core.roles r
+    WHERE r.role_key=v_key AND ((r.organization_id IS NULL AND r.is_system=true)
+      OR (r.organization_id=v_org AND r.is_system=false));
+    IF v_role_id IS NULL THEN RAISE EXCEPTION 'role_definition_not_found'; END IF;
+    INSERT INTO core.membership_roles(membership_id,role_id) VALUES(p_membership_id,v_role_id);
+  END LOOP;
+  INSERT INTO audit.audit_events(organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+  VALUES(v_org,v_actor,'tenant.member_roles.updated','membership',p_membership_id::text,
+    jsonb_build_object('role_keys',to_jsonb(p_role_keys),'target_user_id',v_target_user::text));
+  RETURN true;
+END
+$function$;
+
 REVOKE ALL ON FUNCTION core.save_tenant_role(uuid,text,text,text[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION core.delete_tenant_role(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION core.add_tenant_member_by_email(text,text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION core.list_tenant_members() FROM PUBLIC;
+REVOKE ALL ON FUNCTION core.set_tenant_member_roles(uuid,text[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION core.save_tenant_role(uuid,text,text,text[]) TO pondok_runtime;
 GRANT EXECUTE ON FUNCTION core.delete_tenant_role(uuid) TO pondok_runtime;
 GRANT EXECUTE ON FUNCTION core.add_tenant_member_by_email(text,text[]) TO pondok_runtime;
+GRANT EXECUTE ON FUNCTION core.list_tenant_members() TO pondok_runtime;
+GRANT EXECUTE ON FUNCTION core.set_tenant_member_roles(uuid,text[]) TO pondok_runtime;
 
 COMMIT;
