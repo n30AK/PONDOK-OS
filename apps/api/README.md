@@ -29,16 +29,17 @@ Never commit populated environment files or print database URLs in logs. Never m
 
 Each protected operation must verify identity, active organization membership or platform Super Admin authority, and the required permission. Tenant-owned queries must include organization scope. Authenticated tenant handlers use a checked-out PostgreSQL connection and transaction-local tenant context; runtime database roles are restricted to prevent owner-level RLS bypass.
 
-## Development deployment snapshot (2026-11-09)
+## Development deployment snapshot (2026-11-12)
 
-- Neon project: `frosty-cherry-92983148`.
-- Development branch: `br-proud-paper-b312lfxi`.
-- Function: `pondokapi`, Development deployment #61, Node.js 24 (completed).
-- Live catalog: 67 tables with `organization_id`; 67/67 have RLS enabled and forced. The wider application catalog has 145 tables with RLS enabled and forced. Runtime-role policy coverage is 63/63 tenant tables and 79/79 platform tables.
-- Live migration ledger: through 0028. Migrations 0024–0026 were applied to Development on 2026-11-08; migrations 0027–0028 were applied on 2026-11-09 in atomic transactions with transaction-scoped advisory locks. Exact source-file SHA-256 checksums are recorded.
-- `STUDENT_HEALTH_ENCRYPTION_KEY` is present. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; strict key validation is deployed and identity-document operations remain fail-closed until securely provisioned with a recoverable backup/rotation plan.
-- No organizations, memberships, student profiles, HR employees, platform customers, subscriptions, module entitlements or module orders exist yet.
-- CI now exercises actual API-level isolation with two signed synthetic JWT identities against disposable PostgreSQL. Live Neon Auth two-user/two-tenant acceptance and institution UAT are still pending.
+- Neon project: `frosty-cherry-92983148`; Development branch: `br-proud-paper-b312lfxi`. Production branch `br-late-cherry-b3uqtuvh` remains out of scope.
+- Neon Function `pondokapi`, Development deployment #78, Node.js 24, completed. Deployment workflow #78 passed live HTTP checks for `/health/live`, `/health/ready`, and confirmed the retired `POST /v1/bootstrap/organization` endpoint returns HTTP 410.
+- GitHub Pages #102, Release Bundle #158, and PONDOK OS CI #1792 all passed for main commit `710250c23d86a12a6ebe37121a61e77b07386651`.
+- Development migration ledger is recorded through `0039 tenant_audit_append_only`. Migration 0039 is applied only to Development.
+- The catalog contains 67 tables with `organization_id`; all 67 have ENABLE + FORCE RLS. Runtime-role policy coverage last verified: 63/63 tenant tables and 79/79 platform tables. These checks do not replace two-real-tenant acceptance.
+- Development contains one explicitly named demo institution, one active owner membership, five demo student profiles, five demo HR employees, one demo customer, one subscription, one module entitlement and one module order. These are demonstration records, not a real pilot institution or real personal-data acceptance.
+- `STUDENT_HEALTH_ENCRYPTION_KEY` and its version are configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; identity-document operations must remain fail-closed until the key is provisioned through an approved secret vault and recoverable backup/rotation are tested.
+- The demo backup policy is disabled. Its demo backup run failed and has no restore test. The backup executor, immutable/offsite storage and restore execution are not implemented; no backup readiness claim is permitted.
+- CI exercises tenant isolation with synthetic signed identities and disposable PostgreSQL. Live Neon Auth acceptance with two real users and two actual non-production tenants remains pending, as does institution UAT.
 
 The Development deployment workflow and deployment script are scoped to the Development project/branch. Do not repoint them to Production as part of routine work. Production branch `br-late-cherry-b3uqtuvh` must remain untouched.
 
