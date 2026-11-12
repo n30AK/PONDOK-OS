@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { getAccessToken } from "./auth";
 
 type Member = { membership_id: string; user_id: string; membership_status: string; roles: string[]; role_names: string[] };
-type Role = { id: string; role_key: string; role_name: string; is_system: boolean; organization_id: string | null; permission_keys: string[]; assigned_members: number };
+type Role = { id: string; role_key: string; role_name: string; is_system: boolean; organization_id: string | null; permission_keys: string[]; assigned_members?: number };
 type Permission = { permission_key: string; description: string; assignable: boolean };
 type Props = { organizationId: string; permissions: string[] };
 
@@ -58,12 +58,12 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
           const nextRoles:Role[]=result.data?.roles??[];
           setRoles(nextRoles);setPermissionCatalog(result.data?.permissions??[]);
           setSelectedRoleId((current)=>current&&nextRoles.some((role)=>role.id===current)?current:(nextRoles.find((role)=>!role.is_system)?.id??nextRoles[0]?.id??""));
-          setDrafts((current)=>Object.fromEntries(nextRoles.map((role)=>[role.id,current[role.id]??role.permission_keys])));
+          setDrafts((current)=>({...current,...Object.fromEntries(nextRoles.map((role)=>[role.id,current[role.id]??role.permission_keys]))}));
         }));
       }
       if(canManageMembers){
         tasks.push(request("/v1/tenant/members").then((result:any)=>{
-          const list:Member[]=result.data??[];setMembers(list);
+          const list:Member[]=result.data??[];setMembers(list);setDrafts((current)=>({...current,...Object.fromEntries(list.map((member)=>[member.membership_id,current[member.membership_id]??member.roles]))}));
         }));
       }
       await Promise.all(tasks);
@@ -160,7 +160,7 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
         </div>
         {(creatingRole||selectedRole)&&<form onSubmit={saveRole}>
           <label>Nama peran<input value={roleName} onChange={(event)=>setRoleName(event.target.value)} disabled={!editableRole} minLength={2} maxLength={100} required placeholder="Contoh: Operator Data Pendidikan"/></label>
-          {selectedRole&&!selectedRole.is_system&&<p className="muted">Digunakan oleh {selectedRole.assigned_members} anggota. Kunci peran bersifat tetap agar penugasan tidak terputus.</p>}
+          {selectedRole&&!selectedRole.is_system&&<p className="muted">Kunci peran bersifat tetap agar penugasan anggota tidak terputus.</p>}
           {selectedRole?.is_system&&!creatingRole&&<div className="alert warning">Template bawaan hanya dapat dilihat. Buat peran khusus jika membutuhkan perubahan izin.</div>}
           <div className="tenant-role-groups">
             {groupedPermissions.map(([group,items])=><fieldset key={group}><legend>{GROUP_LABELS[group]??group}</legend><div>{items.map((item)=><label key={item.permission_key} title={item.description}>
