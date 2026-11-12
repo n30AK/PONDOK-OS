@@ -56,8 +56,12 @@ function sqlError(res: ServerResponse, reason: unknown, fallback: string) {
     reply(res, 403, { error: "permission_denied" });
   } else if (message.includes("custom_role_in_use")) {
     reply(res, 409, { error: "custom_role_in_use", message: "Peran masih digunakan anggota. Lepaskan peran dari seluruh anggota sebelum menghapusnya." });
-  } else if (message.includes("custom_role_not_found")) {
-    reply(res, 404, { error: "custom_role_not_found" });
+  } else if (message.includes("custom_role_not_found") || message.includes("active_member_not_found")) {
+    reply(res, 404, { error: message.includes("active_member_not_found") ? "active_member_not_found" : "custom_role_not_found" });
+  } else if (message.includes("self_role_change_forbidden") || message.includes("privileged_role_protected")) {
+    reply(res, 409, { error: message.includes("self_role_change_forbidden") ? "self_role_change_forbidden" : "privileged_role_protected" });
+  } else if (message.includes("role_definition_not_found")) {
+    reply(res, 422, { error: "role_definition_not_found" });
   } else if (message.includes("invalid_") || message.includes("permission_not_assignable")) {
     reply(res, 422, { error: message.includes("permission_not_assignable") ? "permission_not_assignable" : "invalid_role_definition" });
   } else if (String(error.code ?? "") === "23505") {
@@ -90,11 +94,9 @@ export async function handleTenantMembersRequest(
       pool.query(
         `SELECT r.id,r.role_key,r.role_name,r.is_system,r.organization_id,
                 COALESCE(array_agg(rp.permission_key ORDER BY rp.permission_key)
-                  FILTER(WHERE rp.permission_key IS NOT NULL),ARRAY[]::text[]) AS permission_keys,
-                count(DISTINCT mr.membership_id)::int AS assigned_members
+                  FILTER(WHERE rp.permission_key IS NOT NULL),ARRAY[]::text[]) AS permission_keys
            FROM core.roles r
            LEFT JOIN core.role_permissions rp ON rp.role_id=r.id
-           LEFT JOIN core.membership_roles mr ON mr.role_id=r.id
           WHERE r.organization_id IS NULL OR r.organization_id=$1::uuid
           GROUP BY r.id
           ORDER BY r.is_system DESC,r.role_name ASC`,
@@ -199,17 +201,7 @@ export async function handleTenantMembersRequest(
       reply(res, 403, { error: "permission_denied" });
       return true;
     }
-    const result = await pool.query(
-      `SELECT om.id AS membership_id,om.user_id,om.membership_status,
-              COALESCE(array_agg(DISTINCT r.role_key) FILTER(WHERE r.id IS NOT NULL),ARRAY[]::text[]) AS roles,
-              COALESCE(array_agg(DISTINCT r.role_name) FILTER(WHERE r.id IS NOT NULL),ARRAY[]::text[]) AS role_names
-         FROM core.organization_memberships om
-         LEFT JOIN core.membership_roles mr ON mr.membership_id=om.id
-         LEFT JOIN core.roles r ON r.id=mr.role_id
-        WHERE om.organization_id=$1::uuid
-        GROUP BY om.id ORDER BY om.created_at ASC LIMIT 500`,
-      [org],
-    );
+    const result = await pool.query("SELECT * FROM core.list_tenant_members()");
     reply(res, 200, { data: result.rows });
     return true;
   }
@@ -230,53 +222,13 @@ export async function handleTenantMembersRequest(
       reply(res, 422, { error: "invalid_role_keys" });
       return true;
     }
-    const target = await pool.query<{ user_id: string; membership_status: string; is_owner: boolean }>(
-      `SELECT om.user_id,om.membership_status,
-              COALESCE(bool_or(r.role_key IN ('institution_owner','institution_admin')),false) AS is_owner
-         FROM core.organization_memberships om
-         LEFT JOIN core.membership_roles mr ON mr.membership_id=om.id
-         LEFT JOIN core.roles r ON r.id=mr.role_id
-        WHERE om.id=$1::uuid AND om.organization_id=$2::uuid
-        GROUP BY om.id`,
-      [memberId, org],
-    );
-    const member = target.rows[0];
-    if (!member || member.membership_status !== "active") {
-      reply(res, 404, { error: "active_member_not_found" });
-      return true;
-    }
-    if (member.is_owner) {
-      reply(res, 409, { error: "privileged_role_protected" });
-      return true;
-    }
     const keys = input.roleKeys;
-    const definitions = keys.length
-      ? await pool.query<{ id: string; role_key: string }>(
-        `SELECT id,role_key FROM core.roles
-          WHERE role_key=ANY($1::text[])
-            AND ((organization_id IS NULL AND is_system=true)
-              OR (organization_id=$2::uuid AND is_system=false))`,
-        [keys, org],
-      )
-      : { rows: [] as { id: string; role_key: string }[] };
-    if (definitions.rows.length !== keys.length) {
-      reply(res, 422, { error: "role_definition_not_found" });
-      return true;
+    try {
+      await pool.query("SELECT core.set_tenant_member_roles($1::uuid,$2::text[])", [memberId, keys]);
+      reply(res, 200, { data: { membershipId: memberId, roleKeys: keys } });
+    } catch (reason) {
+      sqlError(res, reason, "tenant_member_role_update_failed");
     }
-    await pool.query("DELETE FROM core.membership_roles WHERE membership_id=$1::uuid", [memberId]);
-    for (const role of definitions.rows) {
-      await pool.query(
-        "INSERT INTO core.membership_roles(membership_id,role_id) VALUES($1::uuid,$2::uuid) ON CONFLICT DO NOTHING",
-        [memberId, role.id],
-      );
-    }
-    await pool.query(
-      `INSERT INTO audit.audit_events(organization_id,actor_user_id,action,resource_type,resource_id,metadata)
-       VALUES($1::uuid,$2::uuid,'tenant.member_roles.updated','membership',$3,
-         jsonb_build_object('role_keys',$4::jsonb,'target_user_id',$5::text))`,
-      [org, actor, memberId, JSON.stringify(keys), member.user_id],
-    );
-    reply(res, 200, { data: { membershipId: memberId, roleKeys: keys } });
     return true;
   }
 
