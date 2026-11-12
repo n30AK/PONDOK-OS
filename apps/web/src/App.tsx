@@ -50,7 +50,7 @@ const ADMISSIONS_ACCESS = MODULE_ACCESS.admissions;
 const hasAnyPermission = (permissions: readonly string[] | undefined, required: readonly string[]) =>
   Boolean(permissions && required.some((permission) => permissions.includes(permission)));
 const canSeeModuleCard = (permissions: readonly string[] | undefined, moduleKey: string) =>
-  !permissions || hasAnyPermission(permissions, MODULE_ACCESS[moduleKey] ?? []);
+  !permissions || hasAnyPermission(permissions, MODULE_ACCESS[moduleKey as keyof typeof MODULE_ACCESS] ?? []);
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
