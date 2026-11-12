@@ -8,8 +8,8 @@ type Props = { organizationId: string; permissions: string[] };
 
 const ROLE_GROUPS = [
   { title: "Yayasan & Pimpinan", keys: ["foundation_chair","foundation_secretary","foundation_treasurer","pondok_leader","pondok_deputy","pondok_secretary","pondok_treasurer"] },
-  { title: "Pendidikan & Kesantrian", keys: ["academic_coordinator","school_principal","homeroom_teacher","teacher","student_affairs_coordinator","musyrif","safeguarding_officer"] },
-  { title: "Layanan & Operasional", keys: ["finance_cashier","finance_verifier","procurement_officer","warehouse_staff","hr_officer","librarian","admission_officer","inventory_manager","boarding_supervisor","cms_editor","health_officer"] },
+  { title: "Pendidikan & Kesantrian", keys: ["academic_admin","academic_coordinator","school_principal","homeroom_teacher","teacher","student_affairs_coordinator","musyrif","safeguarding_officer"] },
+  { title: "Layanan & Operasional", keys: ["finance_admin","finance_cashier","finance_verifier","hr_admin","hr_officer","procurement_officer","warehouse_staff","librarian","admission_officer","inventory_manager","boarding_supervisor","cms_editor","health_officer"] },
   { title: "Pengawasan", keys: ["read_only_auditor"] },
 ];
 const GROUP_LABELS: Record<string,string> = {
