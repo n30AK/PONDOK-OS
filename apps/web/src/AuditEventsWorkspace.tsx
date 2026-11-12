@@ -22,7 +22,8 @@ export default function AuditEventsWorkspace({ organizationId }: Props) {
     setError("");
     try {
       const token = await getAccessToken();
-      const base = (import.meta.env.VITE_API_URL ?? "").replace(/\\/$/, "");
+      const configuredBase = import.meta.env.VITE_API_URL ?? "";
+      const base = configuredBase.endsWith("/") ? configuredBase.slice(0, -1) : configuredBase;
       const response = await fetch(`${base}/v1/audit/events?limit=100`, {
         headers: { authorization: `Bearer ${token}`, "x-organization-id": organizationId },
         cache: "no-store",
