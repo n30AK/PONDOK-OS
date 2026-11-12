@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { authClient, getAccessToken, getCurrentUser, type PondokUser } from "./auth";
 import Operations from "./Operations";
 import Admissions from "./Admissions";
-import ModuleWorkspace, { getModuleResourceLabel, getModuleResourceReadPermission, hasReadableModuleResource } from "./ModuleWorkspace";
+import ModuleWorkspace, { getModuleResourceLabel, getModuleResourceReadPermission, hasReadableModuleGroup, hasReadableModuleResource } from "./ModuleWorkspace";
 import InstitutionActivation from "./InstitutionActivation";
 import TenantAccessAdmin from "./TenantAccessAdmin";
 
@@ -195,8 +195,7 @@ export default function App() {
   // this application based on platform role; tenant access is resolved below.
   const openModule = (resourceKey: string) => {
     if (tenant) {
-      const requiredPermission = getModuleResourceReadPermission(resourceKey);
-      const allowed = resourceKey === "all" ? hasReadableModuleResource(tenant.permissions) : Boolean(requiredPermission && tenant.permissions.includes(requiredPermission));
+      const allowed = resourceKey === "all" ? hasReadableModuleResource(tenant.permissions) : hasReadableModuleGroup(resourceKey, tenant.permissions);
       if (!allowed) { setError("Akses ditolak. Peran Anda belum memiliki izin baca untuk menu ini."); return; }
     }
     setModuleResource(resourceKey); setScreen("modules"); if (!tenant) setPreviewMode(true); setError(""); setNotice("");
@@ -220,7 +219,7 @@ export default function App() {
     if (!tenant) return;
     const permissions = tenant.permissions;
     const denied =
-      (screen === "modules" && (moduleResource === "all" ? !hasReadableModuleResource(permissions) : !permissions.includes(getModuleResourceReadPermission(moduleResource) ?? ""))) ||
+      (screen === "modules" && (moduleResource === "all" ? !hasReadableModuleResource(permissions) : !hasReadableModuleGroup(moduleResource, permissions))) ||
       (screen === "operations" && !hasAnyPermission(permissions, OPERATIONS_ACCESS[operationsArea])) ||
       (screen === "admissions" && !hasAnyPermission(permissions, ADMISSIONS_ACCESS)) ||
       (screen === "access" && !hasAnyPermission(permissions, ["core.roles.manage", "core.members.manage"])) ||
