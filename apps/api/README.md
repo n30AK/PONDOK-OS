@@ -79,7 +79,7 @@ A Super Admin can convert a CRM lead only after its stage is explicitly `won`:
 
 ## Commercial customer ↔ institution tenant link
 
-The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` is applied on Development. It adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect. The live Development registry still contains zero customer records.
+The CRM customer registry and institution tenant registry are separate domains. Migration `0027_platform_customer_tenant_link.sql` is applied on Development. It adds an optional `platform.customers.tenant_id` foreign key and a partial unique index (one commercial customer per tenant). An unlinked customer remains a prospect. The Development registry currently contains one demonstration customer linked to the demo tenant; it is not a real customer or commercial acceptance record.
 
 - `POST /v1/platform/erp/customers` accepts optional `organizationId`; when supplied, the API verifies the tenant exists and is not already linked.
 - `GET /v1/platform/erp/customers` and `GET /v1/platform/erp/customers/:id` return only the linked tenant's name and slug in addition to customer fields.
@@ -97,7 +97,7 @@ Run `pnpm db:migrate` only after:
 
 The runner serializes execution with a PostgreSQL advisory lock, verifies SHA-256 checksums, and applies each migration in its own transaction. Never run it against Production as part of this project workflow. Do not manually patch schema objects to bypass the migration ledger.
 
-Migrations 0024, 0025 and 0026 are recorded as applied on Development as of 2026-11-08; migration 0027 is recorded as applied on 2026-11-09. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
+Migrations through 0039 are recorded as applied on Development as of 2026-11-12. Migration 0039 hardens tenant audit records as append-only. Migration application must continue to use ordered checksums and the repository migration runner. The application was scoped to branch `br-proud-paper-b312lfxi`, preflighted against the expected 0023 ledger and absent target objects, guarded by an advisory lock, and committed atomically. SHA-256 checksums were computed from the exact repository file contents and stored in `core.schema_migrations`. Migration 0026 supplies the guardian-authority verification column and permission. Production was not targeted.
 
 ## Central activation and company administration
 
@@ -119,7 +119,7 @@ The identity-document API expects `STUDENT_IDENTITY_ENCRYPTION_KEY` to decode fr
 
 ## Readiness boundary
 
-A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Function deployment #61 is completed, but a direct HTTP response could not be independently verified from the current inspection environment (DNS resolution failed); do not report the route check as independently confirmed until the workflow result is inspected. Readiness requires an actual institution tenant, two-tenant API isolation, role-based end-to-end workflows, backup/restore validation and institution UAT.
+A successful build, deployment, `/health/live`, `/health/ready`, or catalog RLS query does not mean PONDOK OS is ready for institutional operations. The Development deployment workflow now runs a live `POST /v1/bootstrap/organization` assertion expecting HTTP 410 after deployment/readiness. Development Function deployment #78 completed on 2026-11-12. Its deployment workflow passed live HTTP checks for liveness, readiness and HTTP 410 from the retired bootstrap endpoint. This confirms API process/dependency readiness, not institutional operational readiness. Development currently has one demo institution, one active demo owner membership, five demo student profiles, five demo HR employees, one demo customer, one subscription, one module entitlement and one module order. These records do not constitute a real pilot. Readiness still requires two real Neon Auth users and two actual non-production tenants, role-based end-to-end workflows, secure identity-key provisioning, working encrypted backup/restore and institution UAT.
 
 ## Live Neon Auth tenant acceptance
 
