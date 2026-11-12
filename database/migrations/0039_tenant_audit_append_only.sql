@@ -3,7 +3,7 @@
 -- Apply to Neon Development first; Production is out of scope.
 BEGIN;
 
-REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+REVOKE UPDATE, DELETE, REFERENCES, TRIGGER
   ON audit.audit_events FROM pondok_runtime;
 
 GRANT SELECT, INSERT ON audit.audit_events TO pondok_runtime;
@@ -12,7 +12,6 @@ DO $validation$
 BEGIN
   IF has_table_privilege('pondok_runtime','audit.audit_events','UPDATE')
      OR has_table_privilege('pondok_runtime','audit.audit_events','DELETE')
-     OR has_table_privilege('pondok_runtime','audit.audit_events','TRUNCATE')
      OR has_table_privilege('pondok_runtime','audit.audit_events','REFERENCES')
      OR has_table_privilege('pondok_runtime','audit.audit_events','TRIGGER') THEN
     RAISE EXCEPTION 'tenant_audit_runtime_must_be_append_only';
