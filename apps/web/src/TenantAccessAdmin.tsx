@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { getAccessToken } from "./auth";
 
 type Member = { membership_id: string; user_id: string; membership_status: string; roles: string[]; role_names: string[] };
-type Role = { id: string; role_key: string; role_name: string; is_system: boolean; organization_id: string | null; permission_keys: string[]; assigned_members?: number };
+type Role = { id: string; role_key: string; role_name: string; is_system: boolean; organization_id: string | null; permission_keys: string[] };
 type Permission = { permission_key: string; description: string; assignable: boolean };
 type Props = { organizationId: string; permissions: string[] };
 
@@ -12,7 +12,6 @@ const ROLE_GROUPS = [
   { title: "Layanan & Operasional", keys: ["finance_cashier","finance_verifier","procurement_officer","warehouse_staff","hr_officer","librarian","admission_officer","inventory_manager","boarding_supervisor","cms_editor","health_officer"] },
   { title: "Pengawasan", keys: ["read_only_auditor"] },
 ];
-const RESERVED = new Set(["core.roles.manage","core.members.manage","core.organization.manage","core.campus.manage","settings.manage","sync.devices.manage","sync.conflicts.resolve"]);
 const GROUP_LABELS: Record<string,string> = {
   academic:"Akademik & data santri", admissions:"PPDB", assets:"Aset", audit:"Audit", boarding:"Asrama & kesantrian",
   cms:"Website & publikasi", core:"Tata kelola", crm:"CRM, alumni & donatur", finance:"Keuangan & akuntansi",
@@ -184,7 +183,7 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
         <div className="tenant-role-groups">{ROLE_GROUPS.map((group)=><fieldset key={group.title}><legend>{group.title}</legend><div>{group.keys.map((key)=>{
           const role=roles.find((item)=>item.role_key===key);if(!role)return null;
           return <label key={key}><input type="checkbox" checked={newRoles.includes(key)} onChange={(event)=>toggleNewRole(key,event.target.checked)}/><span>{role.role_name}</span></label>;
-        })}{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={newRoles.includes(role.role_key)} onChange={(event)=>toggleNewRole(role.role_key,event.target.checked)}/><span>{role.role_name} · Khusus</span></label>)}</div></fieldset>)}</div>
+        })}</div></fieldset>)}{roles.some((role)=>!role.is_system)&&<fieldset key="tenant-custom-roles"><legend>Peran khusus lembaga</legend><div>{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={newRoles.includes(role.role_key)} onChange={(event)=>toggleNewRole(role.role_key,event.target.checked)}/><span>{role.role_name}</span></label>)}</div></fieldset>}</div>
         <footer><small>{newRoles.length} peran dipilih</small><button className="primary" type="submit" disabled={adding||!newEmail.trim()||newRoles.length===0}>{adding?"Menambahkan…":"Tambah anggota & tetapkan peran"}</button></footer>
       </form>
       <section className="tenant-member-list"><div className="page-heading"><div><h2>Anggota & penugasan</h2><p>Anggota pemilik dan administrator utama dilindungi dari perubahan melalui layar ini.</p></div></div>
@@ -194,7 +193,7 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
             <div className="tenant-role-groups">{ROLE_GROUPS.map((group)=><fieldset key={group.title}><legend>{group.title}</legend><div>{group.keys.map((key)=>{
               const role=roles.find((item)=>item.role_key===key);if(!role)return null;
               return <label key={key}><input type="checkbox" checked={(drafts[member.membership_id]??member.roles).includes(key)} onChange={(event)=>toggleMemberRole(member.membership_id,key,event.target.checked)}/><span>{role.role_name}</span></label>;
-            })}{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={(drafts[member.membership_id]??member.roles).includes(role.role_key)} onChange={(event)=>toggleMemberRole(member.membership_id,role.role_key,event.target.checked)}/><span>{role.role_name} · Khusus</span></label>)}</div></fieldset>)}</div>
+            })}</div></fieldset>)}{roles.some((role)=>!role.is_system)&&<fieldset key="tenant-custom-roles"><legend>Peran khusus lembaga</legend><div>{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={(drafts[member.membership_id]??member.roles).includes(role.role_key)} onChange={(event)=>toggleMemberRole(member.membership_id,role.role_key,event.target.checked)}/><span>{role.role_name}</span></label>)}</div></fieldset>}</div>
             <footer><small>{(drafts[member.membership_id]??member.roles).length} peran dipilih</small><button className="primary" type="button" disabled={Boolean(saving)||JSON.stringify([...(drafts[member.membership_id]??member.roles)].sort())===JSON.stringify([...member.roles].sort())} onClick={()=>void saveMember(member)}>{saving===member.membership_id?"Menyimpan…":"Simpan penugasan"}</button></footer>
           </>}
         </article>)}
