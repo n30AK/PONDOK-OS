@@ -2,15 +2,17 @@
 
 This file separates shipped code from roadmap intent. A green CI run proves automated checks against disposable PostgreSQL; it does not prove live institution acceptance.
 
-## Verified Development snapshot (2026-11-08)
+## Verified Development snapshot (2026-11-12)
 
 - Target: Neon project `frosty-cherry-92983148`, Development branch `br-proud-paper-b312lfxi`, database `neondb`.
-- The live catalog contains 67 tables with `organization_id`; all 67 have RLS enabled and forced.
-- The live migration ledger is recorded through 0028. Migrations 0024–0026 were applied to Development on 2026-11-08; migrations 0027–0028 were applied on 2026-11-09 in atomic transactions, with transaction-scoped advisory locks and SHA-256 checksums recorded from the exact repository files.
-- Neon Function `pondokapi` Development deployment #43 is completed on Node.js 24. The preceding Development deployment workflow passed liveness and readiness checks. Readiness confirms database connectivity, not complete schema or business-workflow acceptance.
-- `STUDENT_HEALTH_ENCRYPTION_KEY` is configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; the identity-document API must remain fail-closed until secure key provisioning, recoverable backup and rotation are prepared.
-- There are currently zero organizations, memberships, student profiles and HR employees. No fabricated tenant or personal records have been seeded.
-- PR #125 (Development live-audit documentation) was merged as `57b8f36`; its CI foundation job passed.
+- Neon Function `pondokapi` deployment #78 (Node.js 24) completed. Deployment workflow #78 passed live HTTP checks for `/health/live`, `/health/ready`, and the legacy bootstrap endpoint returning HTTP 410.
+- GitHub Pages #102, Release Bundle #158 and CI #1792 passed for main commit `710250c23d86a12a6ebe37121a61e77b07386651`.
+- Migration ledger is recorded through `0039 tenant_audit_append_only`. Migration 0039 is applied only to Development.
+- Catalog audit: 67/67 organization-owned tables have ENABLE + FORCE RLS. Runtime-role policy coverage last verified: 63/63 tenant tables and 79/79 platform tables. These catalog checks do not replace live two-tenant acceptance.
+- Development contains one explicit demo organization, one active owner membership, five demo student profiles, five demo HR employees, one demo customer, one subscription, one module entitlement and one module order. These are demonstration records, not a real institution pilot or production data.
+- `STUDENT_HEALTH_ENCRYPTION_KEY` and its version are configured. `STUDENT_IDENTITY_ENCRYPTION_KEY` is absent; identity-document operations must remain fail-closed until provisioned via an approved secret vault with recoverable backup and rotation/recovery testing.
+- The demo backup policy is disabled; its demo backup run failed and has no restore test. The backup executor, immutable/offsite storage and restore execution are not implemented.
+- CI exercises API-level isolation with synthetic identities and disposable PostgreSQL. Live Neon Auth acceptance with two real users and two actual non-production tenants, plus institution UAT, remains pending.
 - Production branch `br-late-cherry-b3uqtuvh` has not been modified.
 
 ## Area-by-area status
@@ -18,10 +20,10 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 | Area | Current state | Remaining acceptance / gaps |
 |---|---|---|
 | Monorepo and CI | Build/typecheck/tests and disposable PostgreSQL migration pipeline pass | Live tenant acceptance remains separate |
-| Core tenant schema | Core organization, campus, membership, role, permission, settings and audit foundations exist | No real tenant exists; first institution requires actual details and authorized Super Admin activation |
+| Core tenant schema | Core organization, campus, membership, role, permission, settings and audit foundations exist | A demo tenant exists; the real pilot institution still requires actual details and authorized Super Admin activation |
 | Tenant authorization | Live catalog reports 67/67 organization-owned tables with ENABLE + FORCE RLS | API-level two-tenant isolation with two independent real test identities remains pending |
 | Central Command | Activation request, Super Admin approval and token-based first-tenant activation foundations exist | First real institution onboarding and complete company operations remain pending |
-| Student master data | Student profile, structured address, guardian relationship, health profile and encrypted identity-document API foundations exist | Migration 0026 is applied; identity encryption key absent; complete document vault, guardian consent, lifecycle and live UAT pending |
+| Student master data | Student profile, structured address, guardian relationship, health profile and encrypted identity-document API foundations exist | Migration 0026 is applied; identity encryption key absent; identity-document operations remain fail-closed; complete document vault, guardian consent, lifecycle and live UAT pending |
 | PPDB | Period/application lifecycle and metadata-only audit foundations exist | Secure document storage, checklist, selection/interview, guardian portal, registration/payment and UAT pending |
 | Academic | Initial student/class/educator foundations exist | Curriculum configuration, scheduling, attendance correction, assessment, report cards, promotion and end-to-end workflows incomplete |
 | Boarding / kesantrian | Initial dormitory, room, bed, assignment, leave and incident resources exist | Approval, safeguarding case handling, check-in/out, escalation and privacy acceptance incomplete |
@@ -34,11 +36,11 @@ This file separates shipped code from roadmap intent. A green CI run proves auto
 | CRM / alumni / donors | Initial contact, interaction and donor-pledge resources exist | Consent ledger, communication controls, accounting integration and full lifecycle incomplete |
 | Sync / offline | Device registry, authenticated event inbox, idempotency and checkpoint foundations exist; PWA shell cache exists | Domain event processor, local outbox, conflict review and private offline data handling not implemented |
 | Mobile / installer / kiosk | Not implemented as release-ready deliverables | Android/iOS apps, offline installer, local identity/database provisioning, wall kiosk and release signing |
-| Live acceptance | Not completed | No tenant exists; two-tenant API isolation and role-based institution UAT have not been completed |
+| Live acceptance | Not completed | Only demo records exist; live two-tenant API isolation and role-based institution UAT have not been completed |
 
 ## Migration and security blockers
 
-1. Development migration ledger now records through 0028. Migrations 0024–0028 have exact repository-file SHA-256 checksums recorded and were applied atomically under advisory locks after preflight.
+1. Development migration ledger now records through 0039. Migrations through 0039 are recorded on Development; migration 0039 hardens tenant audit records as append-only.
 2. Future schema changes must use the repository migration runner and preserve checksum validation, locking and ordered application.
 3. Do not apply any migration to Production. Never paste database URLs, API keys or encryption key material into chat, source control or logs.
 4. Provision `STUDENT_IDENTITY_ENCRYPTION_KEY` only through an approved secret-management path. It must decode from base64 to exactly 32 bytes. Establish an encrypted recoverable backup and rotation/recovery procedure before enabling writes.
