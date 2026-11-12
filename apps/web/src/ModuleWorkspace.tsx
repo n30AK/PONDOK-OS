@@ -135,6 +135,8 @@ function toFormValue(field:Field,row:Row):string|boolean{
  return String(value);
 }
 
+export function getModuleResourceReadPermission(key:string):string|null { return RESOURCES.find(resource=>resource.key===key)?.read??null; }
+export function hasReadableModuleResource(permissions:readonly string[]):boolean { return RESOURCES.some(resource=>permissions.includes(resource.read)); }
 export function getModuleResourceLabel(key:string):string { return key==="all"?"Semua Modul":RESOURCES.find(resource=>resource.key===key)?.label??"Modul"; }
 
 function csvCell(value: unknown): string {
@@ -154,7 +156,7 @@ function exportRowsCsv(resource:Resource,rows:Row[]) {
 }
 
 function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResourceChange,preview=false}:Props) {
- const available=RESOURCES;
+ const available=useMemo(()=>preview?RESOURCES:RESOURCES.filter(resource=>permissions.includes(resource.read)),[preview,permissions]);
  const groups=useMemo(()=>Array.from(new Set(["Semua Modul",...available.map(r=>r.group)])),[available]);
  const requestedGroup=initialResourceKey==="all"?"Semua Modul":RESOURCES.find(r=>r.key===initialResourceKey)?.group;
  const initialResource=initialResourceKey==="all"?available[0]:available.find(r=>r.key===initialResourceKey)??available.find(r=>r.group===requestedGroup);
