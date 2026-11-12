@@ -55,11 +55,14 @@ test("denies memberships without audit.events.read before querying audit data", 
 });
 
 test("rejects writes and invalid pagination", async () => {
-  const pool = { async query() { throw new Error("database must not be queried"); } };
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["audit.events.read"])] };
+    throw new Error("audit data query must not run");
+  }};
   const writeRes = responseDouble();
   await handleTenantAuditRequest(request("POST", "/v1/audit/events"), writeRes, pool, userId, organizationId);
   assert.equal(writeRes.statusCode, 405);
   const limitRes = responseDouble();
   await handleTenantAuditRequest(request("GET", "/v1/audit/events?limit=1000"), limitRes, pool, userId, organizationId);
-  assert.equal(limitRes.statusCode, 403); // membership check precedes query validation
+  assert.equal(limitRes.statusCode, 400);
 });
