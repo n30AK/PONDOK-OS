@@ -11,6 +11,7 @@ import { handleFinanceRequest } from "./finance.js";
 import { handleInventoryRequest } from "./inventory.js";
 import { handleHrRequest } from "./hr.js";
 import { handleModuleRecordsRequest } from "./module-records.js";
+import { handleTenantAuditRequest } from "./audit-events.js";
 import { handlePlatformRequest, listUserOrganizations } from "./platform-admin.js";
 import { handlePlatformErpRequest } from "./platform-erp.js";
 import { handlePlatformOperationsRequest } from "./platform-operations.js";
@@ -508,6 +509,31 @@ export async function handleRequest(
       if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleHrRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch (reason) {
       sendTenantScopeError(response, reason, "hr_service_unavailable"); return;
+    }
+  }
+
+  if (pathname === "/v1/audit/events") {
+    if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
+      sendJson(response, 503, { error: "identity_or_database_not_configured" });
+      return;
+    }
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) { sendJson(response, 401, { error: "unauthorized" }); return; }
+    const organizationId = request.headers["x-organization-id"];
+    if (typeof organizationId !== "string" || !UUID_PATTERN.test(organizationId)) {
+      sendJson(response, 400, { error: "invalid_organization_id" }); return;
+    }
+    let identity;
+    try {
+      identity = await verifyAccessToken(token, dependencies.jwks, dependencies.issuer);
+    } catch {
+      sendJson(response, 401, { error: "invalid_token" }); return;
+    }
+    try {
+      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) =>
+        handleTenantAuditRequest(request, response, tenantPool, identity.userId, organizationId))) return;
+    } catch (reason) {
+      sendTenantScopeError(response, reason, "tenant_audit_service_unavailable"); return;
     }
   }
 
