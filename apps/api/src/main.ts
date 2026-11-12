@@ -369,7 +369,7 @@ export async function handleRequest(
     return;
   }
 
-  if (pathname.startsWith("/v1/tenant/members")) {
+  if (pathname.startsWith("/v1/tenant/members") || pathname.startsWith("/v1/tenant/roles")) {
     if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
       sendJson(response,503,{error:"identity_or_database_not_configured"}); return;
     }

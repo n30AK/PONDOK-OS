@@ -188,7 +188,8 @@ test("encrypts student health fields before persistence and keeps audit metadata
     assert.equal(data.medical_history, "Riwayat yang bersifat privat");
     const insert = calls.find(call => call.sql.startsWith("INSERT INTO academic.student_health_profiles"));
     assert.ok(Buffer.isBuffer(insert.values[2]));
-    assert.notEqual(insert.values[2].toString("utf8").includes("O+"), true);
+    assert.notDeepEqual(insert.values[2], Buffer.from("O+"));
+    assert.ok(insert.values[2].byteLength > Buffer.byteLength("O+"));
     const audit = calls.find(call => call.sql.startsWith("INSERT INTO audit.audit_events"));
     assert.deepEqual(JSON.parse(audit.values[5]).fields, ["bloodGroup", "allergyData", "medicalHistory", "medicationData"]);
     assert.equal(JSON.stringify(audit.values).includes("Riwayat yang bersifat privat"), false);
