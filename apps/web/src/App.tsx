@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { authClient, getAccessToken, getCurrentUser, type PondokUser } from "./auth";
 import Operations from "./Operations";
 import Admissions from "./Admissions";
-import ModuleWorkspace, { getModuleResourceLabel } from "./ModuleWorkspace";
+import ModuleWorkspace, { getModuleResourceLabel, getModuleResourceReadPermission, hasReadableModuleResource } from "./ModuleWorkspace";
 import InstitutionActivation from "./InstitutionActivation";
 import TenantAccessAdmin from "./TenantAccessAdmin";
 
@@ -29,6 +29,28 @@ const modules = [
   { key: "boarding", name: "Asrama & Kesantrian", desc: "Kamar, perizinan, pelanggaran, pembinaan", icon: "⌂", status: "Direncanakan" },
   { key: "crm", name: "CRM & Alumni", desc: "Wali santri, komunikasi, alumni, donatur", icon: "◎", status: "Direncanakan" },
 ];
+
+const MODULE_ACCESS: Record<string, readonly string[]> = {
+  academic: ["academic.classes.read", "academic.enrollments.read", "academic.attendance.read"],
+  admissions: ["admissions.periods.read", "admissions.applications.read"],
+  finance: ["finance.accounts.read", "finance.journals.read"],
+  inventory: ["inventory.items.read", "inventory.movements.read"],
+  library: ["library.catalog.read", "library.loans.read"],
+  hr: ["hr.employees.read", "hr.contracts.read", "hr.payroll.read"],
+  cms: ["cms.pages.manage", "cms.announcements.manage"],
+  boarding: ["boarding.rooms.manage", "boarding.assignments.manage", "boarding.leave.read", "boarding.incidents.read"],
+  crm: ["crm.contacts.read", "crm.donations.manage"],
+};
+const OPERATIONS_ACCESS: Record<OperationsArea, readonly string[]> = {
+  finance: MODULE_ACCESS.finance,
+  inventory: MODULE_ACCESS.inventory,
+  hr: MODULE_ACCESS.hr,
+};
+const ADMISSIONS_ACCESS = MODULE_ACCESS.admissions;
+const hasAnyPermission = (permissions: readonly string[] | undefined, required: readonly string[]) =>
+  Boolean(permissions && required.some((permission) => permissions.includes(permission)));
+const canSeeModuleCard = (permissions: readonly string[] | undefined, moduleKey: string) =>
+  !permissions || hasAnyPermission(permissions, MODULE_ACCESS[moduleKey] ?? []);
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
@@ -171,19 +193,43 @@ export default function App() {
 
   // Workspace and Central Command are separate applications. Never redirect
   // this application based on platform role; tenant access is resolved below.
-  const openModule = (resourceKey: string) => { setModuleResource(resourceKey); setScreen("modules"); if (!tenant) setPreviewMode(true); setError(""); setNotice(""); };
+  const openModule = (resourceKey: string) => {
+    if (tenant) {
+      const requiredPermission = getModuleResourceReadPermission(resourceKey);
+      const allowed = resourceKey === "all" ? hasReadableModuleResource(tenant.permissions) : Boolean(requiredPermission && tenant.permissions.includes(requiredPermission));
+      if (!allowed) { setError("Akses ditolak. Peran Anda belum memiliki izin baca untuk menu ini."); return; }
+    }
+    setModuleResource(resourceKey); setScreen("modules"); if (!tenant) setPreviewMode(true); setError(""); setNotice("");
+  };
   const openOperations = (area: OperationsArea) => {
     if (!tenant) {
       const previewResource: Record<OperationsArea,string> = { finance: "finance-accounts", inventory: "inventory-items", hr: "employees" };
       openModule(previewResource[area]);
       return;
     }
+    if (!hasAnyPermission(tenant.permissions, OPERATIONS_ACCESS[area])) { setError("Akses ditolak. Anda tidak memiliki izin baca pada area operasional ini."); return; }
     setOperationsArea(area); setScreen("operations"); setError(""); setNotice("");
   };
   const openAdmissions = () => {
     if (!tenant) { openModule("admission-periods"); return; }
+    if (!hasAnyPermission(tenant.permissions, ADMISSIONS_ACCESS)) { setError("Akses ditolak. Anda belum memiliki izin baca PPDB."); return; }
     setScreen("admissions"); setError(""); setNotice("");
   };
+
+  useEffect(() => {
+    if (!tenant) return;
+    const permissions = tenant.permissions;
+    const denied =
+      (screen === "modules" && (moduleResource === "all" ? !hasReadableModuleResource(permissions) : !permissions.includes(getModuleResourceReadPermission(moduleResource) ?? ""))) ||
+      (screen === "operations" && !hasAnyPermission(permissions, OPERATIONS_ACCESS[operationsArea])) ||
+      (screen === "admissions" && !hasAnyPermission(permissions, ADMISSIONS_ACCESS)) ||
+      (screen === "access" && !hasAnyPermission(permissions, ["core.roles.manage", "core.members.manage"])) ||
+      (screen === "students" && !permissions.includes("academic.students.read"));
+    if (denied) {
+      setScreen("overview");
+      setError("Halaman ditutup karena hak akses akun ini tidak mencakup menu yang diminta.");
+    }
+  }, [tenant, screen, moduleResource, operationsArea]);
 
   const chooseOrganization = async (orgId: string) => {
     setBusy(true); setError(""); setNotice("");
@@ -465,23 +511,23 @@ export default function App() {
       <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>PONDOK OS</strong><small>INSTITUTION WORKSPACE</small></div></div>
       <div className="side-label">MENU UTAMA</div>
       <button type="button" className={screen === "overview" ? "nav-item active" : "nav-item"} onClick={() => { setPreviewMode(false); setScreen("overview"); setError(""); }}><span>⌂</span> Ringkasan</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("academic.students.read"))} type="button" className={screen === "modules" && ["student-details","student-identity-documents","student-health-profiles","guardians","student-guardians"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("student-details")}><span>♙</span> Master Data Santri</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("admissions.applications.read"))} type="button" className={screen === "admissions" || (previewMode && screen === "modules" && moduleResource.startsWith("admission-")) ? "nav-item active" : "nav-item"} onClick={openAdmissions}><span>✳</span> PPDB</button>
-      <div className="side-label second">PENDIDIKAN & KESANTRIAN</div>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("academic.classes.read"))} type="button" className={screen === "modules" && ["academic-years","academic-terms","programs","subjects","classes","enrollments","attendance-sessions","attendance-records","academic-class-subjects"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("academic-years")}><span>▦</span> Akademik & Kurikulum</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("boarding.leave.read"))} type="button" className={screen === "modules" && ["dormitories","boarding-rooms","boarding-beds","boarding-assignments","leave-requests","incidents"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("dormitories")}><span>⌂</span> Asrama & Kesantrian</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("library.catalog.read"))} type="button" className={screen === "modules" && ["library-catalog","library-copies","library-loans"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("library-catalog")}><span>▥</span> Perpustakaan</button>
-      <div className="side-label second">TATA KELOLA & LAYANAN</div>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("finance.accounts.read"))} type="button" className={(screen === "operations" && operationsArea === "finance") || (previewMode && screen === "modules" && moduleResource.startsWith("finance-")) ? "nav-item active" : "nav-item"} onClick={() => openOperations("finance")}><span>◈</span> Keuangan & Akuntansi</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("inventory.items.read"))} type="button" className={(screen === "operations" && operationsArea === "inventory") || (previewMode && screen === "modules" && moduleResource.startsWith("inventory-")) ? "nav-item active" : "nav-item"} onClick={() => openOperations("inventory")}><span>▤</span> Inventaris & Gudang</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("hr.employees.read"))} type="button" className={(screen === "operations" && operationsArea === "hr") || (previewMode && screen === "modules" && ["employees","hr-contracts","hr-payroll-periods","hr-payroll-runs"].includes(moduleResource)) ? "nav-item active" : "nav-item"} onClick={() => openOperations("hr")}><span>♙</span> SDM & Payroll</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("hr.educators.read"))} type="button" className={screen === "modules" && ["instructor-profiles","employee-assignments","hr-departments","hr-positions"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("instructor-profiles")}><span>♟</span> Pengajar & Struktur Organisasi</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("assets.register.read"))} type="button" className={screen === "modules" && ["assets","asset-events","suppliers","purchase-requests","purchase-request-lines","purchase-orders","purchase-order-lines"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("assets")}><span>▧</span> Aset & Pengadaan</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("cms.pages.manage"))} type="button" className={screen === "modules" && ["cms-pages","announcements"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("cms-pages")}><span>▣</span> Website & Pengumuman</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("crm.contacts.read"))} type="button" className={screen === "modules" && ["contacts","interactions","donor-pledges"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("contacts")}><span>◎</span> CRM, Alumni & Donatur</button>
-      <button hidden={Boolean(tenant && !tenant.permissions.includes("core.organization.manage"))} type="button" className={screen === "modules" && moduleResource === "campuses" ? "nav-item active" : "nav-item"} onClick={() => openModule("campuses")}><span>⌘</span> Tata Kelola Institusi</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["academic.students.read", "academic.students.identity.read", "academic.students.health.read"]))} type="button" className={screen === "modules" && ["student-details","student-identity-documents","student-health-profiles","guardians","student-guardians"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("student-details")}><span>♙</span> Master Data Santri</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ADMISSIONS_ACCESS))} type="button" className={screen === "admissions" || (previewMode && screen === "modules" && moduleResource.startsWith("admission-")) ? "nav-item active" : "nav-item"} onClick={openAdmissions}><span>✳</span> PPDB</button>
+      <div className="side-label second" hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["academic.classes.read","academic.enrollments.read","academic.attendance.read","boarding.rooms.manage","boarding.assignments.manage","boarding.leave.read","boarding.incidents.read","library.catalog.read","library.loans.read"]))}>PENDIDIKAN & KESANTRIAN</div>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, MODULE_ACCESS.academic))} type="button" className={screen === "modules" && ["academic-years","academic-terms","programs","subjects","classes","enrollments","attendance-sessions","attendance-records","academic-class-subjects"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("academic-years")}><span>▦</span> Akademik & Kurikulum</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, MODULE_ACCESS.boarding))} type="button" className={screen === "modules" && ["dormitories","boarding-rooms","boarding-beds","boarding-assignments","leave-requests","incidents"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("dormitories")}><span>⌂</span> Asrama & Kesantrian</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, MODULE_ACCESS.library))} type="button" className={screen === "modules" && ["library-catalog","library-copies","library-loans"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("library-catalog")}><span>▥</span> Perpustakaan</button>
+      <div className="side-label second" hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["finance.accounts.read","finance.journals.read","inventory.items.read","inventory.movements.read","hr.employees.read","hr.contracts.read","hr.payroll.read","hr.educators.read","hr.organization.read","assets.register.read","procurement.suppliers.manage","procurement.requests.read","procurement.orders.manage","cms.pages.manage","cms.announcements.manage","crm.contacts.read","crm.donations.manage","core.roles.manage","core.members.manage","academic.classes.read"]))}>TATA KELOLA & LAYANAN</div>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, MODULE_ACCESS.finance))} type="button" className={(screen === "operations" && operationsArea === "finance") || (previewMode && screen === "modules" && moduleResource.startsWith("finance-")) ? "nav-item active" : "nav-item"} onClick={() => openOperations("finance")}><span>◈</span> Keuangan & Akuntansi</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, MODULE_ACCESS.inventory))} type="button" className={(screen === "operations" && operationsArea === "inventory") || (previewMode && screen === "modules" && moduleResource.startsWith("inventory-")) ? "nav-item active" : "nav-item"} onClick={() => openOperations("inventory")}><span>▤</span> Inventaris & Gudang</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, MODULE_ACCESS.hr))} type="button" className={(screen === "operations" && operationsArea === "hr") || (previewMode && screen === "modules" && ["employees","hr-contracts","hr-payroll-periods","hr-payroll-runs"].includes(moduleResource)) ? "nav-item active" : "nav-item"} onClick={() => openOperations("hr")}><span>♙</span> SDM & Payroll</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["hr.educators.read","hr.organization.read"]))} type="button" className={screen === "modules" && ["instructor-profiles","employee-assignments","hr-departments","hr-positions"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("instructor-profiles")}><span>♟</span> Pengajar & Struktur Organisasi</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["assets.register.read","procurement.suppliers.manage","procurement.requests.read","procurement.orders.manage"]))} type="button" className={screen === "modules" && ["assets","asset-events","suppliers","purchase-requests","purchase-request-lines","purchase-orders","purchase-order-lines"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("assets")}><span>▧</span> Aset & Pengadaan</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["cms.pages.manage","cms.announcements.manage"]))} type="button" className={screen === "modules" && ["cms-pages","announcements"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("cms-pages")}><span>▣</span> Website & Pengumuman</button>
+      <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["crm.contacts.read","crm.donations.manage"]))} type="button" className={screen === "modules" && ["contacts","interactions","donor-pledges"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("contacts")}><span>◎</span> CRM, Alumni & Donatur</button>
+      <button hidden={Boolean(tenant && !tenant.permissions.includes("academic.classes.read"))} type="button" className={screen === "modules" && moduleResource === "campuses" ? "nav-item active" : "nav-item"} onClick={() => openModule("campuses")}><span>⌘</span> Tata Kelola Institusi</button>
       {(tenant?.permissions.includes("core.roles.manage") || tenant?.permissions.includes("core.members.manage")) && <button type="button" className={screen === "access" ? "nav-item active" : "nav-item"} onClick={() => { setScreen("access"); setError(""); setNotice(""); }}><span>♙</span> Jabatan, Peran & Hak Akses</button>}
-      <button type="button" className={screen === "modules" && moduleResource === "all" ? "nav-item active" : "nav-item"} onClick={() => openModule("all")}><span>☷</span> Semua Modul</button>
+      <button hidden={Boolean(tenant && !hasReadableModuleResource(tenant.permissions))} type="button" className={screen === "modules" && moduleResource === "all" ? "nav-item active" : "nav-item"} onClick={() => openModule("all")}><span>☷</span> Semua Modul</button>
       <div className="sidebar-bottom"><div className="secure-note"><span className={tenant?.security?.status === "protected" ? "secure-dot" : "secure-dot warning"} />{tenant?.security?.status === "protected" ? ` Isolasi data aktif · ${tenant.security.protectedTables}/${tenant.security.tenantTables} tabel terlindungi` : " Status isolasi belum terverifikasi"}</div><div className="profile"><div className="avatar">{initials}</div><div className="profile-text"><strong>{user.name || user.email}</strong><small>{user.email}</small></div><button className="icon-button" title="Keluar" onClick={() => void signOut()}>↗</button></div></div>
     </aside>
     {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Tutup menu navigasi" onClick={() => setMobileNavOpen(false)} />}
@@ -534,7 +580,7 @@ export default function App() {
           <InstitutionActivation />
         </>}</> : <>
           <div className="page-heading"><div><div className="eyebrow">{previewMode ? "PONDOK OS / PRATINJAU PRODUK" : `PONDOK OS / ${tenant?.organizationId.slice(0, 8).toUpperCase()}`}</div><h1>{previewMode ? getModuleResourceLabel(moduleResource) : screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "Manajemen PPDB" : screen === "access" ? "Jabatan, Peran & Hak Akses" : "Ringkasan Pesantren"}</h1><p>{previewMode ? "Jelajahi struktur menu, formulir, dan rancangan alur kerja menggunakan data contoh lokal." : screen === "students" ? "Kelola profil dan identitas santri dalam organisasi." : screen === "modules" ? "Ruang kerja khusus untuk data, formulir, alur persetujuan, dan pencatatan modul ini." : screen === "operations" ? "Data operasional yang ditampilkan mengikuti hak akses akun." : screen === "admissions" ? "Penerimaan santri baru, periode, pendaftaran dan seleksi." : "Pusat kendali operasional institusi Anda."}</p></div><div className="date-chip">{new Intl.DateTimeFormat("id-ID",{dateStyle:"full"}).format(new Date())}</div></div>
-          {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Menu kerja</span><b>▦</b></div><strong>15</strong><small>Pintasan menu pesantren tersedia sesuai hak akses</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan tenant</span><b>◇</b></div><strong>{tenant?.security?.status === "protected" ? "Terverifikasi" : "Perlu pemeriksaan"}</strong><small>{tenant?.security?.protectedTables ?? 0} dari {tenant?.security?.tenantTables ?? 0} tabel memiliki RLS aktif dan dipaksa</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div><button className="text-button" onClick={() => openModule("all")}>Lihat semua modul →</button></div><div className="module-grid">{modules.filter((item) => !tenant || tenant.permissions.includes(({ academic:"academic.classes.read", admissions:"admissions.applications.read", finance:"finance.accounts.read", inventory:"inventory.items.read", library:"library.catalog.read", hr:"hr.employees.read", cms:"cms.pages.manage", boarding:"boarding.leave.read", crm:"crm.contacts.read" } as Record<string,string>)[item.key] ?? "core.members.manage")).map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? openModule("academic-years") : item.key === "admissions" ? setScreen("admissions") : item.key === "finance" ? openOperations("finance") : item.key === "inventory" ? openOperations("inventory") : item.key === "library" ? openModule("library-catalog") : item.key === "hr" ? openOperations("hr") : item.key === "cms" ? openModule("cms-pages") : item.key === "boarding" ? openModule("dormitories") : item.key === "crm" ? openModule("contacts") : openModule("campuses")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
+          {screen === "overview" && <><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Total santri</span><b>♙</b></div><strong>—</strong><small>Data akan tampil setelah modul santri dimuat</small></article><article className="metric-card"><div className="metric-top"><span>Menu kerja</span><b>▦</b></div><strong>{modules.filter((item) => canSeeModuleCard(tenant?.permissions, item.key)).length}</strong><small>Modul yang dapat dibuka oleh peran Anda</small></article><article className="metric-card"><div className="metric-top"><span>Keamanan tenant</span><b>◇</b></div><strong>{tenant?.security?.status === "protected" ? "Terverifikasi" : "Perlu pemeriksaan"}</strong><small>{tenant?.security?.protectedTables ?? 0} dari {tenant?.security?.tenantTables ?? 0} tabel memiliki RLS aktif dan dipaksa</small></article><article className="metric-card"><div className="metric-top"><span>Mode sistem</span><b>⌘</b></div><strong>Cloud</strong><small>Mode lokal dan hybrid menyusul</small></article></div><section className="section-block"><div className="section-title"><div><h2>Ruang kerja</h2><p>Akses cepat ke fungsi operasional pesantren.</p></div>{tenant && hasReadableModuleResource(tenant.permissions) && <button className="text-button" onClick={() => openModule("all")}>Lihat semua modul →</button>}</div><div className="module-grid">{modules.filter((item) => canSeeModuleCard(tenant?.permissions, item.key)).map((item) => <button key={item.key} className="module-card" onClick={() => item.key === "academic" ? openModule("academic-years") : item.key === "admissions" ? openAdmissions() : item.key === "finance" ? openOperations("finance") : item.key === "inventory" ? openOperations("inventory") : item.key === "library" ? openModule("library-catalog") : item.key === "hr" ? openOperations("hr") : item.key === "cms" ? openModule("cms-pages") : item.key === "boarding" ? openModule("dormitories") : item.key === "crm" ? openModule("contacts") : openModule("campuses")}><span className="module-icon">{item.icon}</span><span className="module-state">{item.status}</span><strong>{item.name}</strong><small>{item.desc}</small><span className="module-arrow">↗</span></button>)}</div></section></>}
           {screen === "modules" && <ModuleWorkspace organizationId={tenant?.organizationId ?? "preview-only"} permissions={tenant?.permissions ?? PREVIEW_PERMISSIONS} initialResourceKey={moduleResource} onResourceChange={setModuleResource} preview={previewMode} />}
           {screen === "access" && tenant && <TenantAccessAdmin organizationId={tenant.organizationId} permissions={tenant.permissions} />}
           {screen === "operations" && <Operations organizationId={tenant?.organizationId ?? "preview-only"} permissions={tenant?.permissions ?? PREVIEW_PERMISSIONS} initialArea={operationsArea} />}
