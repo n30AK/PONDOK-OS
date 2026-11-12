@@ -30,7 +30,7 @@ const modules = [
   { key: "crm", name: "CRM & Alumni", desc: "Wali santri, komunikasi, alumni, donatur", icon: "◎", status: "Direncanakan" },
 ];
 
-const MODULE_ACCESS: Record<string, readonly string[]> = {
+const MODULE_ACCESS = {
   academic: ["academic.classes.read", "academic.enrollments.read", "academic.attendance.read"],
   admissions: ["admissions.periods.read", "admissions.applications.read"],
   finance: ["finance.accounts.read", "finance.journals.read"],
@@ -40,7 +40,7 @@ const MODULE_ACCESS: Record<string, readonly string[]> = {
   cms: ["cms.pages.manage", "cms.announcements.manage"],
   boarding: ["boarding.rooms.manage", "boarding.assignments.manage", "boarding.leave.read", "boarding.incidents.read"],
   crm: ["crm.contacts.read", "crm.donations.manage"],
-};
+} as const;
 const OPERATIONS_ACCESS: Record<OperationsArea, readonly string[]> = {
   finance: MODULE_ACCESS.finance,
   inventory: MODULE_ACCESS.inventory,
@@ -206,7 +206,7 @@ export default function App() {
       openModule(previewResource[area]);
       return;
     }
-    if (!hasAnyPermission(tenant.permissions, OPERATIONS_ACCESS[area])) { setError("Akses ditolak. Anda tidak memiliki izin baca pada area operasional ini."); return; }
+    if (!hasAnyPermission(tenant.permissions, (OPERATIONS_ACCESS[area] ?? []))) { setError("Akses ditolak. Anda tidak memiliki izin baca pada area operasional ini."); return; }
     setOperationsArea(area); setScreen("operations"); setError(""); setNotice("");
   };
   const openAdmissions = () => {
@@ -226,7 +226,7 @@ export default function App() {
     const permissions = tenant.permissions;
     const denied =
       (screen === "modules" && (moduleResource === "all" ? !hasReadableModuleResource(permissions) : !hasReadableModuleGroup(moduleResource, permissions))) ||
-      (screen === "operations" && !hasAnyPermission(permissions, OPERATIONS_ACCESS[operationsArea])) ||
+      (screen === "operations" && !hasAnyPermission(permissions, (OPERATIONS_ACCESS[operationsArea] ?? []))) ||
       (screen === "admissions" && !hasAnyPermission(permissions, ADMISSIONS_ACCESS)) ||
       (screen === "access" && !hasAnyPermission(permissions, ["core.roles.manage", "core.members.manage"])) ||
       (screen === "students" && !permissions.includes("academic.students.read"));
