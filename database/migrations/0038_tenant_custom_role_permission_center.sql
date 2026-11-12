@@ -316,5 +316,6 @@ GRANT EXECUTE ON FUNCTION core.delete_tenant_role(uuid) TO pondok_runtime;
 GRANT EXECUTE ON FUNCTION core.add_tenant_member_by_email(text,text[]) TO pondok_runtime;
 GRANT EXECUTE ON FUNCTION core.list_tenant_members() TO pondok_runtime;
 GRANT EXECUTE ON FUNCTION core.set_tenant_member_roles(uuid,text[]) TO pondok_runtime;
+GRANT SELECT ON core.permissions TO pondok_runtime;
 
 COMMIT;
