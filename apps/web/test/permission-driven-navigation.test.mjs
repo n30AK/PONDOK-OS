@@ -55,3 +55,8 @@ test("read-only roles can navigate to a module while write controls remain separ
   assert.match(operations, /const readable = columns\[selected\]\.filter\(\(item\) => permissions\.includes\(item\.read\)\)/);
   assert.match(operations, /forms\[area\]\.filter\(\(item\) => permissions\.includes\(item\.permission\)\)/);
 });
+
+test("CSV export controls require the dedicated reports.export permission", async () => {
+  const moduleWorkspace = await read("apps/web/src/ModuleWorkspace.tsx");
+  assert.match(moduleWorkspace, /!permissions\\.includes\\("reports\\.export"\\)/);
+});
