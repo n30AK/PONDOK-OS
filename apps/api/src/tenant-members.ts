@@ -232,5 +232,133 @@ export async function handleTenantMembersRequest(
     return true;
   }
 
+
+  const scopeTables = {
+    campus: { table: "core.membership_campus_scopes", target: "campus_id" },
+    department: { table: "core.membership_department_scopes", target: "department_id" },
+    class: { table: "core.membership_class_scopes", target: "class_group_id" },
+    class_subject: { table: "core.membership_class_subject_scopes", target: "class_subject_id" },
+    dormitory: { table: "core.membership_dormitory_scopes", target: "dormitory_id" },
+    room: { table: "core.membership_room_scopes", target: "room_id" },
+  } as const;
+  type ScopeType = keyof typeof scopeTables;
+  const memberScopeMatch = url.pathname.match(/^\\/v1\\/tenant\\/members\\/([0-9a-f-]{36})\\/scopes$/i);
+  const memberScopeRevokeMatch = url.pathname.match(/^\\/v1\\/tenant\\/members\\/([0-9a-f-]{36})\\/scopes\\/([0-9a-f-]{36})\\/revoke$/i);
+  if ((memberScopeMatch && (req.method === "GET" || req.method === "POST")) || (memberScopeRevokeMatch && req.method === "PATCH")) {
+    if (!canManageMembers(ctx.permissions)) {
+      reply(res, 403, { error: "permission_denied" });
+      return true;
+    }
+    const memberId = (memberScopeMatch?.[1] ?? memberScopeRevokeMatch?.[1])!;
+    if (memberId === ctx.membershipId) {
+      reply(res, 409, { error: "self_scope_change_forbidden" });
+      return true;
+    }
+    if (req.method === "GET" && memberScopeMatch) {
+      try {
+        const entries = await Promise.all(Object.entries(scopeTables).map(async ([scopeType, config]) => {
+          const result = await pool.query(
+            `SELECT id, ${config.target} AS target_id, valid_from, valid_until, reason, created_at, revoked_at
+               FROM ${config.table}
+              WHERE organization_id=$1::uuid AND membership_id=$2::uuid
+              ORDER BY created_at DESC LIMIT 500`,
+            [org, memberId],
+          );
+          return [scopeType, result.rows] as const;
+        }));
+        reply(res, 200, { data: { membershipId: memberId, scopes: Object.fromEntries(entries) } });
+      } catch {
+        reply(res, 503, { error: "tenant_member_scopes_unavailable" });
+      }
+      return true;
+    }
+    if (req.method === "POST" && memberScopeMatch) {
+      const input = await body(req);
+      const scopeType = input?.scopeType;
+      const config = typeof scopeType === "string" && Object.hasOwn(scopeTables, scopeType)
+        ? scopeTables[scopeType as ScopeType] : null;
+      const targetId = input?.targetId;
+      const reason = typeof input?.reason === "string" ? input.reason.trim() : "";
+      const validFrom = input?.validFrom === undefined ? null : input.validFrom;
+      const validUntil = input?.validUntil === undefined || input.validUntil === null || input.validUntil === "" ? null : input.validUntil;
+      const validDate = (value: unknown) => typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value));
+      if (!config || typeof targetId !== "string" || !UUID.test(targetId)
+        || reason.length < 3 || reason.length > 500
+        || (validFrom !== null && !validDate(validFrom))
+        || (validUntil !== null && !validDate(validUntil))) {
+        reply(res, 422, { error: "invalid_member_scope_assignment" });
+        return true;
+      }
+      try {
+        const result = await pool.query(
+          `INSERT INTO ${config.table}
+             (organization_id, membership_id, ${config.target}, valid_from, valid_until, reason, created_by)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,COALESCE($4::timestamptz,now()),$5::timestamptz,$6,$7::uuid)
+           RETURNING id, ${config.target} AS target_id, valid_from, valid_until, reason, created_at`,
+          [org, memberId, targetId, validFrom, validUntil, reason, actor],
+        );
+        reply(res, 201, { data: { membershipId: memberId, scopeType, assignment: result.rows[0] } });
+      } catch (reasonError) {
+        const message = typeof reasonError === "object" && reasonError !== null
+          ? String((reasonError as { message?: unknown }).message ?? "") : "";
+        if (message.includes("membership_scope_self_change_forbidden")) {
+          reply(res, 409, { error: "self_scope_change_forbidden" });
+        } else if (message.includes("membership_scope_manage_permission_required")) {
+          reply(res, 403, { error: "permission_denied" });
+        } else if (message.includes("membership_scope_target_must_be_active")) {
+          reply(res, 409, { error: "target_membership_inactive" });
+        } else if (String((reasonError as { code?: unknown })?.code ?? "") === "23505") {
+          reply(res, 409, { error: "scope_assignment_already_active" });
+        } else if (String((reasonError as { code?: unknown })?.code ?? "") === "23503") {
+          reply(res, 422, { error: "scope_target_not_found_in_tenant" });
+        } else if (message.includes("membership_scope_")) {
+          reply(res, 422, { error: "invalid_member_scope_assignment" });
+        } else {
+          reply(res, 503, { error: "tenant_member_scope_assignment_failed" });
+        }
+      }
+      return true;
+    }
+    if (req.method === "PATCH" && memberScopeRevokeMatch) {
+      const scopeId = memberScopeRevokeMatch[2]!;
+      const input = await body(req);
+      const scopeType = input?.scopeType;
+      const config = typeof scopeType === "string" && Object.hasOwn(scopeTables, scopeType)
+        ? scopeTables[scopeType as ScopeType] : null;
+      if (!config) {
+        reply(res, 422, { error: "invalid_member_scope_type" });
+        return true;
+      }
+      try {
+        const result = await pool.query(
+          `UPDATE ${config.table}
+              SET revoked_at=now(), revoked_by=$4::uuid
+            WHERE organization_id=$1::uuid AND membership_id=$2::uuid AND id=$3::uuid
+              AND revoked_at IS NULL
+          RETURNING id, revoked_at`,
+          [org, memberId, scopeId, actor],
+        );
+        if (!result.rowCount) {
+          reply(res, 404, { error: "active_scope_assignment_not_found" });
+        } else {
+          reply(res, 200, { data: { membershipId: memberId, scopeType, assignment: result.rows[0] } });
+        }
+      } catch (reasonError) {
+        const message = typeof reasonError === "object" && reasonError !== null
+          ? String((reasonError as { message?: unknown }).message ?? "") : "";
+        if (message.includes("membership_scope_self_change_forbidden")) {
+          reply(res, 409, { error: "self_scope_change_forbidden" });
+        } else if (message.includes("membership_scope_manage_permission_required")) {
+          reply(res, 403, { error: "permission_denied" });
+        } else if (message.includes("membership_scope_only_one_way_revocation_allowed")) {
+          reply(res, 409, { error: "scope_revocation_not_allowed" });
+        } else {
+          reply(res, 503, { error: "tenant_member_scope_revocation_failed" });
+        }
+      }
+      return true;
+    }
+  }
+
   return false;
 }
