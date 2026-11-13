@@ -70,3 +70,15 @@ test("tenant administrators can add only verified accounts and assign tenant cus
  assert.match(ui,/Tambah anggota lembaga/);
  assert.match(ui,/newEmail/);
 });
+
+
+test("institution owner and institution admin always receive tenant access-management permissions",async()=>{
+ const access=await read("apps/api/src/tenant-access.ts");
+ const app=await read("apps/web/src/App.tsx");
+ assert.match(access,/role === "institution_owner" \|\| role === "institution_admin"/);
+ assert.match(access,/permissions\.add\("core\.roles\.manage"\)/);
+ assert.match(access,/permissions\.add\("core\.members\.manage"\)/);
+ assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
+ assert.match(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
+ assert.match(app,/canManageTenantAccess\(tenant\) && <button[^]*Jabatan, Peran & Hak Akses/);
+});
