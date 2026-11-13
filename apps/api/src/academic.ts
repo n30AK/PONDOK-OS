@@ -140,7 +140,11 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const validationError = validateStudentUpdateInput(body);
     if (validationError) { reply(res, 422, { error: validationError }); return true; }
-    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`, tenant.membershipId, tenantWide];
+    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+    if (!tenantWide && Object.prototype.hasOwnProperty.call(body, "campusId")) {
+      reply(res, 403, { error: "campus_transfer_requires_tenant_authority" }); return true;
+    }
+    const values: unknown[] = [organizationId, studentId, tenant.membershipId, tenantWide];
     const set: string[] = [];
     const fields: Array<[string, string, boolean]> = [
       ["campusId", "campus_id", false], ["studentNumber", "student_number", false],
@@ -161,8 +165,9 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     set.push("updated_at = now()");
     try {
       const result = await pool.query(
-        `UPDATE academic.student_profiles SET ${set.join(", ")}
-         WHERE organization_id = $1::uuid AND id = $2::uuid
+        `UPDATE academic.student_profiles sp SET ${set.join(", ")}
+         WHERE sp.organization_id = $1::uuid AND sp.id = $2::uuid
+           AND ${studentScopePredicate("sp", "$1", "$3", "$4")}
          RETURNING id, campus_id AS "campusId", student_number AS "studentNumber",
                    legal_name AS "legalName", preferred_name AS "preferredName",
                    birth_date AS "birthDate", gender_code AS "genderCode",
@@ -187,6 +192,16 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
   if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
   const validationError = validateStudentInput(body) ?? validateStudentProfileData(body.profileData);
   if (validationError) { reply(res, 422, { error: validationError }); return true; }
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    const assignedCampus = await pool.query(
+      `SELECT 1 FROM core.membership_campus_scopes
+       WHERE organization_id=$1::uuid AND membership_id=$2::uuid AND campus_id=$3::uuid
+         AND revoked_at IS NULL AND valid_from<=now()
+         AND (valid_until IS NULL OR valid_until>now()) LIMIT 1`,
+      [organizationId, tenant.membershipId, body.campusId],
+    );
+    if (!assignedCampus.rows.length) { reply(res, 403, { error: "campus_outside_member_scope" }); return true; }
+  }
   try {
     const result = await pool.query(
       `INSERT INTO academic.student_profiles
