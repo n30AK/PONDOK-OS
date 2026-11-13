@@ -87,11 +87,14 @@ export function validateStudentInput(value: Json): string | null {
 
 export async function handleAcademicRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
-  if (url.pathname !== "/v1/academic/students") return false;
+  const collectionPath = url.pathname === "/v1/academic/students";
   const studentMatch = url.pathname.match(/^\/v1\/academic\/students\/([0-9a-f-]{36})$/i);
+  if (!collectionPath && !studentMatch) return false;
   const isStudentUpdate = Boolean(studentMatch && req.method === "PATCH");
-  if (req.method !== "GET" && req.method !== "POST" && !isStudentUpdate) {
-    res.setHeader("allow", "GET, POST, PATCH"); reply(res, 405, { error: "method_not_allowed" }); return true;
+  if ((collectionPath && req.method !== "GET" && req.method !== "POST")
+    || (studentMatch && !isStudentUpdate)) {
+    res.setHeader("allow", collectionPath ? "GET, POST" : "PATCH");
+    reply(res, 405, { error: "method_not_allowed" }); return true;
   }
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
