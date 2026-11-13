@@ -171,6 +171,7 @@ CREATE INDEX membership_room_scopes_member_idx ON core.membership_room_scopes(or
 CREATE OR REPLACE FUNCTION core.guard_membership_scope_assignment()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = pg_catalog, core
 AS $function$
 DECLARE
