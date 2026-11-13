@@ -8,7 +8,7 @@ type ScopeType = "campus" | "department" | "class" | "class_subject" | "dormitor
 type ScopeTarget = { target_id: string; label: string; parent_id?: string | null };
 type ScopeAssignment = { id: string; target_id: string; valid_from: string; valid_until: string | null; reason: string; created_at: string; revoked_at: string | null };
 type MemberScopes = Record<ScopeType, ScopeAssignment[]>;
-type Props = { organizationId: string; permissions: string[]; roles?: string[] };
+type Props = { organizationId: string; permissions: string[]; institutionRoles?: string[] };
 const SCOPE_LABELS: Record<ScopeType,string> = {
   campus: "Kampus", department: "Departemen / unit", class: "Rombongan belajar",
   class_subject: "Mapel pada kelas", dormitory: "Asrama", room: "Kamar",
@@ -28,10 +28,10 @@ const GROUP_LABELS: Record<string,string> = {
   reports:"Laporan", settings:"Pengaturan", sync:"Sinkronisasi",
 };
 
-export default function TenantAccessAdmin({ organizationId, permissions, roles = [] }: Props) {
+export default function TenantAccessAdmin({ organizationId, permissions, institutionRoles = [] }: Props) {
   // Keep UI capability checks aligned with the server policy: institution owners
   // and administrators receive these tenant-scoped capabilities from the API.
-  const isInstitutionAdmin = roles.some((role) => role === "institution_owner" || role === "institution_admin");
+  const isInstitutionAdmin = institutionRoles.some((role) => role === "institution_owner" || role === "institution_admin");
   const canManageMembers = permissions.includes("core.members.manage") || isInstitutionAdmin;
   const canManageRoles = permissions.includes("core.roles.manage") || isInstitutionAdmin;
   const [members,setMembers]=useState<Member[]>([]);
