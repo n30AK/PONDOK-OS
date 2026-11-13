@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { employeeScopePredicate, hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -48,17 +48,26 @@ export async function handleHrRequest(
   if (!path.startsWith("/v1/hr/")) return false;
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
+  const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+  // Payroll exposes organization-wide compensation data. Until payroll-specific
+  // employee/department scope joins are implemented, fail closed for scoped staff.
+  if (path.startsWith("/v1/hr/payroll/") && !tenantWide) {
+    reply(res, 403, { error: "payroll_scope_not_supported_for_member", message: "Akses payroll memerlukan kewenangan tenant sampai pembatasan payroll per pegawai selesai diuji." });
+    return true;
+  }
 
   if (path === "/v1/hr/employees" && req.method === "GET") {
     if (!tenant.permissions.includes("hr.employees.read")) { reply(res, 403, { error: "permission_required", permission: "hr.employees.read" }); return true; }
     const limitRaw = Number(url.searchParams.get("limit") ?? "50");
     const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
     const result = await pool.query(
-      `SELECT id, campus_id AS "campusId", employee_number AS "employeeNumber",
-              legal_name AS "legalName", preferred_name AS "preferredName",
-              email, phone, joined_on AS "joinedOn", employment_status AS "employmentStatus"
-       FROM hr.employees WHERE organization_id = $1::uuid
-       ORDER BY legal_name LIMIT $2`, [organizationId, limit],
+      `SELECT e.id, e.campus_id AS "campusId", e.employee_number AS "employeeNumber",
+              e.legal_name AS "legalName", e.preferred_name AS "preferredName",
+              e.email, e.phone, e.joined_on AS "joinedOn", e.employment_status AS "employmentStatus"
+       FROM hr.employees e WHERE e.organization_id = $1::uuid
+         AND ${employeeScopePredicate("e", "$1", "$2", "$3")}
+       ORDER BY e.legal_name LIMIT $4`,
+      [organizationId, tenant.membershipId, tenantWide, limit],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
@@ -69,6 +78,21 @@ export async function handleHrRequest(
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const error = validateEmployeeInput(body);
     if (error) { reply(res, 422, { error }); return true; }
+    if (!tenantWide) {
+      if (typeof body.campusId !== "string") {
+        reply(res, 403, { error: "employee_create_requires_assigned_campus" }); return true;
+      }
+      const assignedCampus = await pool.query(
+        `SELECT 1 FROM core.membership_campus_scopes
+         WHERE organization_id=$1::uuid AND membership_id=$2::uuid AND campus_id=$3::uuid
+           AND revoked_at IS NULL AND valid_from<=now()
+           AND (valid_until IS NULL OR valid_until>now()) LIMIT 1`,
+        [organizationId, tenant.membershipId, body.campusId],
+      );
+      if (!assignedCampus.rows.length) {
+        reply(res, 403, { error: "campus_outside_member_scope" }); return true;
+      }
+    }
     try {
       const result = await pool.query(
         `INSERT INTO hr.employees
