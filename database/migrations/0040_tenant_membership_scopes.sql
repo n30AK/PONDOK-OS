@@ -176,6 +176,28 @@ BEGIN
     RAISE EXCEPTION 'membership_scope_actor_required' USING ERRCODE = '42501';
   END IF;
 
+  -- Enforce the access-management capability at the database boundary too.
+  -- The tenant-owner/admin compatibility rule is explicit and mirrors the API.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM core.organization_memberships actor_membership
+    JOIN core.membership_roles actor_role ON actor_role.membership_id = actor_membership.id
+    JOIN core.roles actor_role_definition
+      ON actor_role_definition.id = actor_role.role_id
+     AND (actor_role_definition.organization_id IS NULL
+          OR actor_role_definition.organization_id = actor_membership.organization_id)
+    LEFT JOIN core.role_permissions actor_permission
+      ON actor_permission.role_id = actor_role_definition.id
+     AND actor_permission.permission_key = 'core.members.manage'
+    WHERE actor_membership.organization_id = NEW.organization_id
+      AND actor_membership.user_id = actor_id
+      AND actor_membership.membership_status = 'active'
+      AND (actor_role_definition.role_key IN ('institution_owner','institution_admin')
+           OR actor_permission.permission_key IS NOT NULL)
+  ) THEN
+    RAISE EXCEPTION 'membership_scope_manage_permission_required' USING ERRCODE = '42501';
+  END IF;
+
   SELECT om.user_id INTO target_user_id
   FROM core.organization_memberships om
   WHERE om.organization_id = NEW.organization_id
