@@ -299,6 +299,9 @@ async function handleStudentHealthProfiles(
 ): Promise<void> {
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return; }
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    reply(res, 403, { error: "restricted_student_data_requires_tenant_authority", message: "Akses dokumen identitas dan data kesehatan menunggu pengujian pembatasan scope khusus." }); return;
+  }
   const write = req.method !== "GET";
   const requiredPermission = write ? "academic.students.health.write" : "academic.students.health.read";
   if (!tenant.permissions.includes(requiredPermission)) {
@@ -598,6 +601,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     if (req.method !== "POST") { res.setHeader("allow", "POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
     const tenant = await loadTenantContext(pool,userId,organizationId);
     if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
+    if (!hasTenantWideOperationalAccess(tenant.roles)) { reply(res,403,{error:"guardian_authority_scope_not_supported"}); return true; }
     if (!tenant.permissions.includes("academic.students.guardians.verify")) {
       reply(res,403,{error:"permission_required",permission:"academic.students.guardians.verify"}); return true;
     }
@@ -655,6 +659,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     if (req.method !== "POST") { res.setHeader("allow", "POST"); reply(res,405,{error:"method_not_allowed"}); return true; }
     const tenant = await loadTenantContext(pool,userId,organizationId);
     if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
+    if (!hasTenantWideOperationalAccess(tenant.roles)) { reply(res,403,{error:"library_loan_scope_not_supported"}); return true; }
     if (!tenant.permissions.includes("library.loans.write")) { reply(res,403,{error:"permission_required",permission:"library.loans.write"}); return true; }
     const loanId = returnMatch[1] ?? "";
     if (!UUID.test(loanId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
@@ -688,6 +693,11 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const write = req.method !== "GET";
   const requiredPermission = write ? (resource.writePermission ?? resource.permission) : resource.permission;
   if (!tenant.permissions.includes(requiredPermission)) { reply(res,403,{error:"permission_required",permission:requiredPermission}); return true; }
+  // Generic module tables are not yet mapped to every concrete member scope.
+  // Do not let a tenant-level permission silently bypass member-level grants.
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
+  }
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
     const limit=Number.isInteger(limitRaw)?Math.min(Math.max(limitRaw,1),200):100;
