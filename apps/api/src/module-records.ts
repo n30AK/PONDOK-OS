@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 type Field = { column: string; kind?: "text" | "date" | "uuid" | "number" | "boolean" | "json" | "array" | "timestamp"; required?: boolean; max?: number; values?: string[]; minValue?: number; maxValue?: number; integer?: boolean };
 type Resource = { table: string; permission: string; writePermission?: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
@@ -670,10 +670,14 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     if (!tenant) { reply(res,403,{error:"active_membership_required"}); return true; }
     const allowed = canReadStudentOptions(tenant.permissions);
     if (!allowed) { reply(res,403,{error:"permission_required"}); return true; }
+    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
     const result = await pool.query(
-      `SELECT id, student_number AS "studentNumber", legal_name AS "legalName"
-       FROM academic.student_profiles WHERE organization_id=$1::uuid AND status IN ('active','applicant')
-       ORDER BY legal_name LIMIT 200`, [organizationId],
+      `SELECT sp.id, sp.student_number AS "studentNumber", sp.legal_name AS "legalName"
+       FROM academic.student_profiles sp
+       WHERE sp.organization_id=$1::uuid AND sp.status IN ('active','applicant')
+         AND ${studentScopePredicate("sp", "$1", "$2", "$3")}
+       ORDER BY sp.legal_name LIMIT 200`,
+      [organizationId, tenant.membershipId, tenantWide],
     );
     reply(res,200,{data:result.rows}); return true;
   }
