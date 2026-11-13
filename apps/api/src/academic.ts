@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_BODY_BYTES = 16_384;
@@ -108,7 +108,8 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
     const search = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     const status = url.searchParams.get("status");
-    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`];
+    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`];")}%`, tenant.membershipId, tenantWide];
     let statusClause = "";
     if (status && ["applicant", "active", "graduated", "withdrawn", "suspended"].includes(status)) {
       values.push(status); statusClause = `AND sp.status = $${values.length}`;
@@ -123,7 +124,8 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
        WHERE sp.organization_id = $1
          AND ($2 = '%%' OR sp.student_number ILIKE $2 OR sp.legal_name ILIKE $2)
          ${statusClause}
-       ORDER BY sp.created_at DESC LIMIT $${values.length}`, values,
+         AND ${studentScopePredicate("sp", "$1", "$3", "$4")}
+       ORDER BY sp.created_at DESC LIMIT ${values.length}`, values,
     );
     reply(res, 200, { data: result.rows, pagination: { limit, returned: result.rows.length } }); return true;
   }
