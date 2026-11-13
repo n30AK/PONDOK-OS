@@ -110,6 +110,8 @@ try {
   const bootstrapTenant = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
   const bootstrapUser = "ffffffff-ffff-4fff-8fff-ffffffffffff";
   const bootstrapCampus = "eeeeeeee-0001-4000-8000-000000000001";
+  const scopeTargetUser = "eeeeeeee-0002-4000-8000-000000000002";
+  const scopeUnauthorizedUser = "eeeeeeee-0003-4000-8000-000000000003";
   await client.query("BEGIN");
   await client.query(
     "INSERT INTO core.organizations (id, slug, name, organization_type, status) VALUES ($1,'rls-bootstrap-ci','RLS Bootstrap CI','pesantren','active')",
@@ -118,6 +120,14 @@ try {
   const bootstrapMembership = await client.query(
     "INSERT INTO core.organization_memberships (organization_id, user_id, membership_status) VALUES ($1,$2,'active') RETURNING id",
     [bootstrapTenant, bootstrapUser],
+  );
+  const scopeTargetMembership = await client.query(
+    "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1,$2,'active') RETURNING id",
+    [bootstrapTenant, scopeTargetUser],
+  );
+  await client.query(
+    "INSERT INTO core.organization_memberships (organization_id,user_id,membership_status) VALUES ($1,$2,'active')",
+    [bootstrapTenant, scopeUnauthorizedUser],
   );
   const ownerRole = await client.query(
     "SELECT id FROM core.roles WHERE organization_id IS NULL AND role_key = 'institution_owner' AND is_system = true LIMIT 1",
@@ -165,6 +175,43 @@ try {
   assert.equal(bootstrapAuditVisible.rowCount, 1, "first bootstrap must write its audit event under FORCE RLS");
   assert.equal(bootstrapRoleVisible.rowCount, 1, "first bootstrap must assign the owner role under RLS");
   assert.ok(bootstrapPermissionsVisible.rowCount > 0, "global owner permissions must remain visible under RLS");
+
+  const scopeAssignment = await client.query(
+    "INSERT INTO core.membership_campus_scopes (organization_id,membership_id,campus_id,reason,created_by) VALUES ($1,$2,$3,'Uji scope kampus untuk CI',$4) RETURNING id",
+    [bootstrapTenant, scopeTargetMembership.rows[0].id, bootstrapCampus, bootstrapUser],
+  );
+  assert.equal(scopeAssignment.rowCount, 1, "tenant owner can grant a campus scope to another active member");
+  const visibleScope = await client.query(
+    "SELECT id FROM core.membership_campus_scopes WHERE membership_id=$1::uuid",
+    [scopeTargetMembership.rows[0].id],
+  );
+  assert.equal(visibleScope.rowCount, 1, "tenant runtime can read scope assignments inside its tenant");
+
+  await client.query("SAVEPOINT scope_self_grant");
+  await assert.rejects(
+    () => client.query(
+      "INSERT INTO core.membership_campus_scopes (organization_id,membership_id,campus_id,reason,created_by) VALUES ($1,$2,$3,'Self grant must fail',$4)",
+      [bootstrapTenant, bootstrapMembership.rows[0].id, bootstrapCampus, bootstrapUser],
+    ),
+    (error) => error && error.code === "42501",
+    "tenant member must not grant scope to their own membership",
+  );
+  await client.query("ROLLBACK TO SAVEPOINT scope_self_grant");
+  await client.query("RELEASE SAVEPOINT scope_self_grant");
+
+  await client.query("SELECT set_config('app.user_id',$1,true)", [scopeUnauthorizedUser]);
+  await client.query("SAVEPOINT scope_without_permission");
+  await assert.rejects(
+    () => client.query(
+      "INSERT INTO core.membership_campus_scopes (organization_id,membership_id,campus_id,reason,created_by) VALUES ($1,$2,$3,'Permission must be checked',$4)",
+      [bootstrapTenant, scopeTargetMembership.rows[0].id, bootstrapCampus, scopeUnauthorizedUser],
+    ),
+    (error) => error && error.code === "42501",
+    "member without core.members.manage must not grant scope",
+  );
+  await client.query("ROLLBACK TO SAVEPOINT scope_without_permission");
+  await client.query("RELEASE SAVEPOINT scope_without_permission");
+  await client.query("SELECT set_config('app.user_id',$1,true)", [bootstrapUser]);
   await client.query("ROLLBACK");
 
   // Platform runtime can create the first membership only for an active Super Admin.
