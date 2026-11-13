@@ -67,7 +67,7 @@ test("withTenantScope binds user and organization before loading tenant permissi
   const context = await withTenantScope(pool, userA, tenantA, (client) => loadTenantContext(client, userA, tenantA));
   assert.equal(context?.organizationId, tenantA);
   assert.deepEqual(context?.roles, ["institution_owner"]);
-  assert.deepEqual(context?.permissions, ["academic.students.read"]);
+  assert.deepEqual(context?.permissions, ["academic.students.read", "core.roles.manage", "core.members.manage"]);
   assert.equal(state.inTransaction, false);
   assert.equal(state.role, "");
   assert.equal(state.userId, "");
