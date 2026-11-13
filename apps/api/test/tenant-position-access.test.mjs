@@ -90,7 +90,8 @@ test("tenant member scope APIs are tenant-permission gated, immutable and append
  const api=await read("apps/api/src/tenant-members.ts");
  const migration=await read("database/migrations/0040_tenant_membership_scopes.sql");
  const main=await read("apps/api/src/main.ts");
- assert.match(api,/\/v1\/tenant\/members\/\(\[0-9a-f-\]\{36\}\)\/scopes/);
+ assert.match(api,/memberScopeMatch/);
+ assert.match(api,/memberScopeRevokeMatch/);
  assert.match(api,/canManageMembers\(ctx\.permissions\)/);
  assert.match(api,/self_scope_change_forbidden/);
  assert.match(api,/INSERT INTO audit\.audit_events/);
