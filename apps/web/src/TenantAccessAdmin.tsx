@@ -4,7 +4,16 @@ import { getAccessToken } from "./auth";
 type Member = { membership_id: string; user_id: string; membership_status: string; roles: string[]; role_names: string[] };
 type Role = { id: string; role_key: string; role_name: string; is_system: boolean; organization_id: string | null; permission_keys: string[] };
 type Permission = { permission_key: string; description: string; assignable: boolean };
+type ScopeType = "campus" | "department" | "class" | "class_subject" | "dormitory" | "room";
+type ScopeTarget = { target_id: string; label: string; parent_id?: string | null };
+type ScopeAssignment = { id: string; target_id: string; valid_from: string; valid_until: string | null; reason: string; created_at: string; revoked_at: string | null };
+type MemberScopes = Record<ScopeType, ScopeAssignment[]>;
 type Props = { organizationId: string; permissions: string[] };
+const SCOPE_LABELS: Record<ScopeType,string> = {
+  campus: "Kampus", department: "Departemen / unit", class: "Rombongan belajar",
+  class_subject: "Mapel pada kelas", dormitory: "Asrama", room: "Kamar",
+};
+const EMPTY_SCOPES: MemberScopes = { campus: [], department: [], class: [], class_subject: [], dormitory: [], room: [] };
 
 const ROLE_GROUPS = [
   { title: "Yayasan & Pimpinan", keys: ["foundation_chair","foundation_secretary","foundation_treasurer","pondok_leader","pondok_deputy","pondok_secretary","pondok_treasurer"] },
@@ -37,6 +46,15 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
   const [newEmail,setNewEmail]=useState("");
   const [newRoles,setNewRoles]=useState<string[]>([]);
   const [adding,setAdding]=useState(false);
+  const [scopeTargets,setScopeTargets]=useState<Record<ScopeType,ScopeTarget[]>>({campus:[],department:[],class:[],class_subject:[],dormitory:[],room:[]});
+  const [memberScopes,setMemberScopes]=useState<Record<string,MemberScopes>>({});
+  const [scopeMemberId,setScopeMemberId]=useState("");
+  const [scopeType,setScopeType]=useState<ScopeType>("campus");
+  const [scopeTargetId,setScopeTargetId]=useState("");
+  const [scopeReason,setScopeReason]=useState("");
+  const [scopeValidUntil,setScopeValidUntil]=useState("");
+  const [scopeLoading,setScopeLoading]=useState(false);
+  const [scopeSaving,setScopeSaving]=useState(false);
 
   const request=useCallback(async(path:string,init?:RequestInit)=>{
     const token=await getAccessToken();
@@ -138,6 +156,43 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
     finally{setSaving("");}
   };
 
+  const loadMemberScopes=async(member:Member)=>{
+    setScopeLoading(true);setError("");
+    try{
+      const [scopeResult,targetResult]=await Promise.all([
+        request(`/v1/tenant/members/${member.membership_id}/scopes`),
+        request("/v1/tenant/scope-targets"),
+      ]);
+      setMemberScopes((current)=>({...current,[member.membership_id]:{...EMPTY_SCOPES,...scopeResult.data?.scopes}}));
+      setScopeTargets({...scopeTargets,...targetResult.data});
+      setScopeMemberId(member.membership_id);
+    }catch(reason){setError(reason instanceof Error?reason.message:"Gagal memuat cakupan akses anggota.");}
+    finally{setScopeLoading(false);}
+  };
+  const assignScope=async(member:Member)=>{
+    if(!scopeTargetId||scopeReason.trim().length<3)return;
+    setScopeSaving(true);setError("");setNotice("");
+    try{
+      await request(`/v1/tenant/members/${member.membership_id}/scopes`,{method:"POST",body:JSON.stringify({
+        scopeType,targetId:scopeTargetId,reason:scopeReason.trim(),...(scopeValidUntil?{validUntil:new Date(scopeValidUntil).toISOString()}:{}),
+      })});
+      setScopeTargetId("");setScopeReason("");setScopeValidUntil("");
+      setNotice("Cakupan akses berhasil ditambahkan dan dicatat dalam audit.");
+      await loadMemberScopes(member);
+    }catch(reason){setError(reason instanceof Error?reason.message:"Gagal menambahkan cakupan akses.");}
+    finally{setScopeSaving(false);}
+  };
+  const revokeScope=async(member:Member,type:ScopeType,assignment:ScopeAssignment)=>{
+    if(!window.confirm("Cabut cakupan akses ini? Riwayat akan tetap tersimpan dan tidak dapat dipulihkan."))return;
+    setScopeSaving(true);setError("");setNotice("");
+    try{
+      await request(`/v1/tenant/members/${member.membership_id}/scopes/${assignment.id}/revoke`,{method:"PATCH",body:JSON.stringify({scopeType:type})});
+      setNotice("Cakupan akses berhasil dicabut dan dicatat dalam audit.");
+      await loadMemberScopes(member);
+    }catch(reason){setError(reason instanceof Error?reason.message:"Gagal mencabut cakupan akses.");}
+    finally{setScopeSaving(false);}
+  };
+
   return <section className="tenant-access-page">
     <div className="page-heading"><div><span className="eyebrow">TATA KELOLA ORGANISASI</span><h1>Jabatan, peran & hak akses</h1><p>Kelola peran kerja, izin setiap modul, dan penugasan anggota. Hak akses tetap diperiksa oleh API dan database, bukan hanya disembunyikan dari menu.</p></div><button className="outline-button" type="button" onClick={()=>void load()} disabled={loading}>Muat ulang</button></div>
     <div className="alert info">Peran bawaan merupakan template sistem dan tidak dapat diubah. Buat peran khusus untuk menyesuaikan kewenangan lembaga. Izin administrasi anggota, pengelolaan peran, konfigurasi lembaga, dan kontrol sinkronisasi tidak dapat diberikan melalui peran khusus.</div>
@@ -189,6 +244,38 @@ export default function TenantAccessAdmin({ organizationId, permissions }: Props
       <section className="tenant-member-list"><div className="page-heading"><div><h2>Anggota & penugasan</h2><p>Anggota pemilik dan administrator utama dilindungi dari perubahan melalui layar ini.</p></div></div>
         {members.length===0?<p className="muted">Belum ada anggota terdaftar atau akses daftar anggota tidak tersedia.</p>:members.map((member)=><article className="tenant-member-card" key={member.membership_id}>
           <header><div><strong>Anggota lembaga</strong><small>ID akun: {member.user_id}</small><small>Status: {member.membership_status}</small></div><span className="member-current-roles">{member.roles.map((key)=>roles.find((role)=>role.role_key===key)?.role_name??key).join(" · ")||"Belum ada peran"}</span></header>
+          <div className="tenant-scope-tools">
+            <button type="button" className="outline-button" disabled={scopeLoading} onClick={()=>scopeMemberId===member.membership_id?setScopeMemberId(""):void loadMemberScopes(member)}>
+              {scopeMemberId===member.membership_id?"Tutup cakupan akses":"Atur cakupan akses"}
+            </button>
+            {scopeMemberId===member.membership_id&&<div className="tenant-add-member">
+              <h3>Cakupan akses operasional</h3>
+              <p>Batasi tugas anggota ke kampus, unit, kelas, penawaran mapel, asrama, atau kamar tertentu. Penugasan berlaku sebagai batas tambahan; izin peran tetap diperlukan.</p>
+              <div className="form-grid">
+                <label>Jenis cakupan<select value={scopeType} onChange={(event)=>{setScopeType(event.target.value as ScopeType);setScopeTargetId("");}}>
+                  {(Object.keys(SCOPE_LABELS) as ScopeType[]).map((type)=><option key={type} value={type}>{SCOPE_LABELS[type]}</option>)}
+                </select></label>
+                <label>Target<select value={scopeTargetId} onChange={(event)=>setScopeTargetId(event.target.value)} required>
+                  <option value="">Pilih target</option>
+                  {(scopeTargets[scopeType]??[]).map((target)=><option key={target.target_id} value={target.target_id}>{target.label}</option>)}
+                </select></label>
+                <label>Alasan penugasan<input value={scopeReason} onChange={(event)=>setScopeReason(event.target.value)} minLength={3} maxLength={500} placeholder="Contoh: Penanggung jawab unit putra" required/></label>
+                <label>Berlaku sampai (opsional)<input type="datetime-local" value={scopeValidUntil} onChange={(event)=>setScopeValidUntil(event.target.value)}/></label>
+              </div>
+              <button type="button" className="primary" disabled={scopeSaving||!scopeTargetId||scopeReason.trim().length<3} onClick={()=>void assignScope(member)}>{scopeSaving?"Menyimpan…":"Tambahkan cakupan"}</button>
+              <div className="tenant-scope-list">
+                {(Object.keys(SCOPE_LABELS) as ScopeType[]).map((type)=>{
+                  const entries=memberScopes[member.membership_id]?.[type]??[];
+                  return <section key={type}><h4>{SCOPE_LABELS[type]}</h4>
+                    {entries.length===0?<p className="muted">Belum ada penugasan.</p>:entries.map((entry)=><div className="tenant-scope-row" key={entry.id}>
+                      <span><strong>{scopeTargets[type]?.find((target)=>target.target_id===entry.target_id)?.label??entry.target_id}</strong><small>{entry.reason} · {entry.revoked_at?"Dicabut":entry.valid_until?new Date(entry.valid_until).toLocaleString("id-ID"):"Tanpa batas akhir"}</small></span>
+                      {!entry.revoked_at&&<button type="button" className="outline-button" disabled={scopeSaving} onClick={()=>void revokeScope(member,type,entry)}>Cabut</button>}
+                    </div>)}
+                  </section>;
+                })}
+              </div>
+            </div>}
+          </div>
           {member.roles.some((role)=>["institution_owner","institution_admin"].includes(role))?<div className="alert warning">Akun pemilik / administrator utama dilindungi dan tidak dapat diubah melalui layar ini.</div>:<>
             <div className="tenant-role-groups">{ROLE_GROUPS.map((group)=><fieldset key={group.title}><legend>{group.title}</legend><div>{group.keys.map((key)=>{
               const role=roles.find((item)=>item.role_key===key);if(!role)return null;

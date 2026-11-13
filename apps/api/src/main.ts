@@ -173,10 +173,13 @@ export async function handleRequest(
     return;
   }
 
+  const tenantAccessRoute = pathname.startsWith("/v1/tenant/members") || pathname.startsWith("/v1/tenant/roles") || pathname === "/v1/tenant/scope-targets";
   const writeRoute = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/admissions/") || pathname.startsWith("/v1/sync/") || pathname.startsWith("/v1/finance/") || pathname.startsWith("/v1/inventory/") || pathname.startsWith("/v1/hr/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/platform/");
-  const allowedMethods = pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/platform/erp/")
-    ? ["GET", "HEAD", "POST", "PATCH"]
-    : writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
+  const allowedMethods = tenantAccessRoute
+    ? ["GET", "HEAD", "POST", "PATCH", "DELETE"]
+    : pathname.startsWith("/v1/academic/") || pathname.startsWith("/v1/modules/") || pathname.startsWith("/v1/platform/erp/")
+      ? ["GET", "HEAD", "POST", "PATCH"]
+      : writeRoute ? ["GET", "HEAD", "POST"] : ["GET", "HEAD"];
   if (!allowedMethods.includes(method)) {
     response.setHeader("allow", allowedMethods.join(", "));
     sendJson(response, 405, { error: "method_not_allowed" });
@@ -370,7 +373,7 @@ export async function handleRequest(
     return;
   }
 
-  if (pathname.startsWith("/v1/tenant/members") || pathname.startsWith("/v1/tenant/roles")) {
+  if (pathname.startsWith("/v1/tenant/members") || pathname.startsWith("/v1/tenant/roles") || pathname === "/v1/tenant/scope-targets") {
     if (!dependencies.jwks || !dependencies.issuer || !dependencies.pool) {
       sendJson(response,503,{error:"identity_or_database_not_configured"}); return;
     }

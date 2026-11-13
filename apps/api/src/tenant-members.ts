@@ -232,5 +232,234 @@ export async function handleTenantMembersRequest(
     return true;
   }
 
+
+  const scopeTables = {
+    campus: { table: "core.membership_campus_scopes", target: "campus_id" },
+    department: { table: "core.membership_department_scopes", target: "department_id" },
+    class: { table: "core.membership_class_scopes", target: "class_group_id" },
+    class_subject: { table: "core.membership_class_subject_scopes", target: "class_subject_id" },
+    dormitory: { table: "core.membership_dormitory_scopes", target: "dormitory_id" },
+    room: { table: "core.membership_room_scopes", target: "room_id" },
+  } as const;
+  type ScopeType = keyof typeof scopeTables;
+  const activeScopeTargetQueries: Record<ScopeType, string> = {
+    campus: "SELECT 1 FROM core.campuses WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active'",
+    department: "SELECT 1 FROM hr.departments WHERE organization_id=$1::uuid AND id=$2::uuid AND is_active=true",
+    class: "SELECT 1 FROM academic.class_groups WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active'",
+    class_subject: "SELECT 1 FROM academic.class_subjects cs JOIN academic.class_groups cg ON cg.organization_id=cs.organization_id AND cg.id=cs.class_group_id JOIN academic.subjects s ON s.organization_id=cs.organization_id AND s.id=cs.subject_id WHERE cs.organization_id=$1::uuid AND cs.id=$2::uuid AND cg.status='active' AND s.status='active'",
+    dormitory: "SELECT 1 FROM boarding.dormitories WHERE organization_id=$1::uuid AND id=$2::uuid AND is_active=true",
+    room: "SELECT 1 FROM boarding.rooms r JOIN boarding.dormitories d ON d.organization_id=r.organization_id AND d.id=r.dormitory_id WHERE r.organization_id=$1::uuid AND r.id=$2::uuid AND r.is_active=true AND d.is_active=true",
+  };
+  const memberScopeMatch = url.pathname.match(/^\/v1\/tenant\/members\/([0-9a-f-]{36})\/scopes$/i);
+  const memberScopeRevokeMatch = url.pathname.match(/^\/v1\/tenant\/members\/([0-9a-f-]{36})\/scopes\/([0-9a-f-]{36})\/revoke$/i);
+  if ((memberScopeMatch && (req.method === "GET" || req.method === "POST")) || (memberScopeRevokeMatch && req.method === "PATCH")) {
+    if (!canManageMembers(ctx.permissions)) {
+      reply(res, 403, { error: "permission_denied" });
+      return true;
+    }
+    const memberId = (memberScopeMatch?.[1] ?? memberScopeRevokeMatch?.[1])!;
+    if (memberId === ctx.membershipId) {
+      reply(res, 409, { error: "self_scope_change_forbidden" });
+      return true;
+    }
+    if (req.method === "GET" && memberScopeMatch) {
+      try {
+        const entries = await Promise.all(Object.entries(scopeTables).map(async ([scopeType, config]) => {
+          const result = await pool.query(
+            `SELECT id, ${config.target} AS target_id, valid_from, valid_until, reason, created_at, revoked_at
+               FROM ${config.table}
+              WHERE organization_id=$1::uuid AND membership_id=$2::uuid
+              ORDER BY created_at DESC LIMIT 500`,
+            [org, memberId],
+          );
+          return [scopeType, result.rows] as const;
+        }));
+        reply(res, 200, { data: { membershipId: memberId, scopes: Object.fromEntries(entries) } });
+      } catch {
+        reply(res, 503, { error: "tenant_member_scopes_unavailable" });
+      }
+      return true;
+    }
+    if (req.method === "POST" && memberScopeMatch) {
+      const input = await body(req);
+      const scopeType = input?.scopeType;
+      const config = typeof scopeType === "string" && Object.hasOwn(scopeTables, scopeType)
+        ? scopeTables[scopeType as ScopeType] : null;
+      const targetId = input?.targetId;
+      const reason = typeof input?.reason === "string" ? input.reason.trim() : "";
+      const validFrom = input?.validFrom === undefined ? null : input.validFrom;
+      const validUntil = input?.validUntil === undefined || input.validUntil === null || input.validUntil === "" ? null : input.validUntil;
+      const validDate = (value: unknown) => typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value));
+      if (!config || typeof targetId !== "string" || !UUID.test(targetId)
+        || reason.length < 3 || reason.length > 500
+        || (validFrom !== null && !validDate(validFrom))
+        || (validUntil !== null && !validDate(validUntil))) {
+        reply(res, 422, { error: "invalid_member_scope_assignment" });
+        return true;
+      }
+      try {
+        const activeTarget = await pool.query(activeScopeTargetQueries[scopeType as ScopeType], [org, targetId]);
+        if (!activeTarget.rowCount) {
+          reply(res, 422, { error: "scope_target_not_active_or_not_found" });
+          return true;
+        }
+        const result = await pool.query(
+          `INSERT INTO ${config.table}
+             (organization_id, membership_id, ${config.target}, valid_from, valid_until, reason, created_by)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,COALESCE($4::timestamptz,now()),$5::timestamptz,$6,$7::uuid)
+           RETURNING id, ${config.target} AS target_id, valid_from, valid_until, reason, created_at`,
+          [org, memberId, targetId, validFrom, validUntil, reason, actor],
+        );
+        await pool.query(
+          `INSERT INTO audit.audit_events
+             (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+           VALUES ($1::uuid,$2::uuid,'tenant.member_scope.assigned','membership_scope',$3,
+             jsonb_build_object('membership_id',$4::text,'scope_type',$5::text,'target_id',$6::text,'reason',$7::text))`,
+          [org, actor, result.rows[0].id, memberId, scopeType, targetId, reason],
+        );
+        reply(res, 201, { data: { membershipId: memberId, scopeType, assignment: result.rows[0] } });
+      } catch (reasonError) {
+        const message = typeof reasonError === "object" && reasonError !== null
+          ? String((reasonError as { message?: unknown }).message ?? "") : "";
+        if (message.includes("membership_scope_self_change_forbidden")) {
+          reply(res, 409, { error: "self_scope_change_forbidden" });
+        } else if (message.includes("membership_scope_manage_permission_required")) {
+          reply(res, 403, { error: "permission_denied" });
+        } else if (message.includes("membership_scope_target_must_be_active")) {
+          reply(res, 409, { error: "target_membership_inactive" });
+        } else if (String((reasonError as { code?: unknown })?.code ?? "") === "23505") {
+          reply(res, 409, { error: "scope_assignment_already_active" });
+        } else if (String((reasonError as { code?: unknown })?.code ?? "") === "23503") {
+          reply(res, 422, { error: "scope_target_not_found_in_tenant" });
+        } else if (message.includes("membership_scope_")) {
+          reply(res, 422, { error: "invalid_member_scope_assignment" });
+        } else {
+          reply(res, 503, { error: "tenant_member_scope_assignment_failed" });
+        }
+      }
+      return true;
+    }
+    if (req.method === "PATCH" && memberScopeRevokeMatch) {
+      const scopeId = memberScopeRevokeMatch[2]!;
+      const input = await body(req);
+      const scopeType = input?.scopeType;
+      const config = typeof scopeType === "string" && Object.hasOwn(scopeTables, scopeType)
+        ? scopeTables[scopeType as ScopeType] : null;
+      if (!config) {
+        reply(res, 422, { error: "invalid_member_scope_type" });
+        return true;
+      }
+      try {
+        const result = await pool.query(
+          `UPDATE ${config.table}
+              SET revoked_at=now(), revoked_by=$4::uuid
+            WHERE organization_id=$1::uuid AND membership_id=$2::uuid AND id=$3::uuid
+              AND revoked_at IS NULL
+          RETURNING id, revoked_at`,
+          [org, memberId, scopeId, actor],
+        );
+        if (!result.rowCount) {
+          reply(res, 404, { error: "active_scope_assignment_not_found" });
+        } else {
+          await pool.query(
+            `INSERT INTO audit.audit_events
+               (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+             VALUES ($1::uuid,$2::uuid,'tenant.member_scope.revoked','membership_scope',$3,
+               jsonb_build_object('membership_id',$4::text,'scope_type',$5::text))`,
+            [org, actor, scopeId, memberId, scopeType],
+          );
+          reply(res, 200, { data: { membershipId: memberId, scopeType, assignment: result.rows[0] } });
+        }
+      } catch (reasonError) {
+        const message = typeof reasonError === "object" && reasonError !== null
+          ? String((reasonError as { message?: unknown }).message ?? "") : "";
+        if (message.includes("membership_scope_self_change_forbidden")) {
+          reply(res, 409, { error: "self_scope_change_forbidden" });
+        } else if (message.includes("membership_scope_manage_permission_required")) {
+          reply(res, 403, { error: "permission_denied" });
+        } else if (message.includes("membership_scope_only_one_way_revocation_allowed")) {
+          reply(res, 409, { error: "scope_revocation_not_allowed" });
+        } else {
+          reply(res, 503, { error: "tenant_member_scope_revocation_failed" });
+        }
+      }
+      return true;
+    }
+  }
+
+  if (url.pathname === "/v1/tenant/scope-targets" && req.method === "GET") {
+    if (!canManageMembers(ctx.permissions)) {
+      reply(res, 403, { error: "permission_denied" });
+      return true;
+    }
+    try {
+      const [campuses, departments, classes, classSubjects, dormitories, rooms] = await Promise.all([
+        pool.query(
+          `SELECT id AS target_id, concat(code, ' — ', name) AS label
+             FROM core.campuses
+            WHERE organization_id=$1::uuid AND status='active'
+            ORDER BY name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT id AS target_id, concat(department_code, ' — ', department_name) AS label, campus_id AS parent_id
+             FROM hr.departments
+            WHERE organization_id=$1::uuid AND is_active=true
+            ORDER BY department_name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT id AS target_id, concat(code, ' — ', name) AS label, campus_id AS parent_id
+             FROM academic.class_groups
+            WHERE organization_id=$1::uuid AND status='active'
+            ORDER BY name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT cs.id AS target_id,
+                  concat(cg.name, ' — ', s.name) AS label,
+                  cg.id AS parent_id
+             FROM academic.class_subjects cs
+             JOIN academic.class_groups cg
+               ON cg.organization_id=cs.organization_id AND cg.id=cs.class_group_id
+             JOIN academic.subjects s
+               ON s.organization_id=cs.organization_id AND s.id=cs.subject_id
+            WHERE cs.organization_id=$1::uuid AND cg.status='active' AND s.status='active'
+            ORDER BY cg.name, s.name LIMIT 1000`,
+          [org],
+        ),
+        pool.query(
+          `SELECT id AS target_id, concat(dormitory_code, ' — ', dormitory_name) AS label, campus_id AS parent_id
+             FROM boarding.dormitories
+            WHERE organization_id=$1::uuid AND is_active=true
+            ORDER BY dormitory_name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT r.id AS target_id, concat(d.dormitory_name, ' — ', r.room_code) AS label, r.dormitory_id AS parent_id
+             FROM boarding.rooms r
+             JOIN boarding.dormitories d
+               ON d.organization_id=r.organization_id AND d.id=r.dormitory_id
+            WHERE r.organization_id=$1::uuid AND r.is_active=true AND d.is_active=true
+            ORDER BY d.dormitory_name, r.room_code LIMIT 1000`,
+          [org],
+        ),
+      ]);
+      reply(res, 200, {
+        data: {
+          campus: campuses.rows,
+          department: departments.rows,
+          class: classes.rows,
+          class_subject: classSubjects.rows,
+          dormitory: dormitories.rows,
+          room: rooms.rows,
+        },
+      });
+    } catch {
+      reply(res, 503, { error: "tenant_scope_target_catalog_unavailable" });
+    }
+    return true;
+  }
+
   return false;
 }
