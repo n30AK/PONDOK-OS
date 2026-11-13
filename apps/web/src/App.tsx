@@ -50,6 +50,11 @@ const OPERATIONS_ACCESS: Record<OperationsArea, readonly string[]> = {
 const ADMISSIONS_ACCESS = MODULE_ACCESS.admissions;
 const hasAnyPermission = (permissions: readonly string[] | undefined, required: readonly string[]) =>
   Boolean(permissions && required.some((permission) => permissions.includes(permission)));
+const canManageTenantAccess = (tenant: Tenant | null) =>
+  Boolean(tenant && (
+    hasAnyPermission(tenant.permissions, ["core.roles.manage", "core.members.manage"]) ||
+    tenant.roles.some((role) => role === "institution_owner" || role === "institution_admin")
+  ));
 const canSeeModuleCard = (permissions: readonly string[] | undefined, moduleKey: string) =>
   !permissions || hasAnyPermission(permissions, MODULE_ACCESS[moduleKey as keyof typeof MODULE_ACCESS] ?? []);
 
@@ -229,7 +234,7 @@ export default function App() {
       (screen === "modules" && (moduleResource === "all" ? !hasReadableModuleResource(permissions) : !hasReadableModuleGroup(moduleResource, permissions))) ||
       (screen === "operations" && !hasAnyPermission(permissions, (OPERATIONS_ACCESS[operationsArea] ?? []))) ||
       (screen === "admissions" && !hasAnyPermission(permissions, ADMISSIONS_ACCESS)) ||
-      (screen === "access" && !hasAnyPermission(permissions, ["core.roles.manage", "core.members.manage"])) ||
+      (screen === "access" && !canManageTenantAccess(tenant)) ||
       (screen === "audit" && !permissions.includes("audit.events.read")) ||
       (screen === "students" && !permissions.includes("academic.students.read"));
     if (denied) {
@@ -537,7 +542,7 @@ export default function App() {
       <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["cms.pages.manage","cms.announcements.manage"]))} type="button" className={screen === "modules" && ["cms-pages","announcements"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("cms-pages")}><span>▣</span> Website & Pengumuman</button>
       <button hidden={Boolean(tenant && !hasAnyPermission(tenant.permissions, ["crm.contacts.read","crm.donations.manage"]))} type="button" className={screen === "modules" && ["contacts","interactions","donor-pledges"].includes(moduleResource) ? "nav-item active" : "nav-item"} onClick={() => openModule("contacts")}><span>◎</span> CRM, Alumni & Donatur</button>
       <button hidden={Boolean(tenant && !tenant.permissions.includes("academic.classes.read"))} type="button" className={screen === "modules" && moduleResource === "campuses" ? "nav-item active" : "nav-item"} onClick={() => openModule("campuses")}><span>⌘</span> Tata Kelola Institusi</button>
-      {(tenant?.permissions.includes("core.roles.manage") || tenant?.permissions.includes("core.members.manage")) && <button type="button" className={screen === "access" ? "nav-item active" : "nav-item"} onClick={() => { setScreen("access"); setError(""); setNotice(""); }}><span>♙</span> Jabatan, Peran & Hak Akses</button>}
+      {canManageTenantAccess(tenant) && <button type="button" className={screen === "access" ? "nav-item active" : "nav-item"} onClick={() => { setScreen("access"); setError(""); setNotice(""); }}><span>♙</span> Jabatan, Peran & Hak Akses</button>}
       {tenant?.permissions.includes("audit.events.read") && <button type="button" className={screen === "audit" ? "nav-item active" : "nav-item"} onClick={() => { setScreen("audit"); setError(""); setNotice(""); }}><span>◷</span> Audit Aktivitas</button>}
       <button hidden={Boolean(tenant && !hasReadableModuleResource(tenant.permissions))} type="button" className={screen === "modules" && moduleResource === "all" ? "nav-item active" : "nav-item"} onClick={() => openModule("all")}><span>☷</span> Semua Modul</button>
       <div className="sidebar-bottom"><div className="secure-note"><span className={tenant?.security?.status === "protected" ? "secure-dot" : "secure-dot warning"} />{tenant?.security?.status === "protected" ? ` Isolasi data aktif · ${tenant.security.protectedTables}/${tenant.security.tenantTables} tabel terlindungi` : " Status isolasi belum terverifikasi"}</div><div className="profile"><div className="avatar">{initials}</div><div className="profile-text"><strong>{user.name || user.email}</strong><small>{user.email}</small></div><button className="icon-button" title="Keluar" onClick={() => void signOut()}>↗</button></div></div>

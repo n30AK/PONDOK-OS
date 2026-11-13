@@ -38,11 +38,21 @@ export async function loadTenantContext(
   );
   const row = result.rows[0];
   if (!row) return null;
+  // Owner and institution-admin roles are the tenant's explicit authority
+  // boundary. Preserve their access-management capability even if a legacy
+  // role-permission grant is missing or a context projection is incomplete.
+  // This does not grant access to platform operators or ordinary members.
+  const roles = row.roles;
+  const permissions = new Set(row.permissions);
+  if (roles.some((role) => role === "institution_owner" || role === "institution_admin")) {
+    permissions.add("core.roles.manage");
+    permissions.add("core.members.manage");
+  }
   return {
     membershipId: row.membership_id,
     organizationId: row.organization_id,
-    roles: row.roles,
-    permissions: row.permissions,
+    roles,
+    permissions: [...permissions],
   };
 }
 
