@@ -242,6 +242,14 @@ export async function handleTenantMembersRequest(
     room: { table: "core.membership_room_scopes", target: "room_id" },
   } as const;
   type ScopeType = keyof typeof scopeTables;
+  const activeScopeTargetQueries: Record<ScopeType, string> = {
+    campus: "SELECT 1 FROM core.campuses WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active'",
+    department: "SELECT 1 FROM hr.departments WHERE organization_id=$1::uuid AND id=$2::uuid AND is_active=true",
+    class: "SELECT 1 FROM academic.class_groups WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active'",
+    class_subject: "SELECT 1 FROM academic.class_subjects cs JOIN academic.class_groups cg ON cg.organization_id=cs.organization_id AND cg.id=cs.class_group_id JOIN academic.subjects s ON s.organization_id=cs.organization_id AND s.id=cs.subject_id WHERE cs.organization_id=$1::uuid AND cs.id=$2::uuid AND cg.status='active' AND s.status='active'",
+    dormitory: "SELECT 1 FROM boarding.dormitories WHERE organization_id=$1::uuid AND id=$2::uuid AND is_active=true",
+    room: "SELECT 1 FROM boarding.rooms r JOIN boarding.dormitories d ON d.organization_id=r.organization_id AND d.id=r.dormitory_id WHERE r.organization_id=$1::uuid AND r.id=$2::uuid AND r.is_active=true AND d.is_active=true",
+  };
   const memberScopeMatch = url.pathname.match(/^\/v1\/tenant\/members\/([0-9a-f-]{36})\/scopes$/i);
   const memberScopeRevokeMatch = url.pathname.match(/^\/v1\/tenant\/members\/([0-9a-f-]{36})\/scopes\/([0-9a-f-]{36})\/revoke$/i);
   if ((memberScopeMatch && (req.method === "GET" || req.method === "POST")) || (memberScopeRevokeMatch && req.method === "PATCH")) {
@@ -290,6 +298,11 @@ export async function handleTenantMembersRequest(
         return true;
       }
       try {
+        const activeTarget = await pool.query(activeScopeTargetQueries[scopeType as ScopeType], [org, targetId]);
+        if (!activeTarget.rowCount) {
+          reply(res, 422, { error: "scope_target_not_active_or_not_found" });
+          return true;
+        }
         const result = await pool.query(
           `INSERT INTO ${config.table}
              (organization_id, membership_id, ${config.target}, valid_from, valid_until, reason, created_by)
