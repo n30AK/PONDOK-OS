@@ -242,8 +242,8 @@ export async function handleTenantMembersRequest(
     room: { table: "core.membership_room_scopes", target: "room_id" },
   } as const;
   type ScopeType = keyof typeof scopeTables;
-  const memberScopeMatch = url.pathname.match(/^\\/v1\\/tenant\\/members\\/([0-9a-f-]{36})\\/scopes$/i);
-  const memberScopeRevokeMatch = url.pathname.match(/^\\/v1\\/tenant\\/members\\/([0-9a-f-]{36})\\/scopes\\/([0-9a-f-]{36})\\/revoke$/i);
+  const memberScopeMatch = url.pathname.match(/^\/v1\/tenant\/members\/([0-9a-f-]{36})\/scopes$/i);
+  const memberScopeRevokeMatch = url.pathname.match(/^\/v1\/tenant\/members\/([0-9a-f-]{36})\/scopes\/([0-9a-f-]{36})\/revoke$/i);
   if ((memberScopeMatch && (req.method === "GET" || req.method === "POST")) || (memberScopeRevokeMatch && req.method === "PATCH")) {
     if (!canManageMembers(ctx.permissions)) {
       reply(res, 403, { error: "permission_denied" });
