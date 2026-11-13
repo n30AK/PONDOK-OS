@@ -87,9 +87,9 @@ test("Command Center reuses one Auth JWT for its six-resource refresh batch",asy
 test("tenant access workspace honors the same institution admin roles as the navigation guard",async()=>{
  const app=await read("apps/web/src/App.tsx");
  const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
- assert.match(app,/TenantAccessAdmin organizationId=\{tenant\.organizationId\} permissions=\{tenant\.permissions\} roles=\{tenant\.roles\}/);
- assert.match(ui,/roles\?: string\[\]/);
- assert.match(ui,/const isInstitutionAdmin = roles\.some\(\(role\) => role === "institution_owner" \|\| role === "institution_admin"\)/);
+ assert.match(app,/TenantAccessAdmin organizationId=\{tenant\.organizationId\} permissions=\{tenant\.permissions\} institutionRoles=\{tenant\.roles\}/);
+ assert.match(ui,/institutionRoles\?: string\[\]/);
+ assert.match(ui,/const isInstitutionAdmin = institutionRoles\.some\(\(role\) => role === "institution_owner" \|\| role === "institution_admin"\)/);
  assert.match(ui,/permissions\.includes\("core\.members\.manage"\) \|\| isInstitutionAdmin/);
  assert.match(ui,/permissions\.includes\("core\.roles\.manage"\) \|\| isInstitutionAdmin/);
 });
