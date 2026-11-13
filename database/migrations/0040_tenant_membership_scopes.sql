@@ -199,9 +199,9 @@ BEGIN
   IF OLD.revoked_at IS NOT NULL
      OR NEW.revoked_at IS NULL
      OR NEW.revoked_by <> actor_id
-     OR ROW(NEW.id,NEW.organization_id,NEW.membership_id,NEW.campus_id,NEW.valid_from,NEW.valid_until,NEW.reason,NEW.created_by,NEW.created_at)
+     OR (to_jsonb(NEW) - ARRAY['revoked_at','revoked_by'])
         IS DISTINCT FROM
-        ROW(OLD.id,OLD.organization_id,OLD.membership_id,OLD.campus_id,OLD.valid_from,OLD.valid_until,OLD.reason,OLD.created_by,OLD.created_at) THEN
+        (to_jsonb(OLD) - ARRAY['revoked_at','revoked_by']) THEN
     RAISE EXCEPTION 'membership_scope_only_one_way_revocation_allowed' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
