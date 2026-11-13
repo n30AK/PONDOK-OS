@@ -8,6 +8,12 @@ ALTER TABLE core.organization_memberships
   ADD CONSTRAINT organization_memberships_organization_id_id_key
   UNIQUE (organization_id, id);
 
+-- class_subjects has a globally unique id but no composite (organization_id,id)
+-- candidate key yet; add it so the assignment FK can enforce tenant ownership.
+ALTER TABLE academic.class_subjects
+  ADD CONSTRAINT class_subjects_organization_id_id_key
+  UNIQUE (organization_id, id);
+
 -- Keep each scope type FK-backed. Do not use a polymorphic scope_type/scope_id pair:
 -- PostgreSQL cannot enforce tenant ownership of arbitrary polymorphic targets.
 CREATE TABLE core.membership_campus_scopes (
