@@ -106,4 +106,6 @@ test("tenant member scope APIs are tenant-permission gated, immutable and append
  assert.match(migration,/GRANT UPDATE \(revoked_at,revoked_by\)/);
  assert.match(migration,/membership_scope_only_one_way_revocation_allowed/);
  assert.match(main,/pathname\.startsWith\("\/v1\/tenant\/members"\)/);
+ assert.match(main,/const tenantAccessRoute = pathname\.startsWith\("\/v1\/tenant\/members"\) \|\| pathname\.startsWith\("\/v1\/tenant\/roles"\)/);
+ assert.match(main,/tenantAccessRoute\s*\? \["GET", "HEAD", "POST", "PATCH", "DELETE"\]/);
 });
