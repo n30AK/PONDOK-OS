@@ -109,7 +109,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     const search = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     const status = url.searchParams.get("status");
     const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
-    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`];")}%`, tenant.membershipId, tenantWide];
+    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`, tenant.membershipId, tenantWide];
     let statusClause = "";
     if (status && ["applicant", "active", "graduated", "withdrawn", "suspended"].includes(status)) {
       values.push(status); statusClause = `AND sp.status = $${values.length}`;
@@ -125,7 +125,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
          AND ($2 = '%%' OR sp.student_number ILIKE $2 OR sp.legal_name ILIKE $2)
          ${statusClause}
          AND ${studentScopePredicate("sp", "$1", "$3", "$4")}
-       ORDER BY sp.created_at DESC LIMIT ${values.length}`, values,
+       ORDER BY sp.created_at DESC LIMIT $${values.length}`, values,
     );
     reply(res, 200, { data: result.rows, pagination: { limit, returned: result.rows.length } }); return true;
   }
@@ -140,7 +140,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const validationError = validateStudentUpdateInput(body);
     if (validationError) { reply(res, 422, { error: validationError }); return true; }
-    const values: unknown[] = [organizationId, studentId];
+    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`, tenant.membershipId, tenantWide];
     const set: string[] = [];
     const fields: Array<[string, string, boolean]> = [
       ["campusId", "campus_id", false], ["studentNumber", "student_number", false],
