@@ -116,6 +116,8 @@ test("tenant member scope APIs are tenant-permission gated, immutable and append
  assert.match(api,/JOIN academic\.subjects[\s\S]*s\.status='active'/);
  assert.match(api,/FROM boarding\.dormitories[\s\S]*is_active=true/);
  assert.match(api,/r\.is_active=true AND d\.is_active=true/);
+ assert.match(api,/activeScopeTargetQueries/);
+ assert.match(api,/scope_target_not_active_or_not_found/);
  assert.match(ui,/Atur cakupan akses/);
  assert.match(ui,/scope-targets/);
  assert.match(ui,/Tambahkan cakupan/);
