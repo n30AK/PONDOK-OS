@@ -85,9 +85,13 @@ export function validateStudentInput(value: Json): string | null {
   return null;
 }
 
+export function matchesAcademicStudentPath(pathname: string): boolean {
+  return pathname === "/v1/academic/students" || /^\\/v1\\/academic\\/students\\/[0-9a-f-]{36}$/i.test(pathname);
+}
+
 export async function handleAcademicRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
-  if (url.pathname !== "/v1/academic/students") return false;
+  if (!matchesAcademicStudentPath(url.pathname)) return false;
   const studentMatch = url.pathname.match(/^\/v1\/academic\/students\/([0-9a-f-]{36})$/i);
   const isStudentUpdate = Boolean(studentMatch && req.method === "PATCH");
   if (req.method !== "GET" && req.method !== "POST" && !isStudentUpdate) {
