@@ -74,6 +74,26 @@ test("tenant administrators can add only verified accounts and assign tenant cus
 });
 
 
+test("Command Center reuses one Auth JWT for its six-resource refresh batch",async()=>{
+ const command=await read("apps/command-center/src/App.tsx");
+ assert.match(command,/async function request<T>\(path: string, init: RequestInit = \{\}, sharedAccessToken\?: string\)/);
+ assert.match(command,/accessToken = await token\(\)/);
+ assert.match(command,/request<Tenant\[]>\("\/v1\/platform\/admin\/tenants", \{\}, accessToken\)/);
+ assert.match(command,/request<Activation\[]>\("\/v1\/platform\/admin\/activation-requests", \{\}, accessToken\)/);
+ assert.match(command,/request<ExecutiveMetrics>\("\/v1\/platform\/erp\/executive-metrics", \{\}, accessToken\)/);
+ assert.match(command,/SERVER AUTHORIZED/);
+});
+
+test("tenant access workspace honors the same institution admin roles as the navigation guard",async()=>{
+ const app=await read("apps/web/src/App.tsx");
+ const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
+ assert.match(app,/TenantAccessAdmin organizationId=\{tenant\.organizationId\} permissions=\{tenant\.permissions\} institutionRoles=\{tenant\.roles\}/);
+ assert.match(ui,/institutionRoles\?: string\[\]/);
+ assert.match(ui,/const isInstitutionAdmin = institutionRoles\.some\(\(role\) => role === "institution_owner" \|\| role === "institution_admin"\)/);
+ assert.match(ui,/permissions\.includes\("core\.members\.manage"\) \|\| isInstitutionAdmin/);
+ assert.match(ui,/permissions\.includes\("core\.roles\.manage"\) \|\| isInstitutionAdmin/);
+});
+
 test("institution owner and institution admin always receive tenant access-management permissions",async()=>{
  const access=await read("apps/api/src/tenant-access.ts");
  const app=await read("apps/web/src/App.tsx");
