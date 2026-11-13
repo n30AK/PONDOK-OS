@@ -167,3 +167,11 @@ Implikasi desain:
 - Scope room harus divalidasi terhadap boarding.dormitories dan campus_id-nya.
 - Scope campus dapat menjadi induk pembatas bagi class_group, dormitory, employee, dan department.
 - Inventarisasi ini hanya membaca metadata; tidak mengubah schema atau data. FK, RLS, policies, trigger, dan relasi tambahan masih harus diperiksa sebelum migration final.
+
+### RLS yang ditemukan pada tabel terkait
+
+Kebijakan tenant_isolation untuk core.campuses, academic.class_groups, academic.class_subjects, academic.subjects, boarding.dormitories, boarding.rooms, hr.departments, dan hr.employees membatasi organization_id serta memeriksa active tenant membership. Kebijakan ini merupakan isolasi tenant, bukan isolasi berdasarkan campus/class/subject/dormitory/unit assignment.
+
+core.membership_roles memakai kebijakan yang membatasi pembacaan/penulisan ke membership milik user aktif pada organization context. core.organization_memberships memiliki kebijakan tenant self-read dan kebijakan platform-control untuk operasi membership tertentu.
+
+Kesimpulan keamanan: RLS saat ini membantu mencegah akses lintas organisasi, tetapi belum membatasi guru ke kelas/mapel tertentu atau musyrif ke asrama/kamar tertentu. Scope RLS harus ditambahkan tanpa melemahkan policy tenant_isolation yang sudah ada. Jangan mengubah policy lama menjadi lebih longgar.
