@@ -18,7 +18,7 @@ import { handlePlatformOperationsRequest } from "./platform-operations.js";
 import { handlePlatformCommercialRequest } from "./platform-commercial.js";
 import { handlePlatformBillingRequest } from "./platform-billing.js";
 import { handlePlatformCustomerCatalogRequest } from "./platform-customer-catalog.js";
-import { TenantLicenseExpiredError, withTenantScope, type TenantDatabase } from "./tenant-db.js";
+import { TenantLicenseExpiredError, withTenantScope, type TenantDatabase, type TenantQueryClient } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -146,7 +146,7 @@ async function withTenantOperationalAuthority(
   userId: string,
   organizationId: string,
   response: ServerResponse,
-  work: (tenantPool: Parameters<Parameters<typeof withTenantScope>[3]>[0]) => Promise<boolean>,
+  work: (tenantPool: TenantQueryClient) => Promise<boolean>,
 ): Promise<boolean> {
   return withTenantScope(pool, userId, organizationId, async (tenantPool) => {
     const tenant = await loadTenantContext(tenantPool, userId, organizationId);
