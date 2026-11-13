@@ -73,3 +73,23 @@ This is a source-level inventory of the listed files, not proof that every endpo
 - No Production access or deployment.
 - No new users, tenant memberships, or test PII.
 - No weakening of tenant RLS, roles, permissions, or approval controls.
+
+
+## Read-only FK inventory (Neon Development, 2026-11-13)
+
+The following composite tenant-owned relationships were confirmed in `pg_constraint`:
+
+- `academic.class_groups(organization_id, campus_id)` → `core.campuses(organization_id, id)`.
+- `academic.class_subjects(organization_id, class_group_id)` → `academic.class_groups(organization_id, id)`.
+- `academic.class_subjects(organization_id, subject_id)` → `academic.subjects(organization_id, id)`.
+- `boarding.dormitories(organization_id, campus_id)` → `core.campuses(organization_id, id)`.
+- `boarding.rooms(organization_id, dormitory_id)` → `boarding.dormitories(organization_id, id)`.
+- `hr.employees(organization_id, campus_id)` → `core.campuses(organization_id, id)`.
+- `hr.departments(organization_id, campus_id)` → `core.campuses(organization_id, id)`.
+- `hr.departments(organization_id, parent_department_id)` → `hr.departments(organization_id, id)`.
+
+Membership-role relations are `core.membership_roles.membership_id → core.organization_memberships.id` and `role_id → core.roles.id`; the catalog does not currently provide a membership-scope relation.
+
+**Design implication:** existing composite tenant FKs provide a sound starting point for campus/class/subject/dormitory/room/department parent validation. They do not validate a generic polymorphic `scope_type + scope_id` assignment by themselves. A migration must use concrete FK-backed assignment tables (or a rigorously constrained scope registry), plus active-date/revocation semantics and tenant consistency. Do not use a loose polymorphic UUID reference.
+
+This was a catalog-only query against Neon Development. No DDL or data was changed.
