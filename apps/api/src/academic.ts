@@ -86,7 +86,7 @@ export function validateStudentInput(value: Json): string | null {
 }
 
 export function matchesAcademicStudentPath(pathname: string): boolean {
-  return pathname === "/v1/academic/students" || /^\\/v1\\/academic\\/students\\/[0-9a-f-]{36}$/i.test(pathname);
+  return pathname === "/v1/academic/students" || /^\/v1\/academic\/students\/[0-9a-f-]{36}$/i.test(pathname);
 }
 
 export async function handleAcademicRequest(req: IncomingMessage, res: ServerResponse, pool: Pick<Pool, "query">, userId: string, organizationId: string): Promise<boolean> {
