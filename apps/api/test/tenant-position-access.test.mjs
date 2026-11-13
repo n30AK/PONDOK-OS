@@ -84,3 +84,25 @@ test("institution owner and institution admin always receive tenant access-manag
  assert.match(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
  assert.match(app,/canManageTenantAccess\(tenant\) && <button[^]*Jabatan, Peran & Hak Akses/);
 });
+
+
+test("tenant member scope APIs are tenant-permission gated, immutable and append-only audited",async()=>{
+ const api=await read("apps/api/src/tenant-members.ts");
+ const migration=await read("database/migrations/0040_tenant_membership_scopes.sql");
+ const main=await read("apps/api/src/main.ts");
+ assert.match(api,/\/v1\/tenant\/members\/\(\[0-9a-f-\]\{36\}\)\/scopes/);
+ assert.match(api,/canManageMembers\(ctx\.permissions\)/);
+ assert.match(api,/self_scope_change_forbidden/);
+ assert.match(api,/INSERT INTO audit\.audit_events/);
+ assert.match(api,/tenant\.member_scope\.assigned/);
+ assert.match(api,/tenant\.member_scope\.revoked/);
+ assert.match(api,/UPDATE \${config\.table}/);
+ assert.match(api,/revoked_at=now\(\), revoked_by=/);
+ assert.doesNotMatch(api,/DELETE FROM \${config\.table}/);
+ assert.match(migration,/SECURITY DEFINER/);
+ assert.match(migration,/SET search_path = pg_catalog, core/);
+ assert.match(migration,/REVOKE ALL ON FUNCTION core\.guard_membership_scope_assignment\(\) FROM PUBLIC/);
+ assert.match(migration,/GRANT UPDATE \(revoked_at,revoked_by\)/);
+ assert.match(migration,/membership_scope_only_one_way_revocation_allowed/);
+ assert.match(main,/pathname\.startsWith\("\/v1\/tenant\/members"\)/);
+});
