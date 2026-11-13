@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateStudentInput, validateStudentProfileData } from "../dist/academic.js";
+import { matchesAcademicStudentPath, validateStudentInput, validateStudentProfileData } from "../dist/academic.js";
 
 test("student input accepts a minimally valid record", () => {
   assert.equal(validateStudentInput({ campusId: "123e4567-e89b-42d3-a456-426614174000", studentNumber: "SAN-001", legalName: "Ahmad Fulan" }), null);
@@ -39,4 +39,12 @@ test("student update accepts partial contextual profile changes", async () => {
   assert.equal(validateStudentUpdateInput({ birthDate: "2026-02-31" }), "invalid_birth_date");
   assert.equal(validateStudentUpdateInput({ status: "active" }), "unsupported_student_update_field");
   assert.equal(validateStudentUpdateInput({}), "empty_student_update");
+});
+
+test("academic student route matcher accepts collection and item paths only", () => {
+  assert.equal(matchesAcademicStudentPath("/v1/academic/students"), true);
+  assert.equal(matchesAcademicStudentPath("/v1/academic/students/123e4567-e89b-42d3-a456-426614174000"), true);
+  assert.equal(matchesAcademicStudentPath("/v1/academic/students/not-a-uuid"), false);
+  assert.equal(matchesAcademicStudentPath("/v1/academic/students/123e4567-e89b-42d3-a456-426614174000/extra"), false);
+  assert.equal(matchesAcademicStudentPath("/v1/academic/other"), false);
 });
