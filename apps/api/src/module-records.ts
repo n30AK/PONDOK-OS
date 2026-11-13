@@ -466,6 +466,9 @@ async function handleStudentIdentityDocuments(
 ): Promise<void> {
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return; }
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    reply(res, 403, { error: "restricted_student_data_requires_tenant_authority", message: "Akses dokumen identitas dan data kesehatan menunggu pengujian pembatasan scope khusus." }); return;
+  }
   const write = req.method !== "GET";
   const requiredPermission = write ? "academic.students.identity.write" : "academic.students.identity.read";
   if (!tenant.permissions.includes(requiredPermission)) {
