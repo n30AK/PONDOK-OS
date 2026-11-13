@@ -562,7 +562,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) =>
+      if (await withTenantOperationalAuthority(dependencies.pool, identity.userId, organizationId, response, (tenantPool) =>
         handleTenantAuditRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch (reason) {
       sendTenantScopeError(response, reason, "tenant_audit_service_unavailable"); return;
