@@ -374,5 +374,79 @@ export async function handleTenantMembersRequest(
     }
   }
 
+  if (url.pathname === "/v1/tenant/scope-targets" && req.method === "GET") {
+    if (!canManageMembers(ctx.permissions)) {
+      reply(res, 403, { error: "permission_denied" });
+      return true;
+    }
+    try {
+      const [campuses, departments, classes, classSubjects, dormitories, rooms] = await Promise.all([
+        pool.query(
+          `SELECT id AS target_id, concat(code, ' — ', name) AS label
+             FROM core.campuses
+            WHERE organization_id=$1::uuid AND status='active'
+            ORDER BY name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT id AS target_id, concat(department_code, ' — ', department_name) AS label, campus_id AS parent_id
+             FROM hr.departments
+            WHERE organization_id=$1::uuid AND is_active=true
+            ORDER BY department_name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT id AS target_id, concat(code, ' — ', name) AS label, campus_id AS parent_id
+             FROM academic.class_groups
+            WHERE organization_id=$1::uuid AND status='active'
+            ORDER BY name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT cs.id AS target_id,
+                  concat(cg.name, ' — ', s.name) AS label,
+                  cg.id AS parent_id
+             FROM academic.class_subjects cs
+             JOIN academic.class_groups cg
+               ON cg.organization_id=cs.organization_id AND cg.id=cs.class_group_id
+             JOIN academic.subjects s
+               ON s.organization_id=cs.organization_id AND s.id=cs.subject_id
+            WHERE cs.organization_id=$1::uuid AND cg.status='active' AND s.status='active'
+            ORDER BY cg.name, s.name LIMIT 1000`,
+          [org],
+        ),
+        pool.query(
+          `SELECT id AS target_id, concat(dormitory_code, ' — ', dormitory_name) AS label, campus_id AS parent_id
+             FROM boarding.dormitories
+            WHERE organization_id=$1::uuid AND is_active=true
+            ORDER BY dormitory_name LIMIT 500`,
+          [org],
+        ),
+        pool.query(
+          `SELECT r.id AS target_id, concat(d.dormitory_name, ' — ', r.room_code) AS label, r.dormitory_id AS parent_id
+             FROM boarding.rooms r
+             JOIN boarding.dormitories d
+               ON d.organization_id=r.organization_id AND d.id=r.dormitory_id
+            WHERE r.organization_id=$1::uuid AND r.is_active=true AND d.is_active=true
+            ORDER BY d.dormitory_name, r.room_code LIMIT 1000`,
+          [org],
+        ),
+      ]);
+      reply(res, 200, {
+        data: {
+          campus: campuses.rows,
+          department: departments.rows,
+          class: classes.rows,
+          class_subject: classSubjects.rows,
+          dormitory: dormitories.rows,
+          room: rooms.rows,
+        },
+      });
+    } catch {
+      reply(res, 503, { error: "tenant_scope_target_catalog_unavailable" });
+    }
+    return true;
+  }
+
   return false;
 }
