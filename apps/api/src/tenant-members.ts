@@ -297,6 +297,13 @@ export async function handleTenantMembersRequest(
            RETURNING id, ${config.target} AS target_id, valid_from, valid_until, reason, created_at`,
           [org, memberId, targetId, validFrom, validUntil, reason, actor],
         );
+        await pool.query(
+          `INSERT INTO audit.audit_events
+             (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+           VALUES ($1::uuid,$2::uuid,'tenant.member_scope.assigned','membership_scope',$3,
+             jsonb_build_object('membership_id',$4::text,'scope_type',$5::text,'target_id',$6::text,'reason',$7::text))`,
+          [org, actor, result.rows[0].id, memberId, scopeType, targetId, reason],
+        );
         reply(res, 201, { data: { membershipId: memberId, scopeType, assignment: result.rows[0] } });
       } catch (reasonError) {
         const message = typeof reasonError === "object" && reasonError !== null
@@ -341,6 +348,13 @@ export async function handleTenantMembersRequest(
         if (!result.rowCount) {
           reply(res, 404, { error: "active_scope_assignment_not_found" });
         } else {
+          await pool.query(
+            `INSERT INTO audit.audit_events
+               (organization_id,actor_user_id,action,resource_type,resource_id,metadata)
+             VALUES ($1::uuid,$2::uuid,'tenant.member_scope.revoked','membership_scope',$3,
+               jsonb_build_object('membership_id',$4::text,'scope_type',$5::text))`,
+            [org, actor, scopeId, memberId, scopeType],
+          );
           reply(res, 200, { data: { membershipId: memberId, scopeType, assignment: result.rows[0] } });
         }
       } catch (reasonError) {
