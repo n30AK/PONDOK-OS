@@ -148,3 +148,22 @@ Jangan menyatakan scope siap produksi sampai migration Development berhasil, RLS
 
 ## 10. Batas dokumen
 Dokumen ini hanya blueprint. Tidak membuat tabel, fungsi, policy, data assignment, role, atau perubahan runtime. Implementasi schema memerlukan persetujuan migrasi Development yang eksplisit setelah rancangan final dan inventarisasi tabel selesai.
+
+## 11. Hasil inventarisasi schema read-only (Development, 2026-11-13)
+
+Pemeriksaan information_schema mengonfirmasi:
+- core.campuses memiliki id, organization_id, code, name, campus_type, status.
+- academic.class_groups memiliki organization_id dan campus_id.
+- academic.subjects memiliki organization_id; academic.class_subjects menghubungkan class_group_id dengan subject_id.
+- boarding.dormitories memiliki organization_id dan campus_id.
+- boarding.rooms memiliki organization_id dan dormitory_id.
+- hr.departments memiliki organization_id, campus_id, parent_department_id, effective_from, effective_until.
+- hr.employees memiliki organization_id dan campus_id.
+- core.organization_memberships memiliki organization_id, user_id, membership_status; core.membership_roles menghubungkan membership_id dengan role_id.
+
+Implikasi desain:
+- Unit kerja secara awal dapat merujuk hr.departments, tetapi cakupannya perlu dibatasi dan diverifikasi terhadap struktur organisasi pesantren (tidak semua kegiatan/unit usaha harus direpresentasikan sebagai departemen HR).
+- Scope subject sebaiknya divalidasi melalui academic.class_subjects agar guru tidak diberi mapel yang tidak terhubung dengan kelas yang ditugaskan.
+- Scope room harus divalidasi terhadap boarding.dormitories dan campus_id-nya.
+- Scope campus dapat menjadi induk pembatas bagi class_group, dormitory, employee, dan department.
+- Inventarisasi ini hanya membaca metadata; tidak mengubah schema atau data. FK, RLS, policies, trigger, dan relasi tambahan masih harus diperiksa sebelum migration final.
