@@ -89,7 +89,7 @@ test("student detail GET is ID-bound and still applies member scope predicate", 
   assert.equal(res.statusCode, 404);
   assert.deepEqual(JSON.parse(res.body), { error: "student_not_found" });
   assert.equal(calls.length, 2);
-  assert.match(calls[1].sql, /sp\\.id = \\$2::uuid/);
+  assert.ok(calls[1].sql.includes("sp.id = $2::uuid"));
   assert.match(calls[1].sql, /membership_class_scopes/);
   assert.deepEqual(calls[1].values, [
     tenantRow.organization_id,
