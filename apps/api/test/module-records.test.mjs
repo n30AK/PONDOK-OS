@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { canReadStudentOptions, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
+import { employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -237,4 +238,38 @@ test("student relation options are available to roles that can read the referenc
   }
   assert.equal(canReadStudentOptions(["finance.journals.read"]), false);
   assert.equal(canReadStudentOptions([]), false);
+});
+
+
+test("tenant-wide operational access is limited to explicit institution authority roles", () => {
+  assert.equal(hasTenantWideOperationalAccess(["institution_owner"]), true);
+  assert.equal(hasTenantWideOperationalAccess(["institution_admin"]), true);
+  assert.equal(hasTenantWideOperationalAccess(["platform_super_admin"]), false);
+  assert.equal(hasTenantWideOperationalAccess(["academic_teacher"]), false);
+  assert.equal(hasTenantWideOperationalAccess([]), false);
+});
+
+test("student scope predicate fails closed and includes every concrete active scope type", () => {
+  const sql = studentScopePredicate("sp", "$1", "$2", "$3");
+  for (const expected of [
+    "$3::boolean", "membership_campus_scopes", "membership_class_scopes",
+    "membership_class_subject_scopes", "membership_room_scopes",
+    "membership_dormitory_scopes", "boarding.bed_assignments",
+    "revoked_at IS NULL", "valid_from <= now()", "valid_until IS NULL OR"
+  ]) assert.ok(sql.includes(expected), `missing ${expected}`);
+  assert.ok(sql.includes("sp.campus_id"));
+  assert.ok(sql.includes("sp.id"));
+  assert.ok(sql.includes("e.organization_id = $1::uuid"));
+  assert.ok(sql.includes("mcss.membership_id = $2::uuid"));
+});
+
+test("employee scope predicate is tenant-bound to campus or active department assignment", () => {
+  const sql = employeeScopePredicate("e", "$1", "$2", "$3");
+  for (const expected of [
+    "$3::boolean", "membership_campus_scopes", "membership_department_scopes",
+    "hr.employee_assignments", "ea.employee_id = e.id",
+    "ea.starts_on <= CURRENT_DATE", "ea.ends_on IS NULL OR",
+    "revoked_at IS NULL", "valid_from <= now()"
+  ]) assert.ok(sql.includes(expected), `missing ${expected}`);
+  assert.ok(sql.includes("mds.membership_id = $2::uuid"));
 });

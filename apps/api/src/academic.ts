@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_BODY_BYTES = 16_384;
@@ -108,7 +108,8 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
     const search = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     const status = url.searchParams.get("status");
-    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`];
+    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+    const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`, tenant.membershipId, tenantWide];
     let statusClause = "";
     if (status && ["applicant", "active", "graduated", "withdrawn", "suspended"].includes(status)) {
       values.push(status); statusClause = `AND sp.status = $${values.length}`;
@@ -123,6 +124,7 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
        WHERE sp.organization_id = $1
          AND ($2 = '%%' OR sp.student_number ILIKE $2 OR sp.legal_name ILIKE $2)
          ${statusClause}
+         AND ${studentScopePredicate("sp", "$1", "$3", "$4")}
        ORDER BY sp.created_at DESC LIMIT $${values.length}`, values,
     );
     reply(res, 200, { data: result.rows, pagination: { limit, returned: result.rows.length } }); return true;
@@ -138,7 +140,11 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const validationError = validateStudentUpdateInput(body);
     if (validationError) { reply(res, 422, { error: validationError }); return true; }
-    const values: unknown[] = [organizationId, studentId];
+    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+    if (!tenantWide && Object.prototype.hasOwnProperty.call(body, "campusId")) {
+      reply(res, 403, { error: "campus_transfer_requires_tenant_authority" }); return true;
+    }
+    const values: unknown[] = [organizationId, studentId, tenant.membershipId, tenantWide];
     const set: string[] = [];
     const fields: Array<[string, string, boolean]> = [
       ["campusId", "campus_id", false], ["studentNumber", "student_number", false],
@@ -159,8 +165,9 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     set.push("updated_at = now()");
     try {
       const result = await pool.query(
-        `UPDATE academic.student_profiles SET ${set.join(", ")}
-         WHERE organization_id = $1::uuid AND id = $2::uuid
+        `UPDATE academic.student_profiles sp SET ${set.join(", ")}
+         WHERE sp.organization_id = $1::uuid AND sp.id = $2::uuid
+           AND ${studentScopePredicate("sp", "$1", "$3", "$4")}
          RETURNING id, campus_id AS "campusId", student_number AS "studentNumber",
                    legal_name AS "legalName", preferred_name AS "preferredName",
                    birth_date AS "birthDate", gender_code AS "genderCode",
@@ -185,6 +192,16 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
   if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
   const validationError = validateStudentInput(body) ?? validateStudentProfileData(body.profileData);
   if (validationError) { reply(res, 422, { error: validationError }); return true; }
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    const assignedCampus = await pool.query(
+      `SELECT 1 FROM core.membership_campus_scopes
+       WHERE organization_id=$1::uuid AND membership_id=$2::uuid AND campus_id=$3::uuid
+         AND revoked_at IS NULL AND valid_from<=now()
+         AND (valid_until IS NULL OR valid_until>now()) LIMIT 1`,
+      [organizationId, tenant.membershipId, body.campusId],
+    );
+    if (!assignedCampus.rows.length) { reply(res, 403, { error: "campus_outside_member_scope" }); return true; }
+  }
   try {
     const result = await pool.query(
       `INSERT INTO academic.student_profiles

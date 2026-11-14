@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import { Pool } from "pg";
 import { readBearerToken, verifyAccessToken } from "./identity.js";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
 import { handleTenantMembersRequest } from "./tenant-members.js";
 import { handleAcademicRequest } from "./academic.js";
 import { handleAdmissionsRequest } from "./admissions.js";
@@ -18,7 +18,7 @@ import { handlePlatformOperationsRequest } from "./platform-operations.js";
 import { handlePlatformCommercialRequest } from "./platform-commercial.js";
 import { handlePlatformBillingRequest } from "./platform-billing.js";
 import { handlePlatformCustomerCatalogRequest } from "./platform-customer-catalog.js";
-import { TenantLicenseExpiredError, withTenantScope, type TenantDatabase } from "./tenant-db.js";
+import { TenantLicenseExpiredError, withTenantScope, type TenantDatabase, type TenantQueryClient } from "./tenant-db.js";
 
 export const SERVICE_NAME = "pondok-os-api";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -134,6 +134,35 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
     "referrer-policy": "no-referrer",
   });
   response.end(JSON.stringify(body));
+}
+
+/**
+ * Transitional fail-closed boundary for operational handlers that do not yet
+ * apply campus/class/department/boarding scopes to every query and mutation.
+ * Only explicit institution authority roles can use these tenant-wide routes.
+ */
+async function withTenantOperationalAuthority(
+  pool: TenantDatabase,
+  userId: string,
+  organizationId: string,
+  response: ServerResponse,
+  work: (tenantPool: TenantQueryClient) => Promise<boolean>,
+): Promise<boolean> {
+  return withTenantScope(pool, userId, organizationId, async (tenantPool) => {
+    const tenant = await loadTenantContext(tenantPool, userId, organizationId);
+    if (!tenant) {
+      sendJson(response, 403, { error: "active_membership_required" });
+      return true;
+    }
+    if (!hasTenantWideOperationalAccess(tenant.roles)) {
+      sendJson(response, 403, {
+        error: "operational_scope_not_supported_for_member",
+        message: "Modul ini sementara dibatasi sampai filter scope per data selesai diuji.",
+      });
+      return true;
+    }
+    return work(tenantPool);
+  });
 }
 
 export async function handleRequest(
@@ -434,7 +463,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleAdmissionsRequest(request, response, tenantPool, identity.userId, organizationId))) return;
+      if (await withTenantOperationalAuthority(dependencies.pool, identity.userId, organizationId, response, (tenantPool) => handleAdmissionsRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch (reason) {
       sendTenantScopeError(response, reason, "admissions_service_unavailable"); return;
     }
@@ -458,7 +487,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleSyncRequest(request, response, tenantPool, identity.userId, organizationId))) return;
+      if (await withTenantOperationalAuthority(dependencies.pool, identity.userId, organizationId, response, (tenantPool) => handleSyncRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch (reason) {
       sendTenantScopeError(response, reason, "sync_service_unavailable"); return;
     }
@@ -483,9 +512,9 @@ export async function handleRequest(
     }
     try {
       if (pathname.startsWith("/v1/finance/") &&
-          await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleFinanceRequest(request, response, tenantPool, identity.userId, organizationId))) return;
+          await withTenantOperationalAuthority(dependencies.pool, identity.userId, organizationId, response, (tenantPool) => handleFinanceRequest(request, response, tenantPool, identity.userId, organizationId))) return;
       if (pathname.startsWith("/v1/inventory/") &&
-          await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) => handleInventoryRequest(request, response, tenantPool, identity.userId, organizationId))) return;
+          await withTenantOperationalAuthority(dependencies.pool, identity.userId, organizationId, response, (tenantPool) => handleInventoryRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch (reason) {
       sendTenantScopeError(response, reason, "operational_service_unavailable"); return;
     }
@@ -533,7 +562,7 @@ export async function handleRequest(
       sendJson(response, 401, { error: "invalid_token" }); return;
     }
     try {
-      if (await withTenantScope(dependencies.pool, identity.userId, organizationId, (tenantPool) =>
+      if (await withTenantOperationalAuthority(dependencies.pool, identity.userId, organizationId, response, (tenantPool) =>
         handleTenantAuditRequest(request, response, tenantPool, identity.userId, organizationId))) return;
     } catch (reason) {
       sendTenantScopeError(response, reason, "tenant_audit_service_unavailable"); return;
