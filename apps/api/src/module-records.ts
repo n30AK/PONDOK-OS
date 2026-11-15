@@ -39,11 +39,14 @@ function filterModuleRecordForPermissions(
   row: Record<string, unknown>,
   permissions: readonly string[],
 ): Record<string, unknown> {
-  if (resourceKey !== "student-guardians" || permissions.includes(GUARDIAN_AUTHORITY_PERMISSION)) {
-    return row;
-  }
   const visible = { ...row };
-  for (const field of RESTRICTED_GUARDIAN_AUTHORITY_FIELDS) delete visible[field];
+  if (resourceKey === "student-guardians" && !permissions.includes(GUARDIAN_AUTHORITY_PERMISSION)) {
+    for (const field of RESTRICTED_GUARDIAN_AUTHORITY_FIELDS) delete visible[field];
+  }
+  if (resourceKey === "hr-contracts" && !permissions.includes("hr.payroll.read")) {
+    delete visible.base_salary;
+    delete visible.currency_code;
+  }
   return visible;
 }
 
@@ -93,17 +96,22 @@ const RESOURCES: Record<string, Resource> = {
 };
 
 /** Build a SQL projection only from server-owned resource metadata. Newly-added table columns stay private by default. */
-export function moduleRecordProjection(resource: Resource): string {
+export function moduleRecordProjection(resource: Resource, permissions: readonly string[] = []): string {
   const columns = new Set<string>(["id", "organization_id"]);
-  for (const field of Object.values(resource.fields)) columns.add(field.column);
+  for (const field of Object.values(resource.fields)) {
+    if (resource.table === "hr.employment_contracts" &&
+        ["base_salary", "currency_code"].includes(field.column) &&
+        !permissions.includes("hr.payroll.read")) continue;
+    columns.add(field.column);
+  }
   if (resource.actorColumn) columns.add(resource.actorColumn);
   columns.add(resource.order ?? "created_at");
   return [...columns].join(", ");
 }
 
-export function getModuleRecordProjection(resourceKey: string): string | null {
+export function getModuleRecordProjection(resourceKey: string, permissions: readonly string[] = []): string | null {
   const resource = RESOURCES[resourceKey];
-  return resource ? moduleRecordProjection(resource) : null;
+  return resource ? moduleRecordProjection(resource, permissions) : null;
 }
 
 function reply(res: ServerResponse, status: number, body: unknown): void {
@@ -726,7 +734,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
     const limit=Number.isInteger(limitRaw)?Math.min(Math.max(limitRaw,1),200):100;
-    const projection = moduleRecordProjection(resource);
+    const projection = moduleRecordProjection(resource, tenant.permissions);
     let result;
     if (match[1] === "attendance-sessions") {
       const qualifiedProjection = projection.split(",").map((column) => `ats.${column.trim()}`).join(", ");
@@ -869,6 +877,11 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const body=await readJson(req);
   if (!body) { reply(res,400,{error:"invalid_json_or_body_too_large"}); return true; }
   const recordId=url.searchParams.get("id");
+  if (match[1] === "hr-contracts" &&
+      (Object.prototype.hasOwnProperty.call(body, "baseSalary") || Object.prototype.hasOwnProperty.call(body, "currencyCode")) &&
+      !tenant.permissions.includes("hr.payroll.prepare")) {
+    reply(res,403,{error:"compensation_permission_required",permission:"hr.payroll.prepare"}); return true;
+  }
   if (req.method === "PATCH" && match[1] === "attendance-records" &&
       (Object.prototype.hasOwnProperty.call(body, "attendanceSessionId") || Object.prototype.hasOwnProperty.call(body, "studentId"))) {
     reply(res,422,{error:"attendance_relationship_fields_are_immutable"}); return true;
@@ -912,7 +925,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       updateSql = `UPDATE academic.attendance_records AS ar SET ${sets.join(",")}
         WHERE ar.organization_id=${orgPlaceholder}::uuid AND ar.id=$${values.length-2}::uuid
           AND ${attendanceRecordScopePredicate("ar", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
-        RETURNING ${moduleRecordProjection(resource)}`;
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     } else if (match[1] === "attendance-sessions") {
       const orgPlaceholder = `$${values.length-1}`;
       const membershipPlaceholder = `$${values.length+1}`;
@@ -921,7 +934,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       updateSql = `UPDATE academic.attendance_sessions AS ats SET ${sets.join(",")}
         WHERE ats.organization_id=${orgPlaceholder}::uuid AND ats.id=$${values.length-2}::uuid
           AND ${attendanceSessionScopePredicate("ats", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
-        RETURNING ${moduleRecordProjection(resource)}`;
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     } else if (["dormitories", "boarding-rooms", "boarding-beds", "boarding-assignments", "leave-requests", "incidents"].includes(match[1] ?? "")) {
       const configs: Record<string, { alias: string; predicate: (alias: string, org: string, member: string, wide: string) => string }> = {
         "dormitories": { alias: "d", predicate: boardingDormitoryScopePredicate },
@@ -941,9 +954,9 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
         WHERE ${config.alias}.organization_id=${orgPlaceholder}::uuid
           AND ${config.alias}.id=$${values.length-2}::uuid
           AND ${config.predicate(config.alias, orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
-        RETURNING ${moduleRecordProjection(resource)}`;
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     } else {
-      updateSql = `UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource)}`;
+      updateSql = `UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     }
     await pool.query("SAVEPOINT module_record_write");
     try {
@@ -1095,7 +1108,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
   await pool.query("SAVEPOINT module_record_write");
   try {
-    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource)}`,values);
+    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`,values);
     const record = result.rows[0] as Record<string, unknown>;
     if (match[1] === "boarding-assignments") {
       const bedStatusUpdate = await pool.query(

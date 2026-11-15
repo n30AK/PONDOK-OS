@@ -34,3 +34,34 @@ test("educator organization and HR/payroll resources remain separate", async () 
   }
   assert.equal(groupOf("campuses"), "Tata Kelola Institusi");
 });
+
+
+test("HR organization workspaces use scope-aware read endpoints and lookups", async () => {
+  const source = await readFile(new URL("apps/web/src/ModuleWorkspace.tsx", root), "utf8");
+  for (const path of [
+    'employees:"/v1/hr/employees?limit=100"',
+    '"employee-assignments":"/v1/hr/employee-assignments"',
+    '"hr-departments":"/v1/hr/departments"',
+    '"hr-positions":"/v1/hr/positions"',
+    '"hr-contracts":"/v1/hr/employment-contracts"',
+    '"instructor-profiles":"/v1/hr/educators"',
+    'campuses:"/v1/hr/campuses"'
+  ]) assert.ok(source.includes(path), `missing scoped HR path ${path}`);
+  assert.match(source, /endpoint\.startsWith\("\/v1\/"\)/);
+});
+
+
+test("scoped HR API rows are normalized to the workspace's snake-case columns", async () => {
+  const source = await readFile(new URL("apps/web/src/ModuleWorkspace.tsx", root), "utf8");
+  assert.match(source, /function normalizeApiRow\(row:Row\):Row/);
+  assert.match(source, /setRows\(\(result\.data\?\?\[\]\)\.map\(normalizeApiRow\)\)/);
+  assert.match(source, /map\(normalizeApiRow\)\.map\(row=>\(\{id:String\(row\.id\)/);
+});
+
+
+test("operational workspace campus options use module-specific scoped APIs", async () => {
+  const source = await readFile(new URL("apps/web/src/Operations.tsx", root), "utf8");
+  assert.ok(source.includes('area === "hr" ? "/v1/hr/campuses"'));
+  assert.ok(source.includes('area === "inventory" ? "/v1/inventory/campuses"'));
+  assert.ok(!source.includes('request("/v1/modules/campuses")'));
+});

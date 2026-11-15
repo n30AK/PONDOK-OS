@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { handleHrRequest, validateEmployeeInput, validatePayrollRunInput } from "../dist/hr.js";
 import { Readable } from "node:stream";
+import { departmentScopePredicate, positionScopePredicate } from "../dist/tenant-access.js";
 
 const employeeId = "123e4567-e89b-42d3-a456-426614174000";
 const periodId = "223e4567-e89b-42d3-a456-426614174000";
@@ -225,4 +226,61 @@ test("tenant owner employee creation uses the same atomic insert without requiri
   assert.equal(res.statusCode, 201);
   assert.equal(insertValues[8], true);
   assert.equal(insertValues[9], membershipId);
+});
+
+
+test("department and position predicates inherit only active campus or department grants", () => {
+  const department = departmentScopePredicate("d", "$1", "$2", "$3");
+  for (const token of ["membership_campus_scopes", "membership_department_scopes", "d.campus_id", "d.id", "revoked_at IS NULL", "valid_until IS NULL OR"]) {
+    assert.ok(department.includes(token), `department predicate missing ${token}`);
+  }
+  const position = positionScopePredicate("p", "d", "$1", "$2", "$3");
+  for (const token of ["p.department_id", "d.campus_id", "membership_department_scopes", "membership_campus_scopes", "revoked_at IS NULL"]) {
+    assert.ok(position.includes(token), `position predicate missing ${token}`);
+  }
+});
+
+test("scoped HR organization reads filter campuses, departments, positions and educators", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant([
+      "hr.organization.read", "hr.educators.read"
+    ])] };
+    if (sql.includes("FROM core.campuses c")) return { rows: [] };
+    if (sql.includes("FROM hr.departments d")) return { rows: [] };
+    if (sql.includes("FROM hr.positions p")) return { rows: [] };
+    if (sql.includes("FROM academic.instructors i")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  for (const path of ["/v1/hr/campuses", "/v1/hr/departments", "/v1/hr/positions", "/v1/hr/educators"]) {
+    const res = hrResponse();
+    await handleHrRequest(hrRequest("GET", path), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 200, path);
+  }
+  const campus = calls.find(call => call.sql.includes("FROM core.campuses c"));
+  assert.ok(campus.sql.includes("membership_campus_scopes"));
+  assert.deepEqual(campus.values, [organizationId, membershipId, false]);
+  const department = calls.find(call => call.sql.includes("FROM hr.departments d"));
+  assert.ok(department.sql.includes("membership_campus_scopes"));
+  assert.ok(department.sql.includes("membership_department_scopes"));
+  const position = calls.find(call => call.sql.includes("FROM hr.positions p"));
+  assert.ok(position.sql.includes("p.department_id"));
+  assert.ok(position.sql.includes("membership_department_scopes"));
+  const educator = calls.find(call => call.sql.includes("FROM academic.instructors i"));
+  assert.ok(educator.sql.includes("employeeScopePredicate") || educator.sql.includes("membership_campus_scopes"));
+});
+
+test("scoped employee assignment reads filter each assignment row, not only the employee", async () => {
+  let query = "";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.organization.read"])] };
+    if (sql.includes("FROM hr.employee_assignments a")) { query = sql; return { rows: [] }; }
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/employee-assignments"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(query.includes("mds.department_id=a.department_id"));
+  assert.ok(query.includes("mcs.campus_id=e.campus_id"));
 });
