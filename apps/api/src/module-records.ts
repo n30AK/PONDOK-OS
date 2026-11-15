@@ -996,6 +996,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
                  && daterange($6::date, COALESCE($7::date,'infinity'::date), '[]')
          )
          AND $6::date<=COALESCE($7::date,'infinity'::date)
+         AND ($7::date IS NULL OR $7::date>=CURRENT_DATE)
        LIMIT 1 FOR UPDATE OF b`,
       [organizationId, bedId, studentId, tenant.membershipId, tenantWide, assignedFrom, assignedUntil],
     );
