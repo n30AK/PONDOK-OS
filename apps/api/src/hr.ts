@@ -104,7 +104,7 @@ export async function handleHrRequest(
     return true;
   }
 
-  const assignmentMatch = path.match(/^\\/v1\\/hr\\/employee-assignments(?:\\/([0-9a-f-]{36}))?$/i);
+  const assignmentMatch = path.match(/^\/v1\/hr\/employee-assignments(?:\/([0-9a-f-]{36}))?$/i);
   if (assignmentMatch && req.method === "GET") {
     if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
     const assignmentId = assignmentMatch[1];
@@ -135,7 +135,7 @@ export async function handleHrRequest(
     return true;
   }
 
-  const contractMatch = path.match(/^\\/v1\\/hr\\/employment-contracts(?:\\/([0-9a-f-]{36}))?$/i);
+  const contractMatch = path.match(/^\/v1\/hr\/employment-contracts(?:\/([0-9a-f-]{36}))?$/i);
   if (contractMatch && req.method === "GET") {
     if (!tenant.permissions.includes("hr.contracts.read")) { reply(res, 403, { error: "permission_required", permission: "hr.contracts.read" }); return true; }
     const contractId = contractMatch[1];
