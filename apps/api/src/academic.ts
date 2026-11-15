@@ -93,9 +93,16 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
   const url = new URL(req.url ?? "/", "http://localhost");
   if (!matchesAcademicStudentPath(url.pathname)) return false;
   const studentMatch = url.pathname.match(/^\/v1\/academic\/students\/([0-9a-f-]{36})$/i);
-  const isStudentUpdate = Boolean(studentMatch && req.method === "PATCH");
-  if (req.method !== "GET" && req.method !== "POST" && !isStudentUpdate) {
-    res.setHeader("allow", "GET, POST, PATCH"); reply(res, 405, { error: "method_not_allowed" }); return true;
+  const isStudentDetail = Boolean(studentMatch);
+  const isStudentUpdate = Boolean(isStudentDetail && req.method === "PATCH");
+  if (isStudentDetail && req.method !== "GET" && req.method !== "PATCH") {
+    res.setHeader("allow", "GET, PATCH"); reply(res, 405, { error: "method_not_allowed" }); return true;
+  }
+  if (!isStudentDetail && req.method !== "GET" && req.method !== "POST") {
+    res.setHeader("allow", "GET, POST"); reply(res, 405, { error: "method_not_allowed" }); return true;
+  }
+  if (isStudentDetail && !UUID.test(studentMatch?.[1] ?? "")) {
+    reply(res, 400, { error: "invalid_student_id" }); return true;
   }
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
@@ -104,11 +111,27 @@ export async function handleAcademicRequest(req: IncomingMessage, res: ServerRes
     if (!tenant.permissions.includes("academic.students.read")) {
       reply(res, 403, { error: "permission_required", permission: "academic.students.read" }); return true;
     }
+    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+    if (isStudentDetail) {
+      const studentId = studentMatch?.[1];
+      const result = await pool.query(
+        `SELECT sp.id, sp.campus_id AS "campusId", sp.student_number AS "studentNumber",
+                sp.legal_name AS "legalName", sp.preferred_name AS "preferredName",
+                sp.birth_date AS "birthDate", sp.gender_code AS "genderCode",
+                sp.profile_data AS "profileData", sp.status, sp.created_at AS "createdAt"
+         FROM academic.student_profiles sp
+         WHERE sp.organization_id = $1::uuid AND sp.id = $2::uuid
+           AND ${studentScopePredicate("sp", "$1", "$3", "$4")}
+         LIMIT 1`,
+        [organizationId, studentId, tenant.membershipId, tenantWide],
+      );
+      if (!result.rows[0]) { reply(res, 404, { error: "student_not_found" }); return true; }
+      reply(res, 200, { data: result.rows[0] }); return true;
+    }
     const rawLimit = Number(url.searchParams.get("limit") ?? "50");
     const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
     const search = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
     const status = url.searchParams.get("status");
-    const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
     const values: unknown[] = [organizationId, `%${search.replace(/[\\\\%_]/g, "\\\\$&")}%`, tenant.membershipId, tenantWide];
     let statusClause = "";
     if (status && ["applicant", "active", "graduated", "withdrawn", "suspended"].includes(status)) {
