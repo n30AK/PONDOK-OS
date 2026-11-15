@@ -419,3 +419,55 @@ test("scoped attendance session PATCH cannot rewrite its class or date", async (
   assert.equal(res.statusCode, 422);
   assert.equal(JSON.parse(res.body).error, "attendance_session_class_and_date_are_immutable");
 });
+
+
+test("scoped boarding room reads are filtered by room, dormitory or campus assignment", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["boarding.rooms.manage"], ["boarding_supervisor"])] };
+    if (sql.includes("FROM boarding.rooms r")) return { rows: [{ id: recordId, room_code: "A-01" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("GET", "/v1/modules/boarding-rooms"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  const read = calls.find(call => call.sql.includes("FROM boarding.rooms r"));
+  assert.ok(read.sql.includes("membership_room_scopes"));
+  assert.ok(read.sql.includes("membership_dormitory_scopes"));
+  assert.ok(read.sql.includes("membership_campus_scopes"));
+  assert.deepEqual(read.values.slice(0, 3), [organizationId, tenantRow([]).membership_id, false]);
+});
+
+test("scoped boarding assignment creation rejects an unassigned bed or cross-campus student", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["boarding.assignments.manage"], ["boarding_supervisor"])] };
+    if (sql.includes("FROM boarding.beds b")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO boarding.bed_assignments")) throw new Error("out-of-scope assignment must never be inserted");
+    return { rows: [] };
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("POST", "/v1/modules/boarding-assignments", {
+    bedId: recordId,
+    studentId: "523e4567-e89b-42d3-a456-426614174000",
+    assignedFrom: "2026-11-15"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "boarding_bed_student_or_scope_unavailable");
+  assert.equal(calls.some(call => call.sql.startsWith("INSERT INTO boarding.bed_assignments")), false);
+});
+
+test("scoped boarding assignment cannot be moved to another bed or student", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["boarding.assignments.manage"], ["boarding_supervisor"])] };
+    throw new Error("immutable assignment relationship must be rejected before SQL");
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("PATCH", "/v1/modules/boarding-assignments?id=" + recordId, {
+    bedId: "523e4567-e89b-42d3-a456-426614174000"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 422);
+  assert.equal(JSON.parse(res.body).error, "boarding_assignment_relationship_and_start_are_immutable");
+});
