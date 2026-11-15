@@ -17,10 +17,10 @@ The following reflects code paths and CI/deployment evidence, not a production a
 
 ### Intentionally fail-closed
 
-- PPDB scoped-officer access is temporarily denied until every applicant, guardian-document, review and conversion query applies campus authorization atomically.
-- Finance/accounting access for scoped members is denied because journal entries and journal lines do not yet have a reliable campus/cost-center relationship.
-- Scoped procurement and asset writes are denied pending atomic authorization for all referenced suppliers, requests, orders, items and approval transitions.
-- Scoped library-loan creation/return, student identity documents, health profiles and guardian-authority verification remain restricted until their complete resource-specific scope and audit paths are verified.
+- PPDB scoped officers may read admission periods and applicant records only for active campus grants. Creating/submitting applications, review decisions, enrollment conversion and related document writes remain denied until every lifecycle query and audit write has atomic campus authorization.
+- Scoped finance members may read the chart of accounts and fiscal-period metadata with explicit permissions. Journal entries/lines, posting, period closing and all finance writes remain denied until a reliable campus/cost-center relationship exists.
+- Scoped procurement members may create purchase requests for assigned campuses and add lines only to in-scope draft requests. Editing requests, creating/approving purchase orders, supplier writes and fixed-asset writes remain denied pending atomic authorization for every related supplier, request, order, item and approval transition.
+- Scoped librarians may read the catalog, physical copies by campus and loans only when both copy-campus and borrower-student scopes match. Loan creation/return remain restricted. Student identity documents, health profiles and guardian-authority verification also remain restricted until their complete resource-specific scope and audit paths are verified.
 - Unknown or unmapped generic module resources remain denied for scoped members. A visible menu or permission alone does not prove that the underlying API enforces scope.
 
 ### Additional release blockers
