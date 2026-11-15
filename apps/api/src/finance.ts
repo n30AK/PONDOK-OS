@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -66,6 +66,12 @@ export async function handleFinanceRequest(
   if (!path.startsWith("/v1/finance/")) return false;
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
+  // Finance records currently have no campus/department ownership dimension.
+  // Fail closed for scoped members until each accounting resource has a safe scope model.
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    reply(res, 403, { error: "finance_access_requires_tenant_authority" });
+    return true;
+  }
 
   if (path === "/v1/finance/accounts" && req.method === "GET") {
     if (!tenant.permissions.includes("finance.accounts.read")) { reply(res, 403, { error: "permission_required", permission: "finance.accounts.read" }); return true; }
