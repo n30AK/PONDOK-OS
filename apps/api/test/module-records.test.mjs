@@ -701,7 +701,7 @@ test("scoped purchase-request-line creation checks parent draft status and campu
   const insert = calls.find(call => call.sql.includes("INSERT INTO procurement.purchase_request_lines"));
   assert.ok(insert.sql.includes("pr.request_status='draft'"));
   assert.ok(insert.sql.includes("membership_campus_scopes"));
-  assert.ok(insert.sql.includes("mcs.membership_id=$6::uuid"));
+  assert.ok(insert.sql.includes("mcs.membership_id = $6::uuid"));
   assert.deepEqual(insert.values.slice(-1), [membershipId]);
 });
 
@@ -729,6 +729,6 @@ test("scoped purchase-request-line creation rejects out-of-scope parent before a
   assert.equal(JSON.parse(res.body).error, "campus_scope_required_or_request_not_draft");
   const insert = calls.find(call => call.sql.includes("INSERT INTO procurement.purchase_request_lines"));
   assert.ok(insert.sql.includes("pr.request_status='draft'"));
-  assert.ok(insert.sql.includes("mcs.valid_from<=now()"));
+  assert.ok(insert.sql.includes("mcs.valid_from <= now()"));
   assert.equal(calls.some(call => call.sql.includes("INSERT INTO audit.audit_events")), false);
 });
