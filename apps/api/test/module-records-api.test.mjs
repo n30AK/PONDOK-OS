@@ -382,3 +382,40 @@ test("scoped attendance updates cannot move a record to another student or sessi
   assert.equal(res.statusCode, 422);
   assert.equal(JSON.parse(res.body).error, "attendance_relationship_fields_are_immutable");
 });
+
+
+test("scoped attendance PATCH binds organization, membership and tenant-wide flag in SQL", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.attendance.write"], ["academic_teacher"])] };
+    if (sql.startsWith("SAVEPOINT") || sql.startsWith("RELEASE SAVEPOINT")) return { rows: [] };
+    if (sql.startsWith("UPDATE academic.attendance_records AS ar")) return { rows: [{ id: recordId, attendance_status: "present" }] };
+    if (sql.startsWith("INSERT INTO audit.audit_events")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("PATCH", "/v1/modules/attendance-records?id=" + recordId, {
+    attendanceStatus: "present"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  const update = calls.find(call => call.sql.startsWith("UPDATE academic.attendance_records AS ar"));
+  assert.ok(update.sql.includes("ar.organization_id=$2::uuid"));
+  assert.ok(update.sql.includes("ar.id=$3::uuid"));
+  assert.ok(update.sql.includes("mcs.membership_id = $4::uuid"));
+  assert.ok(update.sql.includes("$5::boolean"));
+  assert.deepEqual(update.values.slice(-4), [organizationId, recordId, tenantRow([]).membership_id, false]);
+});
+
+test("scoped attendance session PATCH cannot rewrite its class or date", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.attendance.write"], ["academic_teacher"])] };
+    throw new Error("immutable session date must be rejected before SQL");
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("PATCH", "/v1/modules/attendance-sessions?id=" + recordId, {
+    sessionDate: "2026-11-15"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 422);
+  assert.equal(JSON.parse(res.body).error, "attendance_session_class_and_date_are_immutable");
+});
