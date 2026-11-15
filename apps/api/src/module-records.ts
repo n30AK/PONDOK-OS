@@ -101,6 +101,11 @@ export function moduleRecordProjection(resource: Resource): string {
   return [...columns].join(", ");
 }
 
+export function getModuleRecordProjection(resourceKey: string): string | null {
+  const resource = RESOURCES[resourceKey];
+  return resource ? moduleRecordProjection(resource) : null;
+}
+
 function reply(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
   res.end(JSON.stringify(body));
