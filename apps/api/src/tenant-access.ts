@@ -197,3 +197,67 @@ export function employeeScopePredicate(
     )
   )`;
 }
+
+
+/**
+ * Attendance is scoped to a campus or an explicitly assigned class. A
+ * class-subject assignment alone is not sufficient because attendance sessions
+ * currently have no class_subject_id relationship; that path remains fail-closed.
+ */
+export function attendanceClassScopePredicate(
+  classAlias: string,
+  organizationPlaceholder: string,
+  membershipPlaceholder: string,
+  tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${tenantWidePlaceholder}::boolean
+    OR EXISTS (
+      SELECT 1 FROM core.membership_campus_scopes mcs
+      WHERE mcs.organization_id = ${organizationPlaceholder}::uuid
+        AND mcs.membership_id = ${membershipPlaceholder}::uuid
+        AND mcs.campus_id = ${classAlias}.campus_id
+        AND mcs.revoked_at IS NULL AND mcs.valid_from <= now()
+        AND (mcs.valid_until IS NULL OR mcs.valid_until > now())
+    )
+    OR EXISTS (
+      SELECT 1 FROM core.membership_class_scopes mcls
+      WHERE mcls.organization_id = ${organizationPlaceholder}::uuid
+        AND mcls.membership_id = ${membershipPlaceholder}::uuid
+        AND mcls.class_group_id = ${classAlias}.id
+        AND mcls.revoked_at IS NULL AND mcls.valid_from <= now()
+        AND (mcls.valid_until IS NULL OR mcls.valid_until > now())
+    )
+  )`;
+}
+
+export function attendanceSessionScopePredicate(
+  sessionAlias: string,
+  organizationPlaceholder: string,
+  membershipPlaceholder: string,
+  tenantWidePlaceholder: string,
+): string {
+  return `EXISTS (
+    SELECT 1 FROM academic.class_groups cg
+    WHERE cg.organization_id = ${organizationPlaceholder}::uuid
+      AND cg.id = ${sessionAlias}.class_group_id
+      AND ${attendanceClassScopePredicate("cg", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+  )`;
+}
+
+export function attendanceRecordScopePredicate(
+  recordAlias: string,
+  organizationPlaceholder: string,
+  membershipPlaceholder: string,
+  tenantWidePlaceholder: string,
+): string {
+  return `EXISTS (
+    SELECT 1
+    FROM academic.attendance_sessions ats
+    JOIN academic.class_groups cg
+      ON cg.organization_id = ats.organization_id AND cg.id = ats.class_group_id
+    WHERE ats.organization_id = ${organizationPlaceholder}::uuid
+      AND ats.id = ${recordAlias}.attendance_session_id
+      AND ${attendanceClassScopePredicate("cg", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+  )`;
+}

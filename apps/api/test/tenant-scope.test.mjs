@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { withTenantScope } from "../dist/tenant-db.js";
-import { loadTenantContext } from "../dist/tenant-access.js";
+import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, loadTenantContext } from "../dist/tenant-access.js";
 
 const tenantA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const tenantB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -113,4 +113,23 @@ test("invalid user or organization identifiers are rejected before acquiring a c
   await assert.rejects(() => withTenantScope(pool, "not-a-uuid", tenantA, async () => null), /Invalid tenant security context/);
   await assert.rejects(() => withTenantScope(pool, userA, "not-a-uuid", async () => null), /Invalid tenant security context/);
   assert.equal(state.releases, 0);
+});
+
+
+test("attendance scope predicates are tenant-bound and honor active campus/class grants", () => {
+  const classSql = attendanceClassScopePredicate("cg", "$1", "$2", "$3");
+  const sessionSql = attendanceSessionScopePredicate("ats", "$1", "$2", "$3");
+  const recordSql = attendanceRecordScopePredicate("ar", "$1", "$2", "$3");
+  for (const sql of [classSql, sessionSql, recordSql]) {
+    assert.ok(sql.includes("$1::uuid"));
+    assert.ok(sql.includes("$2::uuid"));
+    assert.ok(sql.includes("$3::boolean"));
+    assert.ok(sql.includes("revoked_at IS NULL"));
+    assert.ok(sql.includes("valid_from <= now()"));
+    assert.ok(sql.includes("valid_until IS NULL OR"));
+  }
+  assert.ok(classSql.includes("membership_campus_scopes"));
+  assert.ok(classSql.includes("membership_class_scopes"));
+  assert.ok(sessionSql.includes("ats.class_group_id"));
+  assert.ok(recordSql.includes("ar.attendance_session_id"));
 });

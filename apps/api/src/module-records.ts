@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
-import { hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
+import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 type Field = { column: string; kind?: "text" | "date" | "uuid" | "number" | "boolean" | "json" | "array" | "timestamp"; required?: boolean; max?: number; values?: string[]; minValue?: number; maxValue?: number; integer?: boolean };
 type Resource = { table: string; permission: string; writePermission?: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
@@ -710,22 +710,55 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const write = req.method !== "GET";
   const requiredPermission = write ? (resource.writePermission ?? resource.permission) : resource.permission;
   if (!tenant.permissions.includes(requiredPermission)) { reply(res,403,{error:"permission_required",permission:requiredPermission}); return true; }
-  // Generic module tables are not yet mapped to every concrete member scope.
-  // Do not let a tenant-level permission silently bypass member-level grants.
-  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+  const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+  const scopedAttendanceResource = match[1] === "attendance-sessions" || match[1] === "attendance-records";
+  // Only attendance currently has complete campus/class predicates in this
+  // generic route. Every other unmapped resource remains fail-closed.
+  if (!tenantWide && !scopedAttendanceResource) {
     reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
   }
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
     const limit=Number.isInteger(limitRaw)?Math.min(Math.max(limitRaw,1),200):100;
     const projection = moduleRecordProjection(resource);
-    const result=await pool.query(`SELECT ${projection} FROM ${resource.table} WHERE organization_id=$1::uuid ORDER BY ${resource.order ?? "created_at"} DESC LIMIT $2`,[organizationId,limit]);
+    let result;
+    if (match[1] === "attendance-sessions") {
+      const qualifiedProjection = projection.split(",").map((column) => `ats.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM academic.attendance_sessions ats
+         WHERE ats.organization_id=$1::uuid
+           AND ${attendanceSessionScopePredicate("ats", "$1", "$2", "$3")}
+         ORDER BY ats.session_date DESC, ats.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "attendance-records") {
+      const qualifiedProjection = projection.split(",").map((column) => `ar.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM academic.attendance_records ar
+         JOIN academic.attendance_sessions ats
+           ON ats.organization_id=ar.organization_id AND ats.id=ar.attendance_session_id
+         WHERE ar.organization_id=$1::uuid
+           AND ${attendanceRecordScopePredicate("ar", "$1", "$2", "$3")}
+         ORDER BY ar.recorded_at DESC, ar.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else {
+      result = await pool.query(`SELECT ${projection} FROM ${resource.table} WHERE organization_id=$1::uuid ORDER BY ${resource.order ?? "created_at"} DESC LIMIT $2`,[organizationId,limit]);
+    }
     const data = result.rows.map((row) => filterModuleRecordForPermissions(match[1] ?? "", row as Record<string, unknown>, tenant.permissions));
     reply(res,200,{data,pagination:{limit,returned:data.length}}); return true;
   }
   const body=await readJson(req);
   if (!body) { reply(res,400,{error:"invalid_json_or_body_too_large"}); return true; }
   const recordId=url.searchParams.get("id");
+  if (req.method === "PATCH" && match[1] === "attendance-records" &&
+      (Object.prototype.hasOwnProperty.call(body, "attendanceSessionId") || Object.prototype.hasOwnProperty.call(body, "studentId"))) {
+    reply(res,422,{error:"attendance_relationship_fields_are_immutable"}); return true;
+  }
+  if (req.method === "PATCH" && match[1] === "attendance-sessions" &&
+      (Object.prototype.hasOwnProperty.call(body, "classGroupId") || Object.prototype.hasOwnProperty.call(body, "sessionDate"))) {
+    reply(res,422,{error:"attendance_session_class_and_date_are_immutable"}); return true;
+  }
   if (req.method === "PATCH") {
     if (!recordId || !UUID.test(recordId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
     const error=validate(resource.fields,body,true);
@@ -735,9 +768,31 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     const sets=entries.map(([,field],i)=>{const kind=field.kind;const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":"";return `${field.column}=${i+1}${suffix}`;});
     const values=entries.map(([key,field])=>field.kind==="json"?JSON.stringify(body[key]):body[key]);
     values.push(organizationId,recordId);
+    let updateSql: string;
+    if (match[1] === "attendance-records") {
+      const orgPlaceholder = `$${values.length-1}`;
+      const membershipPlaceholder = `$${values.length+1}`;
+      const tenantWidePlaceholder = `$${values.length+2}`;
+      values.push(tenant.membershipId, tenantWide);
+      updateSql = `UPDATE academic.attendance_records AS ar SET ${sets.join(",")}
+        WHERE ar.organization_id=${orgPlaceholder}::uuid AND ar.id=$${values.length-2}::uuid
+          AND ${attendanceRecordScopePredicate("ar", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+        RETURNING ${moduleRecordProjection(resource)}`;
+    } else if (match[1] === "attendance-sessions") {
+      const orgPlaceholder = `$${values.length-1}`;
+      const membershipPlaceholder = `$${values.length+1}`;
+      const tenantWidePlaceholder = `$${values.length+2}`;
+      values.push(tenant.membershipId, tenantWide);
+      updateSql = `UPDATE academic.attendance_sessions AS ats SET ${sets.join(",")}
+        WHERE ats.organization_id=${orgPlaceholder}::uuid AND ats.id=$${values.length-2}::uuid
+          AND ${attendanceSessionScopePredicate("ats", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+        RETURNING ${moduleRecordProjection(resource)}`;
+    } else {
+      updateSql = `UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource)}`;
+    }
     await pool.query("SAVEPOINT module_record_write");
     try {
-      const result=await pool.query(`UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource)}`,values);
+      const result=await pool.query(updateSql,values);
       if (!result.rows.length) { reply(res,404,{error:"record_not_found"}); return true; }
       const record=result.rows[0] as Record<string,unknown>;
       await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,[organizationId,userId,"module.record.update",resource.table,String(record.id ?? ""),JSON.stringify({resource:match[1],fields:entries.map(([key])=>key)})]);
@@ -758,6 +813,36 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const error=validateModuleRecordInput(match[1] ?? "",body);
   if (error) { reply(res,422,{error}); return true; }
   const entries=Object.entries(resource.fields).filter(([key])=>Object.prototype.hasOwnProperty.call(body,key));
+  if (match[1] === "attendance-sessions") {
+    const classGroupId = typeof body.classGroupId === "string" ? body.classGroupId : "";
+    const allowedClass = await pool.query(
+      `SELECT 1 FROM academic.class_groups cg
+       WHERE cg.organization_id=$1::uuid AND cg.id=$2::uuid
+         AND ${attendanceClassScopePredicate("cg", "$1", "$3", "$4")} LIMIT 1`,
+      [organizationId, classGroupId, tenant.membershipId, tenantWide],
+    );
+    if (!allowedClass.rows.length) { reply(res,403,{error:"attendance_class_scope_required"}); return true; }
+  }
+  if (match[1] === "attendance-records") {
+    const attendanceSessionId = typeof body.attendanceSessionId === "string" ? body.attendanceSessionId : "";
+    const studentId = typeof body.studentId === "string" ? body.studentId : "";
+    const allowedPair = await pool.query(
+      `SELECT 1
+       FROM academic.attendance_sessions ats
+       JOIN academic.class_groups cg
+         ON cg.organization_id=ats.organization_id AND cg.id=ats.class_group_id
+       JOIN academic.enrollments e
+         ON e.organization_id=ats.organization_id
+        AND e.class_group_id=ats.class_group_id AND e.student_id=$3::uuid
+       WHERE ats.organization_id=$1::uuid AND ats.id=$2::uuid
+         AND e.status='enrolled' AND e.enrolled_on<=ats.session_date
+         AND (e.ended_on IS NULL OR e.ended_on>=ats.session_date)
+         AND ${attendanceClassScopePredicate("cg", "$1", "$4", "$5")}
+       LIMIT 1`,
+      [organizationId, attendanceSessionId, studentId, tenant.membershipId, tenantWide],
+    );
+    if (!allowedPair.rows.length) { reply(res,403,{error:"attendance_student_or_class_scope_required"}); return true; }
+  }
   const columns=["organization_id",...entries.map(([,field])=>field.column),...(resource.actorColumn?[resource.actorColumn]:[])];
   const values=[organizationId,...entries.map(([key,field])=>field.kind==="json"?JSON.stringify(body[key]):body[key]),...(resource.actorColumn?[userId]:[])];
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
