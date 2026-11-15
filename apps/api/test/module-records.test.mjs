@@ -372,7 +372,7 @@ test("scoped procurement writes remain fail closed until relation checks are ato
   const pool = { async query(sql) {
     if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
       membership_id: membershipId, organization_id: organizationId,
-      roles: ["procurement_officer"], permissions: ["procurement.requests.write"]
+      roles: ["procurement_officer"], permissions: ["procurement.orders.manage"]
     }] };
     dataQuery = true;
     throw new Error("write must be rejected before a data query");
@@ -380,7 +380,7 @@ test("scoped procurement writes remain fail closed until relation checks are ato
   const req = Readable.from([Buffer.from(JSON.stringify({
     campusId: uuid, requestNumber: "PR-002", purpose: "Perlengkapan kelas"
   }))]);
-  req.method = "POST"; req.url = "/v1/modules/purchase-requests"; req.headers = {};
+  req.method = "POST"; req.url = "/v1/modules/purchase-orders"; req.headers = {};
   const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
   await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
   assert.equal(res.statusCode, 403);
@@ -583,7 +583,7 @@ test("scoped procurement officer adds a line only to a draft request in their ca
   assert.ok(insertSql.includes("FROM procurement.purchase_requests pr"));
   assert.ok(insertSql.includes("pr.request_status='draft'"));
   assert.ok(insertSql.includes("membership_campus_scopes"));
-  assert.ok(insertSql.includes("mcs.campus_id=pr.campus_id"));
+  assert.match(insertSql, /mcs\\.campus_id\\s*=\\s*pr\\.campus_id/);
   assert.deepEqual(insertValues.slice(-1), [membershipId]);
 });
 
