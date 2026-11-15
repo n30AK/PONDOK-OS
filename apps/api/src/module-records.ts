@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
-import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
+import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, boardingAssignmentScopePredicate, boardingBedScopePredicate, boardingDormitoryScopePredicate, boardingRoomScopePredicate, boardingStudentRecordScopePredicate, boardingStudentScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 type Field = { column: string; kind?: "text" | "date" | "uuid" | "number" | "boolean" | "json" | "array" | "timestamp"; required?: boolean; max?: number; values?: string[]; minValue?: number; maxValue?: number; integer?: boolean };
 type Resource = { table: string; permission: string; writePermission?: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
@@ -712,9 +712,10 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   if (!tenant.permissions.includes(requiredPermission)) { reply(res,403,{error:"permission_required",permission:requiredPermission}); return true; }
   const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
   const scopedAttendanceResource = match[1] === "attendance-sessions" || match[1] === "attendance-records";
-  // Only attendance currently has complete campus/class predicates in this
-  // generic route. Every other unmapped resource remains fail-closed.
-  if (!tenantWide && !scopedAttendanceResource) {
+  const scopedBoardingResource = ["dormitories", "boarding-rooms", "boarding-beds", "boarding-assignments", "leave-requests", "incidents"].includes(match[1] ?? "");
+  // Only attendance and boarding currently have concrete member-scope predicates.
+  // Every other unmapped resource remains fail-closed.
+  if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource) {
     reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
   }
   if (!write) {
@@ -742,6 +743,54 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
          ORDER BY ar.recorded_at DESC, ar.id LIMIT $4`,
         [organizationId, tenant.membershipId, tenantWide, limit],
       );
+    } else if (match[1] === "dormitories") {
+      const qualifiedProjection = projection.split(",").map((column) => `d.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM boarding.dormitories d
+         WHERE d.organization_id=$1::uuid AND ${boardingDormitoryScopePredicate("d", "$1", "$2", "$3")}
+         ORDER BY d.created_at DESC LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "boarding-rooms") {
+      const qualifiedProjection = projection.split(",").map((column) => `r.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM boarding.rooms r
+         WHERE r.organization_id=$1::uuid AND ${boardingRoomScopePredicate("r", "$1", "$2", "$3")}
+         ORDER BY r.id DESC LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "boarding-beds") {
+      const qualifiedProjection = projection.split(",").map((column) => `b.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM boarding.beds b
+         WHERE b.organization_id=$1::uuid AND ${boardingBedScopePredicate("b", "$1", "$2", "$3")}
+         ORDER BY b.id DESC LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "boarding-assignments") {
+      const qualifiedProjection = projection.split(",").map((column) => `ba.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM boarding.bed_assignments ba
+         WHERE ba.organization_id=$1::uuid AND ${boardingAssignmentScopePredicate("ba", "$1", "$2", "$3")}
+         ORDER BY ba.created_at DESC LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "leave-requests") {
+      const qualifiedProjection = projection.split(",").map((column) => `lr.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM boarding.leave_requests lr
+         WHERE lr.organization_id=$1::uuid AND ${boardingStudentRecordScopePredicate("lr", "$1", "$2", "$3")}
+         ORDER BY lr.created_at DESC LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "incidents") {
+      const qualifiedProjection = projection.split(",").map((column) => `i.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM boarding.incidents i
+         WHERE i.organization_id=$1::uuid AND ${boardingStudentRecordScopePredicate("i", "$1", "$2", "$3")}
+         ORDER BY i.created_at DESC LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
     } else {
       result = await pool.query(`SELECT ${projection} FROM ${resource.table} WHERE organization_id=$1::uuid ORDER BY ${resource.order ?? "created_at"} DESC LIMIT $2`,[organizationId,limit]);
     }
@@ -758,6 +807,23 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   if (req.method === "PATCH" && match[1] === "attendance-sessions" &&
       (Object.prototype.hasOwnProperty.call(body, "classGroupId") || Object.prototype.hasOwnProperty.call(body, "sessionDate"))) {
     reply(res,422,{error:"attendance_session_class_and_date_are_immutable"}); return true;
+  }
+  if (req.method === "PATCH" && !tenantWide && match[1] === "dormitories" && Object.prototype.hasOwnProperty.call(body, "campusId")) {
+    reply(res,422,{error:"dormitory_campus_is_immutable_for_scoped_members"}); return true;
+  }
+  if (req.method === "PATCH" && !tenantWide && match[1] === "boarding-rooms" && Object.prototype.hasOwnProperty.call(body, "dormitoryId")) {
+    reply(res,422,{error:"room_dormitory_is_immutable_for_scoped_members"}); return true;
+  }
+  if (req.method === "PATCH" && !tenantWide && match[1] === "boarding-beds" && Object.prototype.hasOwnProperty.call(body, "roomId")) {
+    reply(res,422,{error:"bed_room_is_immutable_for_scoped_members"}); return true;
+  }
+  if (req.method === "PATCH" && match[1] === "boarding-assignments" &&
+      ["bedId", "studentId", "assignedFrom"].some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+    reply(res,422,{error:"boarding_assignment_relationship_and_start_are_immutable"}); return true;
+  }
+  if (req.method === "PATCH" && ["leave-requests", "incidents"].includes(match[1] ?? "") &&
+      Object.prototype.hasOwnProperty.call(body, "studentId")) {
+    reply(res,422,{error:"boarding_student_relationship_is_immutable"}); return true;
   }
   if (req.method === "PATCH") {
     if (!recordId || !UUID.test(recordId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
@@ -787,6 +853,26 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
         WHERE ats.organization_id=${orgPlaceholder}::uuid AND ats.id=$${values.length-2}::uuid
           AND ${attendanceSessionScopePredicate("ats", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
         RETURNING ${moduleRecordProjection(resource)}`;
+    } else if (["dormitories", "boarding-rooms", "boarding-beds", "boarding-assignments", "leave-requests", "incidents"].includes(match[1] ?? "")) {
+      const configs: Record<string, { alias: string; predicate: (alias: string, org: string, member: string, wide: string) => string }> = {
+        "dormitories": { alias: "d", predicate: boardingDormitoryScopePredicate },
+        "boarding-rooms": { alias: "r", predicate: boardingRoomScopePredicate },
+        "boarding-beds": { alias: "b", predicate: boardingBedScopePredicate },
+        "boarding-assignments": { alias: "ba", predicate: boardingAssignmentScopePredicate },
+        "leave-requests": { alias: "lr", predicate: boardingStudentRecordScopePredicate },
+        "incidents": { alias: "i", predicate: boardingStudentRecordScopePredicate },
+      };
+      const config = configs[match[1] ?? ""];
+      if (!config) throw new Error("boarding_scope_configuration_missing");
+      const orgPlaceholder = `$${values.length-1}`;
+      const membershipPlaceholder = `$${values.length+1}`;
+      const tenantWidePlaceholder = `$${values.length+2}`;
+      values.push(tenant.membershipId, tenantWide);
+      updateSql = `UPDATE ${resource.table} AS ${config.alias} SET ${sets.join(",")}
+        WHERE ${config.alias}.organization_id=${orgPlaceholder}::uuid
+          AND ${config.alias}.id=$${values.length-2}::uuid
+          AND ${config.predicate(config.alias, orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+        RETURNING ${moduleRecordProjection(resource)}`;
     } else {
       updateSql = `UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource)}`;
     }
@@ -795,6 +881,19 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       const result=await pool.query(updateSql,values);
       if (!result.rows.length) { reply(res,404,{error:"record_not_found"}); return true; }
       const record=result.rows[0] as Record<string,unknown>;
+      if (match[1] === "boarding-assignments" && Object.prototype.hasOwnProperty.call(body, "assignedUntil")) {
+        const bedId = String(record.bed_id ?? "");
+        await pool.query(
+          `UPDATE boarding.beds b SET bed_status=CASE
+             WHEN EXISTS (SELECT 1 FROM boarding.bed_assignments ba WHERE ba.organization_id=$1::uuid AND ba.bed_id=b.id
+               AND ba.assigned_from<=CURRENT_DATE AND (ba.assigned_until IS NULL OR ba.assigned_until>=CURRENT_DATE)) THEN 'occupied'
+             WHEN EXISTS (SELECT 1 FROM boarding.bed_assignments ba WHERE ba.organization_id=$1::uuid AND ba.bed_id=b.id
+               AND ba.assigned_from>CURRENT_DATE) THEN 'reserved'
+             ELSE 'available' END
+           WHERE b.organization_id=$1::uuid AND b.id=$2::uuid`,
+          [organizationId, bedId],
+        );
+      }
       await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,[organizationId,userId,"module.record.update",resource.table,String(record.id ?? ""),JSON.stringify({resource:match[1],fields:entries.map(([key])=>key)})]);
       await pool.query("RELEASE SAVEPOINT module_record_write");
       reply(res,200,{data:filterModuleRecordForPermissions(match[1] ?? "",record,tenant.permissions)});
@@ -843,6 +942,85 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     );
     if (!allowedPair.rows.length) { reply(res,403,{error:"attendance_student_or_class_scope_required"}); return true; }
   }
+  if (match[1] === "dormitories") {
+    const campusId = typeof body.campusId === "string" ? body.campusId : "";
+    if (!tenantWide && !campusId) { reply(res,403,{error:"dormitory_campus_scope_required"}); return true; }
+    if (campusId) {
+      const allowedCampus = await pool.query(
+        `SELECT 1 FROM core.campuses c WHERE c.organization_id=$1::uuid AND c.id=$2::uuid
+         AND ($4::boolean OR EXISTS (SELECT 1 FROM core.membership_campus_scopes mcs
+           WHERE mcs.organization_id=$1::uuid AND mcs.membership_id=$3::uuid AND mcs.campus_id=c.id
+             AND mcs.revoked_at IS NULL AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now()))) LIMIT 1`,
+        [organizationId, campusId, tenant.membershipId, tenantWide],
+      );
+      if (!allowedCampus.rows.length) { reply(res,403,{error:"dormitory_campus_scope_required"}); return true; }
+    }
+  }
+  if (match[1] === "boarding-rooms") {
+    const dormitoryId = typeof body.dormitoryId === "string" ? body.dormitoryId : "";
+    const allowedDormitory = await pool.query(
+      `SELECT 1 FROM boarding.dormitories d WHERE d.organization_id=$1::uuid AND d.id=$2::uuid
+       AND ${boardingDormitoryScopePredicate("d", "$1", "$3", "$4")} LIMIT 1`,
+      [organizationId, dormitoryId, tenant.membershipId, tenantWide],
+    );
+    if (!allowedDormitory.rows.length) { reply(res,403,{error:"boarding_dormitory_scope_required"}); return true; }
+  }
+  if (match[1] === "boarding-beds") {
+    const roomId = typeof body.roomId === "string" ? body.roomId : "";
+    const allowedRoom = await pool.query(
+      `SELECT 1 FROM boarding.rooms r WHERE r.organization_id=$1::uuid AND r.id=$2::uuid
+       AND ${boardingRoomScopePredicate("r", "$1", "$3", "$4")} LIMIT 1`,
+      [organizationId, roomId, tenant.membershipId, tenantWide],
+    );
+    if (!allowedRoom.rows.length) { reply(res,403,{error:"boarding_room_scope_required"}); return true; }
+  }
+  if (match[1] === "boarding-assignments") {
+    const bedId = typeof body.bedId === "string" ? body.bedId : "";
+    const studentId = typeof body.studentId === "string" ? body.studentId : "";
+    const assignedFrom = typeof body.assignedFrom === "string" ? body.assignedFrom : "";
+    const assignedUntil = typeof body.assignedUntil === "string" ? body.assignedUntil : null;
+    // Serialize placement attempts by student before checking overlapping assignments.
+    const lockedStudent = await pool.query(
+      `SELECT id FROM academic.student_profiles
+       WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active' FOR UPDATE`,
+      [organizationId, studentId],
+    );
+    if (!lockedStudent.rows.length) { reply(res,403,{error:"boarding_student_scope_required"}); return true; }
+    const allowedAssignment = await pool.query(
+      `SELECT 1
+       FROM boarding.beds b
+       JOIN boarding.rooms r ON r.organization_id=b.organization_id AND r.id=b.room_id
+       JOIN boarding.dormitories d ON d.organization_id=r.organization_id AND d.id=r.dormitory_id
+       JOIN academic.student_profiles sp ON sp.organization_id=b.organization_id AND sp.id=$3::uuid
+       WHERE b.organization_id=$1::uuid AND b.id=$2::uuid AND b.bed_status='available'
+         AND sp.status='active' AND d.campus_id IS NOT NULL AND sp.campus_id=d.campus_id
+         AND ${boardingBedScopePredicate("b", "$1", "$4", "$5")}
+         AND NOT EXISTS (
+           SELECT 1 FROM boarding.bed_assignments existing
+           WHERE existing.organization_id=$1::uuid
+             AND (existing.bed_id=b.id OR existing.student_id=sp.id)
+             AND daterange(existing.assigned_from, COALESCE(existing.assigned_until,'infinity'::date), '[]')
+                 && daterange($6::date, COALESCE($7::date,'infinity'::date), '[]')
+         )
+         AND $6::date<=COALESCE($7::date,'infinity'::date)
+         AND ($7::date IS NULL OR $7::date>=CURRENT_DATE)
+       LIMIT 1 FOR UPDATE OF b, sp`,
+      [organizationId, bedId, studentId, tenant.membershipId, tenantWide, assignedFrom, assignedUntil],
+    );
+    if (!allowedAssignment.rows.length) { reply(res,403,{error:"boarding_bed_student_or_scope_unavailable"}); return true; }
+  }
+  if (match[1] === "leave-requests" || match[1] === "incidents") {
+    const studentId = typeof body.studentId === "string" ? body.studentId : "";
+    const eventTimestamp = match[1] === "leave-requests" ? body.requestedFrom : body.occurredAt;
+    const eventDate = typeof eventTimestamp === "string" ? eventTimestamp : "";
+    const allowedStudent = await pool.query(
+      `SELECT 1 FROM academic.student_profiles sp
+       WHERE sp.organization_id=$1::uuid AND sp.id=$2::uuid AND sp.status='active'
+         AND ${boardingStudentScopePredicate("sp", "$1", "$3", "$4", "$5::date")} LIMIT 1`,
+      [organizationId, studentId, tenant.membershipId, tenantWide, eventDate],
+    );
+    if (!allowedStudent.rows.length) { reply(res,403,{error:"boarding_student_scope_required"}); return true; }
+  }
   const columns=["organization_id",...entries.map(([,field])=>field.column),...(resource.actorColumn?[resource.actorColumn]:[])];
   const values=[organizationId,...entries.map(([key,field])=>field.kind==="json"?JSON.stringify(body[key]):body[key]),...(resource.actorColumn?[userId]:[])];
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
@@ -850,6 +1028,18 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   try {
     const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource)}`,values);
     const record = result.rows[0] as Record<string, unknown>;
+    if (match[1] === "boarding-assignments") {
+      const bedStatusUpdate = await pool.query(
+        `UPDATE boarding.beds SET bed_status=CASE WHEN $3::date>CURRENT_DATE THEN 'reserved' ELSE 'occupied' END
+         WHERE organization_id=$1::uuid AND id=$2::uuid AND bed_status='available' RETURNING id`,
+        [organizationId, String(body.bedId), String(body.assignedFrom)],
+      );
+      if (!bedStatusUpdate.rows.length) {
+        const conflict = new Error("boarding_bed_status_changed") as Error & { code: string };
+        conflict.code = "23505";
+        throw conflict;
+      }
+    }
     await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
     await pool.query("RELEASE SAVEPOINT module_record_write");
     reply(res,201,{data:filterModuleRecordForPermissions(match[1] ?? "",record,tenant.permissions)});
