@@ -49,13 +49,6 @@ export async function handleHrRequest(
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
   const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
-  // Payroll exposes organization-wide compensation data. Until payroll-specific
-  // employee/department scope joins are implemented, fail closed for scoped staff.
-  if (path.startsWith("/v1/hr/payroll/") && !tenantWide) {
-    reply(res, 403, { error: "payroll_scope_not_supported_for_member", message: "Akses payroll memerlukan kewenangan tenant sampai pembatasan payroll per pegawai selesai diuji." });
-    return true;
-  }
-
   if (path === "/v1/hr/employees" && req.method === "GET") {
     if (!tenant.permissions.includes("hr.employees.read")) { reply(res, 403, { error: "permission_required", permission: "hr.employees.read" }); return true; }
     const limitRaw = Number(url.searchParams.get("limit") ?? "50");
@@ -123,6 +116,7 @@ export async function handleHrRequest(
   }
 
   if (path === "/v1/hr/payroll/periods" && req.method === "POST") {
+    if (!tenantWide) { reply(res, 403, { error: "payroll_period_management_requires_tenant_authority" }); return true; }
     if (!tenant.permissions.includes("hr.payroll.prepare")) { reply(res, 403, { error: "permission_required", permission: "hr.payroll.prepare" }); return true; }
     const body = await readJson(req);
     if (!body || typeof body.periodCode !== "string" || !/^[A-Za-z0-9._/-]{1,32}$/.test(body.periodCode)
@@ -154,12 +148,16 @@ export async function handleHrRequest(
               r.approved_at AS "approvedAt", r.paid_at AS "paidAt",
               p.period_code AS "periodCode",
               COALESCE(SUM(CASE WHEN l.component_type = 'earning' THEN l.amount ELSE 0 END),0) AS earnings,
-              COALESCE(SUM(CASE WHEN l.component_type = 'deduction' THEN l.amount ELSE 0 END),0) AS deductions
+              COALESCE(SUM(CASE WHEN l.component_type = 'deduction' THEN l.amount ELSE 0 END),0) AS deductions,
+              COUNT(DISTINCT l.employee_id)::integer AS "employeeCount"
        FROM hr.payroll_runs r
        JOIN hr.payroll_periods p ON p.organization_id = r.organization_id AND p.id = r.payroll_period_id
-       LEFT JOIN hr.payroll_lines l ON l.organization_id = r.organization_id AND l.payroll_run_id = r.id
+       JOIN hr.payroll_lines l ON l.organization_id = r.organization_id AND l.payroll_run_id = r.id
+       JOIN hr.employees e ON e.organization_id = l.organization_id AND e.id = l.employee_id
+         AND ${employeeScopePredicate("e", "$1", "$2", "$3")}
        WHERE r.organization_id = $1::uuid
-       GROUP BY r.id, p.period_code ORDER BY r.created_at DESC LIMIT 100`, [organizationId],
+       GROUP BY r.id, p.period_code ORDER BY r.created_at DESC LIMIT 100`,
+      [organizationId, tenant.membershipId, tenantWide],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
@@ -176,26 +174,36 @@ export async function handleHrRequest(
     }));
     try {
       const result = await pool.query(
-        `WITH run AS (
+        `WITH input_lines AS (
+           SELECT * FROM jsonb_to_recordset($5::jsonb)
+             AS l(employee_id uuid, component_code text, component_name text, component_type text, amount numeric)
+         ), authorized_employees AS (
+           SELECT e.id
+           FROM hr.employees e
+           WHERE e.organization_id = $1::uuid
+             AND e.id IN (SELECT DISTINCT employee_id FROM input_lines)
+             AND ${employeeScopePredicate("e", "$1", "$6", "$7")}
+         ), run AS (
            INSERT INTO hr.payroll_runs (organization_id, payroll_period_id, run_number, run_type)
            SELECT $1::uuid, p.id, $3, $4
            FROM hr.payroll_periods p
            WHERE p.organization_id = $1::uuid AND p.id = $2::uuid AND p.status = 'open'
+             AND (SELECT COUNT(*) FROM authorized_employees) = (SELECT COUNT(DISTINCT employee_id) FROM input_lines)
            RETURNING id, run_number, run_type, status
          ), inserted_lines AS (
            INSERT INTO hr.payroll_lines
              (organization_id, payroll_run_id, employee_id, component_code, component_name, component_type, amount)
            SELECT $1::uuid, r.id, l.employee_id, l.component_code, l.component_name, l.component_type, l.amount
-           FROM run r CROSS JOIN jsonb_to_recordset($5::jsonb)
-             AS l(employee_id uuid, component_code text, component_name text, component_type text, amount numeric)
+           FROM run r CROSS JOIN input_lines l
+           JOIN authorized_employees e ON e.id = l.employee_id
            RETURNING id
          )
          SELECT r.id, r.run_number AS "runNumber", r.run_type AS "runType",
                 r.status, (SELECT COUNT(*) FROM inserted_lines)::integer AS "lineCount"
          FROM run r`,
-        [organizationId, body.payrollPeriodId, body.runNumber, body.runType ?? "regular", JSON.stringify(lines)],
+        [organizationId, body.payrollPeriodId, body.runNumber, body.runType ?? "regular", JSON.stringify(lines), tenant.membershipId, tenantWide],
       );
-      if (!result.rows[0]) { reply(res, 422, { error: "payroll_period_not_open_or_not_found" }); return true; }
+      if (!result.rows[0]) { reply(res, 422, { error: "payroll_period_or_employee_scope_invalid" }); return true; }
       reply(res, 201, { data: result.rows[0] });
     } catch (reason) {
       const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
@@ -207,6 +215,7 @@ export async function handleHrRequest(
 
   const approveMatch = path.match(/^\/v1\/hr\/payroll\/runs\/([0-9a-f-]{36})\/approve$/i);
   if (approveMatch && req.method === "POST") {
+    if (!tenantWide) { reply(res, 403, { error: "payroll_approval_requires_tenant_authority" }); return true; }
     if (!tenant.permissions.includes("hr.payroll.approve")) { reply(res, 403, { error: "permission_required", permission: "hr.payroll.approve" }); return true; }
     const runId = approveMatch[1];
     if (!runId || !UUID.test(runId)) { reply(res, 400, { error: "invalid_payroll_run_id" }); return true; }
@@ -228,6 +237,7 @@ export async function handleHrRequest(
 
   const payMatch = path.match(/^\/v1\/hr\/payroll\/runs\/([0-9a-f-]{36})\/pay$/i);
   if (payMatch && req.method === "POST") {
+    if (!tenantWide) { reply(res, 403, { error: "payroll_payment_requires_tenant_authority" }); return true; }
     if (!tenant.permissions.includes("hr.payroll.pay")) { reply(res, 403, { error: "permission_required", permission: "hr.payroll.pay" }); return true; }
     const runId = payMatch[1];
     if (!runId || !UUID.test(runId)) { reply(res, 400, { error: "invalid_payroll_run_id" }); return true; }
