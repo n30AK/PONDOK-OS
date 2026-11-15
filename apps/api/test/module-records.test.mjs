@@ -443,3 +443,83 @@ test("generic employment-contract compensation writes require payroll preparatio
   assert.equal(JSON.parse(res.body).error, "compensation_permission_required");
   assert.equal(dataQuery, false);
 });
+
+
+test("scoped library catalog is readable while physical copies are campus-scoped", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["librarian"], permissions: ["library.catalog.read", "library.loans.read"]
+    }] };
+    if (sql.includes("FROM library.catalog_items li")) return { rows: [{ id: uuid, title: "Fiqih Dasar" }] };
+    if (sql.includes("FROM library.copies cp")) return { rows: [{ id: uuid, barcode: "LIB-001" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  for (const path of ["/v1/modules/library-catalog", "/v1/modules/library-copies"]) {
+    const req = Readable.from([]);
+    req.method = "GET"; req.url = path; req.headers = {};
+    const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+    await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 200);
+  }
+  const catalog = calls.find(call => call.sql.includes("FROM library.catalog_items li"));
+  assert.ok(!catalog.sql.includes("membership_campus_scopes"));
+  const copies = calls.find(call => call.sql.includes("FROM library.copies cp"));
+  assert.ok(copies.sql.includes("membership_campus_scopes"));
+  assert.ok(copies.sql.includes("cp.campus_id"));
+  assert.deepEqual(copies.values, [organizationId, membershipId, false, 100]);
+});
+
+test("scoped library loans require both campus and borrower student scope in the same query", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let queryText = "";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["librarian"], permissions: ["library.loans.read"]
+    }] };
+    if (sql.includes("FROM library.loans l")) { queryText = sql; return { rows: [] }; }
+    throw new Error("unexpected query: " + sql);
+  }};
+  const req = Readable.from([]);
+  req.method = "GET"; req.url = "/v1/modules/library-loans"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(queryText.includes("JOIN library.copies cp"));
+  assert.ok(queryText.includes("JOIN academic.student_profiles sp"));
+  assert.ok(queryText.includes("l.borrower_type='student'"));
+  assert.ok(queryText.includes("cp.campus_id"));
+  assert.ok(queryText.includes("sp.id"));
+  assert.ok(queryText.includes("membership_campus_scopes"));
+  assert.ok(queryText.includes("membership_class_scopes"));
+});
+
+test("scoped library loan writes remain fail closed", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let dataQuery = false;
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["librarian"], permissions: ["library.loans.write"]
+    }] };
+    dataQuery = true;
+    throw new Error("scoped library write must be rejected");
+  }};
+  const req = Readable.from([Buffer.from(JSON.stringify({ copyId: uuid, borrowerType: "student", borrowerId: uuid, dueAt: "2026-12-01T00:00:00Z" }))]);
+  req.method = "POST"; req.url = "/v1/modules/library-loans"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "module_write_scope_not_supported_for_member");
+  assert.equal(dataQuery, false);
+});
