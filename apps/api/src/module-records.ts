@@ -763,7 +763,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
   await pool.query("SAVEPOINT module_record_write");
   try {
-    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING id, organization_id, copy_id, borrower_type, borrower_id, checked_out_at, due_at, returned_at, loan_status, issued_by, received_by, created_at`,values);
+    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource)}`,values);
     const record = result.rows[0] as Record<string, unknown>;
     await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
     await pool.query("RELEASE SAVEPOINT module_record_write");
