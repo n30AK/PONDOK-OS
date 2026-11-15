@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -93,6 +93,13 @@ export async function handleAdmissionsRequest(
   if (!path.startsWith("/v1/admissions/")) return false;
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
+  // Admissions records contain applicant and guardian personal data. Until
+  // every lifecycle query applies campus grants in the same SQL statement,
+  // keep this module tenant-authority-only rather than risk cross-campus reads
+  // or writes for scoped admission officers.
+  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+    reply(res, 403, { error: "admissions_scope_enforcement_required" }); return true;
+  }
 
   if (path === "/v1/admissions/periods" && req.method === "GET") {
     if (!tenant.permissions.includes("admissions.periods.manage") && !tenant.permissions.includes("admissions.applications.read")) {
