@@ -187,6 +187,61 @@ export function campusScopePredicate(
   )`;
 }
 
+/** Department records are visible through an active campus or department grant. */
+export function departmentScopePredicate(
+  departmentAlias: string,
+  organizationPlaceholder: string,
+  membershipPlaceholder: string,
+  tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${campusScopePredicate(departmentAlias, organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+    OR EXISTS (
+      SELECT 1 FROM core.membership_department_scopes mds
+      WHERE mds.organization_id = ${organizationPlaceholder}::uuid
+        AND mds.membership_id = ${membershipPlaceholder}::uuid
+        AND mds.department_id = ${departmentAlias}.id
+        AND mds.revoked_at IS NULL AND mds.valid_from <= now()
+        AND (mds.valid_until IS NULL OR mds.valid_until > now())
+    )
+  )`;
+}
+
+/** Position records inherit scope from their owning department. */
+export function positionScopePredicate(
+  positionAlias: string,
+  departmentAlias: string,
+  organizationPlaceholder: string,
+  membershipPlaceholder: string,
+  tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${tenantWidePlaceholder}::boolean
+    OR (
+      ${positionAlias}.department_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM core.membership_department_scopes mds
+        WHERE mds.organization_id = ${organizationPlaceholder}::uuid
+          AND mds.membership_id = ${membershipPlaceholder}::uuid
+          AND mds.department_id = ${positionAlias}.department_id
+          AND mds.revoked_at IS NULL AND mds.valid_from <= now()
+          AND (mds.valid_until IS NULL OR mds.valid_until > now())
+      )
+    )
+    OR (
+      ${departmentAlias}.campus_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM core.membership_campus_scopes mcs
+        WHERE mcs.organization_id = ${organizationPlaceholder}::uuid
+          AND mcs.membership_id = ${membershipPlaceholder}::uuid
+          AND mcs.campus_id = ${departmentAlias}.campus_id
+          AND mcs.revoked_at IS NULL AND mcs.valid_from <= now()
+          AND (mcs.valid_until IS NULL OR mcs.valid_until > now())
+      )
+    )
+  )`;
+}
+
 /** SQL predicate for employee directory reads: campus or active department grant. */
 export function employeeScopePredicate(
   employeeAlias: string,
