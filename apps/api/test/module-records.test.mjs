@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canReadStudentOptions, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
+import { canReadStudentOptions, getModuleRecordProjection, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
 import { employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
@@ -272,4 +272,33 @@ test("employee scope predicate is tenant-bound to campus or active department as
     "revoked_at IS NULL", "valid_from <= now()"
   ]) assert.ok(sql.includes(expected), `missing ${expected}`);
   assert.ok(sql.includes("mds.membership_id = $2::uuid"));
+});
+
+
+test("generic module projections are explicit, resource-specific, and exclude unapproved columns", () => {
+  const campuses = getModuleRecordProjection("campuses");
+  assert.equal(campuses, "id, organization_id, code, name, campus_type, status, created_at");
+
+  const guardians = getModuleRecordProjection("student-guardians");
+  assert.ok(guardians.includes("student_id"));
+  assert.ok(guardians.includes("guardian_id"));
+  assert.ok(!guardians.includes("is_legal_guardian"));
+  assert.ok(!guardians.includes("can_pickup_student"));
+  assert.ok(!guardians.includes("verification_note"));
+  assert.ok(!guardians.includes("verified_by"));
+
+  const attendance = getModuleRecordProjection("attendance-records");
+  assert.ok(attendance.includes("attendance_session_id"));
+  assert.ok(attendance.includes("student_id"));
+  assert.ok(attendance.includes("recorded_at"));
+
+  const loans = getModuleRecordProjection("library-loans");
+  assert.ok(loans.includes("issued_by"));
+  assert.ok(loans.includes("created_at"));
+  assert.equal(getModuleRecordProjection("unknown-resource"), null);
+
+  for (const projection of [campuses, guardians, attendance, loans]) {
+    assert.ok(!projection.includes("*"));
+    assert.ok(projection.startsWith("id, organization_id,"));
+  }
 });
