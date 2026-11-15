@@ -104,6 +104,66 @@ export async function handleHrRequest(
     return true;
   }
 
+  const assignmentMatch = path.match(/^\\/v1\\/hr\\/employee-assignments(?:\\/([0-9a-f-]{36}))?$/i);
+  if (assignmentMatch && req.method === "GET") {
+    if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
+    const assignmentId = assignmentMatch[1];
+    if (assignmentId && !UUID.test(assignmentId)) { reply(res, 400, { error: "invalid_employee_assignment_id" }); return true; }
+    const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+    const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
+    const result = await pool.query(
+      `SELECT a.id, a.employee_id AS "employeeId", e.employee_number AS "employeeNumber",
+              e.legal_name AS "employeeName", a.department_id AS "departmentId",
+              d.department_name AS "departmentName", a.position_id AS "positionId",
+              p.position_name AS "positionName", a.manager_employee_id AS "managerEmployeeId",
+              a.assignment_type AS "assignmentType", a.starts_on AS "startsOn",
+              a.ends_on AS "endsOn", a.is_primary AS "isPrimary",
+              a.decision_reference AS "decisionReference"
+       FROM hr.employee_assignments a
+       JOIN hr.employees e ON e.organization_id = a.organization_id AND e.id = a.employee_id
+       LEFT JOIN hr.departments d ON d.organization_id = a.organization_id AND d.id = a.department_id
+       LEFT JOIN hr.positions p ON p.organization_id = a.organization_id AND p.id = a.position_id
+       WHERE a.organization_id = $1::uuid
+         AND ${employeeScopePredicate("e", "$1", "$2", "$3")}
+         AND ($4::uuid IS NULL OR a.id = $4::uuid)
+       ORDER BY a.starts_on DESC, e.legal_name
+       LIMIT $5`,
+      [organizationId, tenant.membershipId, tenantWide, assignmentId ?? null, assignmentId ? 1 : limit],
+    );
+    if (assignmentId && !result.rows[0]) { reply(res, 404, { error: "employee_assignment_not_found" }); return true; }
+    reply(res, 200, assignmentId ? { data: result.rows[0] } : { data: result.rows });
+    return true;
+  }
+
+  const contractMatch = path.match(/^\\/v1\\/hr\\/employment-contracts(?:\\/([0-9a-f-]{36}))?$/i);
+  if (contractMatch && req.method === "GET") {
+    if (!tenant.permissions.includes("hr.contracts.read")) { reply(res, 403, { error: "permission_required", permission: "hr.contracts.read" }); return true; }
+    const contractId = contractMatch[1];
+    if (contractId && !UUID.test(contractId)) { reply(res, 400, { error: "invalid_employment_contract_id" }); return true; }
+    const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+    const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
+    const result = await pool.query(
+      `SELECT c.id, c.employee_id AS "employeeId", e.employee_number AS "employeeNumber",
+              e.legal_name AS "employeeName", c.position_id AS "positionId",
+              p.position_name AS "positionName", c.contract_type AS "contractType",
+              c.starts_on AS "startsOn", c.ends_on AS "endsOn",
+              c.base_salary AS "baseSalary", c.currency_code AS "currencyCode",
+              c.status
+       FROM hr.employment_contracts c
+       JOIN hr.employees e ON e.organization_id = c.organization_id AND e.id = c.employee_id
+       LEFT JOIN hr.positions p ON p.organization_id = c.organization_id AND p.id = c.position_id
+       WHERE c.organization_id = $1::uuid
+         AND ${employeeScopePredicate("e", "$1", "$2", "$3")}
+         AND ($4::uuid IS NULL OR c.id = $4::uuid)
+       ORDER BY c.starts_on DESC, e.legal_name
+       LIMIT $5`,
+      [organizationId, tenant.membershipId, tenantWide, contractId ?? null, contractId ? 1 : limit],
+    );
+    if (contractId && !result.rows[0]) { reply(res, 404, { error: "employment_contract_not_found" }); return true; }
+    reply(res, 200, contractId ? { data: result.rows[0] } : { data: result.rows });
+    return true;
+  }
+
   if (path === "/v1/hr/payroll/periods" && req.method === "GET") {
     if (!tenant.permissions.includes("hr.payroll.read")) { reply(res, 403, { error: "permission_required", permission: "hr.payroll.read" }); return true; }
     const result = await pool.query(
