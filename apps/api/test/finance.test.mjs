@@ -65,3 +65,38 @@ test("finance APIs fail closed for scoped members and platform operators", async
     assert.equal(JSON.parse(post.body).error, "finance_access_requires_tenant_authority");
   }
 });
+
+
+test("scoped finance members may read account and fiscal-period reference data only", async () => {
+  function response() {
+    return { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, end(body) { this.body = body ?? ""; } };
+  }
+  function request(method, url) {
+    const stream = Readable.from([]);
+    stream.method = method; stream.url = url; stream.headers = {};
+    return stream;
+  }
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["finance_officer"], permissions: ["finance.accounts.read", "finance.journals.read"]
+    }] };
+    if (sql.includes("FROM finance.accounts")) return { rows: [{ id: uuidA, accountCode: "1001", accountName: "Kas" }] };
+    if (sql.includes("FROM finance.fiscal_periods")) return { rows: [{ id: uuidB, code: "2026", status: "open" }] };
+    throw new Error("journal data must remain inaccessible: " + sql);
+  }};
+  for (const path of ["/v1/finance/accounts", "/v1/finance/periods"]) {
+    const res = response();
+    await handleFinanceRequest(request("GET", path), res, pool, userId, organizationId);
+    assert.equal(res.statusCode, 200);
+    assert.ok(JSON.parse(res.body).data);
+  }
+  assert.ok(calls.some(call => call.sql.includes("FROM finance.accounts") && call.sql.includes("organization_id = $1::uuid")));
+  assert.ok(calls.some(call => call.sql.includes("FROM finance.fiscal_periods") && call.sql.includes("organization_id = $1::uuid")));
+  assert.equal(calls.some(call => call.sql.includes("FROM finance.journal_entries")), false);
+});
