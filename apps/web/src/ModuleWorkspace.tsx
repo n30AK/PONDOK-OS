@@ -195,7 +195,8 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
  const canWrite=Boolean(resource&&(preview||permissions.includes(resource.write)));
  const request=useCallback(async<T,>(endpoint:string,init:RequestInit={}):Promise<T>=>{
   const token=await getAccessToken();
-  const response=await fetch(`${API_BASE}/v1/modules/${endpoint}`,{...init,headers:{authorization:`Bearer ${token}`,"x-organization-id":organizationId,...(init.body?{"content-type":"application/json"}:{}),...init.headers}});
+  const apiPath=endpoint.startsWith("/v1/")?endpoint:`/v1/modules/${endpoint}`;
+  const response=await fetch(`${API_BASE}${apiPath}`,{...init,headers:{authorization:`Bearer ${token}`,"x-organization-id":organizationId,...(init.body?{"content-type":"application/json"}:{}),...init.headers}});
   const body=await response.json().catch(()=>({})) as {data?:T;error?:string};
   if(!response.ok) throw new Error(body.error??`Permintaan gagal (${response.status})`);
   return body as T;
@@ -216,7 +217,15 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
   }
   if(!resource || !permissions.includes(resource.read)){setRows([]);setBusy(false);return;}
   setBusy(true);setError("");
-  try{const result=await request<{data:Row[]}>(resource.endpoint);setRows(result.data??[]);}
+  const hrReadPaths:Record<string,string>={
+   employees:"/v1/hr/employees?limit=100",
+   "employee-assignments":"/v1/hr/employee-assignments",
+   "hr-departments":"/v1/hr/departments",
+   "hr-positions":"/v1/hr/positions",
+   "hr-contracts":"/v1/hr/employment-contracts",
+   "instructor-profiles":"/v1/hr/educators"
+  };
+  try{const result=await request<{data:Row[]}>(hrReadPaths[resource.key]??resource.endpoint);setRows(result.data??[]);}
   catch(e){setError(e instanceof Error?e.message:"Gagal memuat data modul.");}
   finally{setBusy(false);}
  },[request,resource,permissions,preview]);
@@ -239,7 +248,13 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
      const result=await request<{data:Array<Record<string,unknown>>}>("student-options");
      return {source,items:(result.data??[]).map(s=>({id:String(s.id),label:String(s.legalName??s.studentNumber)})),error:""};
     }
-    const result=await request<{data:Row[]}>(source);
+    const hrLookupPaths:Record<string,string>={
+     employees:"/v1/hr/employees?limit=100",
+     "hr-departments":"/v1/hr/departments",
+     "hr-positions":"/v1/hr/positions",
+     campuses:"/v1/hr/campuses"
+    };
+    const result=await request<{data:Row[]}>(hrLookupPaths[source]??source);
     const labelKey=resource.fields.find(f=>f.source===source)?.labelKey??"name";
     return {source,items:(result.data??[]).map(row=>({id:String(row.id),label:String(row[labelKey]??row.name??row.code??row.id)})),error:""};
    }catch(error){return {source,items:[],error:error instanceof Error?error.message:"Gagal memuat pilihan relasi."};}
