@@ -66,9 +66,13 @@ export async function handleFinanceRequest(
   if (!path.startsWith("/v1/finance/")) return false;
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
-  // Finance records currently have no campus/department ownership dimension.
-  // Fail closed for scoped members until each accounting resource has a safe scope model.
-  if (!hasTenantWideOperationalAccess(tenant.roles)) {
+  // Journals and accounting writes have no campus/cost-center ownership model,
+  // so they remain tenant-authority-only. The account catalog and fiscal-period
+  // metadata are tenant-wide reference data and may be read with explicit permission.
+  const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+  const referenceRead = req.method === "GET" &&
+    (path === "/v1/finance/accounts" || path === "/v1/finance/periods");
+  if (!tenantWide && !referenceRead) {
     reply(res, 403, { error: "finance_access_requires_tenant_authority" });
     return true;
   }
