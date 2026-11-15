@@ -770,21 +770,21 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     values.push(organizationId,recordId);
     let updateSql: string;
     if (match[1] === "attendance-records") {
-      const orgPlaceholder = `${values.length-1}`;
-      const membershipPlaceholder = `${values.length+1}`;
-      const tenantWidePlaceholder = `${values.length+2}`;
+      const orgPlaceholder = `$${values.length-1}`;
+      const membershipPlaceholder = `$${values.length+1}`;
+      const tenantWidePlaceholder = `$${values.length+2}`;
       values.push(tenant.membershipId, tenantWide);
       updateSql = `UPDATE academic.attendance_records AS ar SET ${sets.join(",")}
-        WHERE ar.organization_id=${orgPlaceholder}::uuid AND ar.id=${values.length-2}::uuid
+        WHERE ar.organization_id=${orgPlaceholder}::uuid AND ar.id=$${values.length-2}::uuid
           AND ${attendanceRecordScopePredicate("ar", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
         RETURNING ${moduleRecordProjection(resource)}`;
     } else if (match[1] === "attendance-sessions") {
-      const orgPlaceholder = `${values.length-1}`;
-      const membershipPlaceholder = `${values.length+1}`;
-      const tenantWidePlaceholder = `${values.length+2}`;
+      const orgPlaceholder = `$${values.length-1}`;
+      const membershipPlaceholder = `$${values.length+1}`;
+      const tenantWidePlaceholder = `$${values.length+2}`;
       values.push(tenant.membershipId, tenantWide);
       updateSql = `UPDATE academic.attendance_sessions AS ats SET ${sets.join(",")}
-        WHERE ats.organization_id=${orgPlaceholder}::uuid AND ats.id=${values.length-2}::uuid
+        WHERE ats.organization_id=${orgPlaceholder}::uuid AND ats.id=$${values.length-2}::uuid
           AND ${attendanceSessionScopePredicate("ats", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
         RETURNING ${moduleRecordProjection(resource)}`;
     } else {
