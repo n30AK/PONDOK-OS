@@ -106,6 +106,14 @@ function toLabel(value: unknown): string {
  return String(value);
 }
 function toColumn(key:string):string{return key.replace(/[A-Z]/g,letter=>`_${letter.toLowerCase()}`);}
+function normalizeApiRow(row:Row):Row{
+ const normalized={...row};
+ for(const [key,value] of Object.entries(row)){
+  const snake=toColumn(key);
+  if(!(snake in normalized))normalized[snake]=value;
+ }
+ return normalized;
+}
 const ADDRESS_FIELDS: Array<[string,string]> = [
  ["street","Jalan / alamat lengkap"], ["rt","RT"], ["rw","RW"],
  ["village","Desa / kelurahan"], ["district","Kecamatan"],
@@ -225,7 +233,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
    "hr-contracts":"/v1/hr/employment-contracts",
    "instructor-profiles":"/v1/hr/educators"
   };
-  try{const result=await request<{data:Row[]}>(hrReadPaths[resource.key]??resource.endpoint);setRows(result.data??[]);}
+  try{const result=await request<{data:Row[]}>(hrReadPaths[resource.key]??resource.endpoint);setRows((result.data??[]).map(normalizeApiRow));}
   catch(e){setError(e instanceof Error?e.message:"Gagal memuat data modul.");}
   finally{setBusy(false);}
  },[request,resource,permissions,preview]);
@@ -256,7 +264,7 @@ function ModuleWorkspace({organizationId,permissions,initialResourceKey,onResour
     };
     const result=await request<{data:Row[]}>(hrLookupPaths[source]??source);
     const labelKey=resource.fields.find(f=>f.source===source)?.labelKey??"name";
-    return {source,items:(result.data??[]).map(row=>({id:String(row.id),label:String(row[labelKey]??row.name??row.code??row.id)})),error:""};
+    return {source,items:(result.data??[]).map(normalizeApiRow).map(row=>({id:String(row.id),label:String(row[labelKey]??row.name??row.code??row.id)})),error:""};
    }catch(error){return {source,items:[],error:error instanceof Error?error.message:"Gagal memuat pilihan relasi."};}
   })).then(entries=>{if(active){setLookups(Object.fromEntries(entries.map(entry=>[entry.source,entry.items])));setLookupErrors(Object.fromEntries(entries.filter(entry=>entry.error).map(entry=>[entry.source,entry.error])));setLookupLoading([]);}});
   return()=>{active=false;};
