@@ -116,3 +116,59 @@ test("scoped payroll members can read periods but cannot create organization-wid
   assert.equal(post.statusCode, 403);
   assert.equal(JSON.parse(post.body).error, "payroll_period_management_requires_tenant_authority");
 });
+
+
+test("employee assignment list and detail are filtered through employee scope", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.organization.read"])] };
+    if (sql.includes("FROM hr.employee_assignments a")) return { rows: [{ id: periodId, employeeName: "Ahmad Fulan" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const list = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/employee-assignments"), list, pool, userId, organizationId);
+  assert.equal(list.statusCode, 200);
+  const listQuery = calls.find(call => call.sql.includes("FROM hr.employee_assignments a"));
+  assert.ok(listQuery.sql.includes("membership_campus_scopes"));
+  assert.ok(listQuery.sql.includes("membership_department_scopes"));
+  assert.ok(listQuery.sql.includes("a.organization_id = $1::uuid"));
+  assert.ok(!listQuery.sql.includes("SELECT *"));
+
+  const detail = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/employee-assignments/" + periodId), detail, pool, userId, organizationId);
+  assert.equal(detail.statusCode, 200);
+  const detailQuery = calls.filter(call => call.sql.includes("FROM hr.employee_assignments a"))[1];
+  assert.deepEqual(detailQuery.values, [organizationId, membershipId, false, periodId, 1]);
+});
+
+test("employment contracts, including compensation, require contract permission and employee scope", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.contracts.read"])] };
+    if (sql.includes("FROM hr.employment_contracts c")) return { rows: [{ id: periodId, baseSalary: "5000000" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/employment-contracts"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  const query = calls.find(call => call.sql.includes("FROM hr.employment_contracts c"));
+  assert.ok(query.sql.includes("membership_campus_scopes"));
+  assert.ok(query.sql.includes("membership_department_scopes"));
+  assert.ok(query.sql.includes("c.organization_id = $1::uuid"));
+  assert.ok(query.sql.includes("c.base_salary AS \"baseSalary\""));
+  assert.ok(!query.sql.includes("SELECT *"));
+});
+
+test("employment contract detail returns nondisclosing 404 for an out-of-scope contract", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.contracts.read"])] };
+    if (sql.includes("FROM hr.employment_contracts c")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/employment-contracts/" + periodId), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 404);
+  assert.equal(JSON.parse(res.body).error, "employment_contract_not_found");
+});
