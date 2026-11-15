@@ -979,6 +979,13 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     const studentId = typeof body.studentId === "string" ? body.studentId : "";
     const assignedFrom = typeof body.assignedFrom === "string" ? body.assignedFrom : "";
     const assignedUntil = typeof body.assignedUntil === "string" ? body.assignedUntil : null;
+    // Serialize placement attempts by student before checking overlapping assignments.
+    const lockedStudent = await pool.query(
+      `SELECT id FROM academic.student_profiles
+       WHERE organization_id=$1::uuid AND id=$2::uuid AND status='active' FOR UPDATE`,
+      [organizationId, studentId],
+    );
+    if (!lockedStudent.rows.length) { reply(res,403,{error:"boarding_student_scope_required"}); return true; }
     const allowedAssignment = await pool.query(
       `SELECT 1
        FROM boarding.beds b
@@ -997,7 +1004,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
          )
          AND $6::date<=COALESCE($7::date,'infinity'::date)
          AND ($7::date IS NULL OR $7::date>=CURRENT_DATE)
-       LIMIT 1 FOR UPDATE OF b`,
+       LIMIT 1 FOR UPDATE OF b, sp`,
       [organizationId, bedId, studentId, tenant.membershipId, tenantWide, assignedFrom, assignedUntil],
     );
     if (!allowedAssignment.rows.length) { reply(res,403,{error:"boarding_bed_student_or_scope_unavailable"}); return true; }
@@ -1022,11 +1029,16 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource)}`,values);
     const record = result.rows[0] as Record<string, unknown>;
     if (match[1] === "boarding-assignments") {
-      await pool.query(
+      const bedStatusUpdate = await pool.query(
         `UPDATE boarding.beds SET bed_status=CASE WHEN $3::date>CURRENT_DATE THEN 'reserved' ELSE 'occupied' END
-         WHERE organization_id=$1::uuid AND id=$2::uuid AND bed_status='available'`,
+         WHERE organization_id=$1::uuid AND id=$2::uuid AND bed_status='available' RETURNING id`,
         [organizationId, String(body.bedId), String(body.assignedFrom)],
       );
+      if (!bedStatusUpdate.rows.length) {
+        const conflict = new Error("boarding_bed_status_changed") as Error & { code: string };
+        conflict.code = "23505";
+        throw conflict;
+      }
     }
     await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
     await pool.query("RELEASE SAVEPOINT module_record_write");
