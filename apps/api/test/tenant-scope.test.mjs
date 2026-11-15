@@ -157,3 +157,11 @@ test("boarding scope predicates enforce tenant-bound campus, dormitory and room 
   assert.ok(student.includes("boarding.bed_assignments"));
   assert.ok(record.includes("sp.id=lr.student_id"));
 });
+
+
+test("boarding leave and incident history uses the student's assignment on the event date", () => {
+  const leave = boardingStudentRecordScopePredicate("lr", "$1", "$2", "$3");
+  const incident = boardingStudentRecordScopePredicate("i", "$1", "$2", "$3");
+  assert.ok(leave.includes("lr.requested_from::date"));
+  assert.ok(incident.includes("i.occurred_at::date"));
+});
