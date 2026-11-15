@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
-import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, boardingAssignmentScopePredicate, boardingBedScopePredicate, boardingDormitoryScopePredicate, boardingRoomScopePredicate, boardingStudentRecordScopePredicate, boardingStudentScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
+import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, campusScopePredicate, boardingAssignmentScopePredicate, boardingBedScopePredicate, boardingDormitoryScopePredicate, boardingRoomScopePredicate, boardingStudentRecordScopePredicate, boardingStudentScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 type Field = { column: string; kind?: "text" | "date" | "uuid" | "number" | "boolean" | "json" | "array" | "timestamp"; required?: boolean; max?: number; values?: string[]; minValue?: number; maxValue?: number; integer?: boolean };
 type Resource = { table: string; permission: string; writePermission?: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
@@ -713,10 +713,15 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
   const scopedAttendanceResource = match[1] === "attendance-sessions" || match[1] === "attendance-records";
   const scopedBoardingResource = ["dormitories", "boarding-rooms", "boarding-beds", "boarding-assignments", "leave-requests", "incidents"].includes(match[1] ?? "");
-  // Only attendance and boarding currently have concrete member-scope predicates.
-  // Every other unmapped resource remains fail-closed.
-  if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource) {
+  const scopedCampusReadResource = ["purchase-requests", "purchase-request-lines", "purchase-orders", "purchase-order-lines", "assets", "asset-events"].includes(match[1] ?? "");
+  // Procurement and asset records are readable by campus scope only. Writes
+  // remain tenant-authority-only until every relationship and approval path
+  // has a same-statement authorization check.
+  if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource && !scopedCampusReadResource) {
     reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
+  }
+  if (!tenantWide && write && scopedCampusReadResource) {
+    reply(res,403,{error:"module_write_scope_not_supported_for_member",resource:match[1]}); return true;
   }
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
@@ -741,6 +746,70 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
          WHERE ar.organization_id=$1::uuid
            AND ${attendanceRecordScopePredicate("ar", "$1", "$2", "$3")}
          ORDER BY ar.recorded_at DESC, ar.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "purchase-requests") {
+      const qualifiedProjection = projection.split(",").map((column) => `pr.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM procurement.purchase_requests pr
+         WHERE pr.organization_id=$1::uuid
+           AND ${campusScopePredicate("pr", "$1", "$2", "$3")}
+         ORDER BY pr.request_date DESC, pr.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "purchase-request-lines") {
+      const qualifiedProjection = projection.split(",").map((column) => `prl.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM procurement.purchase_request_lines prl
+         JOIN procurement.purchase_requests pr
+           ON pr.organization_id=prl.organization_id AND pr.id=prl.request_id
+         WHERE prl.organization_id=$1::uuid
+           AND ${campusScopePredicate("pr", "$1", "$2", "$3")}
+         ORDER BY prl.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "purchase-orders") {
+      const qualifiedProjection = projection.split(",").map((column) => `po.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM procurement.purchase_orders po
+         JOIN procurement.purchase_requests pr
+           ON pr.organization_id=po.organization_id AND pr.id=po.request_id
+         WHERE po.organization_id=$1::uuid AND po.request_id IS NOT NULL
+           AND ${campusScopePredicate("pr", "$1", "$2", "$3")}
+         ORDER BY po.ordered_on DESC, po.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "purchase-order-lines") {
+      const qualifiedProjection = projection.split(",").map((column) => `pol.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM procurement.purchase_order_lines pol
+         JOIN procurement.purchase_orders po
+           ON po.organization_id=pol.organization_id AND po.id=pol.purchase_order_id
+         JOIN procurement.purchase_requests pr
+           ON pr.organization_id=po.organization_id AND pr.id=po.request_id
+         WHERE pol.organization_id=$1::uuid AND po.request_id IS NOT NULL
+           AND ${campusScopePredicate("pr", "$1", "$2", "$3")}
+         ORDER BY pol.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "assets") {
+      const qualifiedProjection = projection.split(",").map((column) => `a.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM assets.fixed_assets a
+         WHERE a.organization_id=$1::uuid
+           AND ${campusScopePredicate("a", "$1", "$2", "$3")}
+         ORDER BY a.created_at DESC, a.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "asset-events") {
+      const qualifiedProjection = projection.split(",").map((column) => `ae.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM assets.asset_events ae
+         JOIN assets.fixed_assets a
+           ON a.organization_id=ae.organization_id AND a.id=ae.asset_id
+         WHERE ae.organization_id=$1::uuid
+           AND ${campusScopePredicate("a", "$1", "$2", "$3")}
+         ORDER BY ae.occurred_at DESC, ae.id LIMIT $4`,
         [organizationId, tenant.membershipId, tenantWide, limit],
       );
     } else if (match[1] === "dormitories") {
