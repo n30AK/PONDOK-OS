@@ -724,8 +724,8 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const scopedCampusReadResource = ["purchase-requests", "purchase-request-lines", "purchase-orders", "purchase-order-lines", "assets", "asset-events"].includes(match[1] ?? "");
   const scopedLibraryReadResource = ["library-catalog", "library-copies", "library-loans"].includes(match[1] ?? "");
   // Procurement, asset and library reads have resource-specific scope joins.
-  // Writes remain tenant-authority-only until every relationship and approval
-  // path has a same-statement authorization check.
+  // Purchase-request and request-line creates also authorize campus/request
+  // ownership in the INSERT statement; other writes remain tenant-authority-only.
   if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource && !scopedCampusReadResource && !scopedLibraryReadResource) {
     reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
   }
