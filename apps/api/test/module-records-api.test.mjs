@@ -24,8 +24,8 @@ function request(method, url, body) {
   stream.headers = {};
   return stream;
 }
-function tenantRow(permissions) {
-  return { membership_id: "423e4567-e89b-42d3-a456-426614174000", organization_id: organizationId, roles: ["institution_owner"], permissions };
+function tenantRow(permissions, roles = ["institution_owner"]) {
+  return { membership_id: "423e4567-e89b-42d3-a456-426614174000", organization_id: organizationId, roles, permissions };
 }
 
 test("creates a tenant-scoped module record and records a minimal audit event", async () => {
@@ -329,4 +329,56 @@ test("fails closed for invalid student health key version labels", async () => {
     if (previousKey === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY = previousKey;
     if (previousVersion === undefined) delete process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_HEALTH_ENCRYPTION_KEY_VERSION = previousVersion;
   }
+});
+
+
+test("scoped attendance-record reads join the session and enforce campus/class grants", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.attendance.read"], ["academic_teacher"])] };
+    if (sql.includes("FROM academic.attendance_records ar")) return { rows: [{ id: recordId, student_id: "523e4567-e89b-42d3-a456-426614174000" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("GET", "/v1/modules/attendance-records"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  const read = calls.find(call => call.sql.includes("FROM academic.attendance_records ar"));
+  assert.ok(read.sql.includes("JOIN academic.attendance_sessions ats"));
+  assert.ok(read.sql.includes("membership_campus_scopes"));
+  assert.ok(read.sql.includes("membership_class_scopes"));
+  assert.deepEqual(read.values.slice(0, 3), [organizationId, tenantRow([]).membership_id, false]);
+});
+
+test("scoped attendance creation rejects a student not enrolled in the scoped session class", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.attendance.read", "academic.attendance.write"], ["academic_teacher"])] };
+    if (sql.includes("FROM academic.attendance_sessions ats")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO academic.attendance_records")) throw new Error("out-of-scope insert must never run");
+    return { rows: [] };
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("POST", "/v1/modules/attendance-records", {
+    attendanceSessionId: recordId,
+    studentId: "523e4567-e89b-42d3-a456-426614174000",
+    attendanceStatus: "present"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "attendance_student_or_class_scope_required");
+  assert.equal(calls.some(call => call.sql.startsWith("INSERT INTO academic.attendance_records")), false);
+});
+
+test("scoped attendance updates cannot move a record to another student or session", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["academic.attendance.write"], ["academic_teacher"])] };
+    throw new Error("attendance relationship mutation must be rejected before SQL");
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("PATCH", "/v1/modules/attendance-records?id=" + recordId, {
+    studentId: "523e4567-e89b-42d3-a456-426614174000"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 422);
+  assert.equal(JSON.parse(res.body).error, "attendance_relationship_fields_are_immutable");
 });
