@@ -1004,11 +1004,13 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   }
   if (match[1] === "leave-requests" || match[1] === "incidents") {
     const studentId = typeof body.studentId === "string" ? body.studentId : "";
+    const eventTimestamp = match[1] === "leave-requests" ? body.requestedFrom : body.occurredAt;
+    const eventDate = typeof eventTimestamp === "string" ? eventTimestamp : "";
     const allowedStudent = await pool.query(
       `SELECT 1 FROM academic.student_profiles sp
        WHERE sp.organization_id=$1::uuid AND sp.id=$2::uuid AND sp.status='active'
-         AND ${boardingStudentScopePredicate("sp", "$1", "$3", "$4")} LIMIT 1`,
-      [organizationId, studentId, tenant.membershipId, tenantWide],
+         AND ${boardingStudentScopePredicate("sp", "$1", "$3", "$4", "$5::date")} LIMIT 1`,
+      [organizationId, studentId, tenant.membershipId, tenantWide, eventDate],
     );
     if (!allowedStudent.rows.length) { reply(res,403,{error:"boarding_student_scope_required"}); return true; }
   }
