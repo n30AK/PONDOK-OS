@@ -142,12 +142,12 @@ test("employee assignment list and detail are filtered through employee scope", 
   assert.deepEqual(detailQuery.values, [organizationId, membershipId, false, periodId, 1]);
 });
 
-test("employment contracts, including compensation, require contract permission and employee scope", async () => {
+test("employment contract metadata does not disclose compensation without payroll-read permission", async () => {
   const calls = [];
   const pool = { async query(sql, values) {
     calls.push({ sql, values });
     if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.contracts.read"])] };
-    if (sql.includes("FROM hr.employment_contracts c")) return { rows: [{ id: periodId, baseSalary: "5000000" }] };
+    if (sql.includes("FROM hr.employment_contracts c")) return { rows: [{ id: periodId, employeeName: "Ahmad Fulan" }] };
     throw new Error("unexpected query: " + sql);
   }};
   const res = hrResponse();
@@ -157,10 +157,24 @@ test("employment contracts, including compensation, require contract permission 
   assert.ok(query.sql.includes("membership_campus_scopes"));
   assert.ok(query.sql.includes("membership_department_scopes"));
   assert.ok(query.sql.includes("c.organization_id = $1::uuid"));
-  assert.ok(query.sql.includes("c.base_salary AS \"baseSalary\""));
+  assert.ok(!query.sql.includes("base_salary"));
+  assert.ok(!JSON.stringify(JSON.parse(res.body)).includes("baseSalary"));
   assert.ok(!query.sql.includes("SELECT *"));
 });
 
+test("employment contract compensation is visible only with explicit payroll-read permission", async () => {
+  let queryText = "";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.contracts.read", "hr.payroll.read"])] };
+    if (sql.includes("FROM hr.employment_contracts c")) { queryText = sql; return { rows: [{ id: periodId, baseSalary: "5000000", currencyCode: "IDR" }] }; }
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/employment-contracts"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(queryText.includes('c.base_salary AS "baseSalary"'));
+  assert.equal(JSON.parse(res.body).data[0].baseSalary, "5000000");
+});
 test("employment contract detail returns nondisclosing 404 for an out-of-scope contract", async () => {
   const pool = { async query(sql) {
     if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.contracts.read"])] };
