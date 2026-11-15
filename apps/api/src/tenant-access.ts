@@ -347,6 +347,7 @@ export function boardingAssignmentScopePredicate(
 /** Student boarding data is visible only through campus or a current bed assignment in a granted room/dormitory. */
 export function boardingStudentScopePredicate(
   studentAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+  assignmentDateExpression = "CURRENT_DATE",
 ): string {
   return `(
     ${tenantWidePlaceholder}::boolean
@@ -366,8 +367,8 @@ export function boardingStudentScopePredicate(
       JOIN boarding.dormitories d ON d.organization_id=r.organization_id AND d.id=r.dormitory_id
       WHERE ba.organization_id=${organizationPlaceholder}::uuid
         AND ba.student_id=${studentAlias}.id
-        AND ba.assigned_from<=CURRENT_DATE
-        AND (ba.assigned_until IS NULL OR ba.assigned_until>=CURRENT_DATE)
+        AND ba.assigned_from<=${assignmentDateExpression}
+        AND (ba.assigned_until IS NULL OR ba.assigned_until>=${assignmentDateExpression})
         AND (
           EXISTS (
             SELECT 1 FROM core.membership_room_scopes mrs
@@ -398,6 +399,9 @@ export function boardingStudentRecordScopePredicate(
   return `EXISTS (
     SELECT 1 FROM academic.student_profiles sp
     WHERE sp.organization_id=${organizationPlaceholder}::uuid AND sp.id=${recordAlias}.student_id
-      AND ${boardingStudentScopePredicate("sp", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+      AND ${boardingStudentScopePredicate(
+        "sp", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder,
+        recordAlias === "lr" ? "lr.requested_from::date" : recordAlias === "i" ? "i.occurred_at::date" : "CURRENT_DATE",
+      )}
   )`;
 }
