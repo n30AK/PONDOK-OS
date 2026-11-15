@@ -34,3 +34,18 @@ test("educator organization and HR/payroll resources remain separate", async () 
   }
   assert.equal(groupOf("campuses"), "Tata Kelola Institusi");
 });
+
+
+test("HR organization workspaces use scope-aware read endpoints and lookups", async () => {
+  const source = await readFile(new URL("apps/web/src/ModuleWorkspace.tsx", root), "utf8");
+  for (const path of [
+    'employees:"/v1/hr/employees?limit=100"',
+    '"employee-assignments":"/v1/hr/employee-assignments"',
+    '"hr-departments":"/v1/hr/departments"',
+    '"hr-positions":"/v1/hr/positions"',
+    '"hr-contracts":"/v1/hr/employment-contracts"',
+    '"instructor-profiles":"/v1/hr/educators"',
+    'campuses:"/v1/hr/campuses"'
+  ]) assert.ok(source.includes(path), `missing scoped HR path ${path}`);
+  assert.match(source, /endpoint\.startsWith\("\/v1\/"\)/);
+});
