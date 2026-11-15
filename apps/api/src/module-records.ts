@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
-import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, boardingAssignmentScopePredicate, boardingBedScopePredicate, boardingDormitoryScopePredicate, boardingRoomScopePredicate, boardingStudentRecordScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
+import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, boardingAssignmentScopePredicate, boardingBedScopePredicate, boardingDormitoryScopePredicate, boardingRoomScopePredicate, boardingStudentRecordScopePredicate, boardingStudentScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, studentScopePredicate } from "./tenant-access.js";
 
 type Field = { column: string; kind?: "text" | "date" | "uuid" | "number" | "boolean" | "json" | "array" | "timestamp"; required?: boolean; max?: number; values?: string[]; minValue?: number; maxValue?: number; integer?: boolean };
 type Resource = { table: string; permission: string; writePermission?: string; fields: Record<string, Field>; order?: string; limit?: number; actorColumn?: string };
