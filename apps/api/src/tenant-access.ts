@@ -164,6 +164,29 @@ export function studentScopePredicate(
   )`;
 }
 
+/** SQL predicate for campus-owned operational records. Null-campus rows are not visible to scoped members. */
+export function campusScopePredicate(
+  campusAlias: string,
+  organizationPlaceholder: string,
+  membershipPlaceholder: string,
+  tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${tenantWidePlaceholder}::boolean
+    OR (
+      ${campusAlias}.campus_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM core.membership_campus_scopes mcs
+        WHERE mcs.organization_id = ${organizationPlaceholder}::uuid
+          AND mcs.membership_id = ${membershipPlaceholder}::uuid
+          AND mcs.campus_id = ${campusAlias}.campus_id
+          AND mcs.revoked_at IS NULL AND mcs.valid_from <= now()
+          AND (mcs.valid_until IS NULL OR mcs.valid_until > now())
+      )
+    )
+  )`;
+}
+
 /** SQL predicate for employee directory reads: campus or active department grant. */
 export function employeeScopePredicate(
   employeeAlias: string,
