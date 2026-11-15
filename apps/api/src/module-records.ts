@@ -732,7 +732,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     values.push(organizationId,recordId);
     await pool.query("SAVEPOINT module_record_write");
     try {
-      const result=await pool.query(`UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING id, organization_id, copy_id, borrower_type, borrower_id, checked_out_at, due_at, returned_at, loan_status, issued_by, received_by, created_at`,values);
+      const result=await pool.query(`UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource)}`,values);
       if (!result.rows.length) { reply(res,404,{error:"record_not_found"}); return true; }
       const record=result.rows[0] as Record<string,unknown>;
       await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,[organizationId,userId,"module.record.update",resource.table,String(record.id ?? ""),JSON.stringify({resource:match[1],fields:entries.map(([key])=>key)})]);
