@@ -2,6 +2,35 @@
 
 This checklist is intentionally strict. Do not promote a development build to production merely because CI is green.
 
+## Current implementation boundaries (Development)
+
+The following reflects code paths and CI/deployment evidence, not a production acceptance sign-off.
+
+### Implemented scope enforcement
+
+- Student and employee read/write paths have explicit tenant filters and member scope predicates for supported operations.
+- Attendance is scoped to campus/class; class-subject-only attendance grants remain unsupported.
+- Boarding records are scoped through campus, dormitory, room, bed and student assignment relationships.
+- Payroll run reads and preparation filter employees by campus/department scope; approval and payment remain institution-authority-only.
+- Inventory warehouse and stock-movement access is restricted to active campus grants; transfer authorization checks both warehouses.
+- Procurement request/order and fixed-asset reads are campus-scoped where a request or asset has a campus relationship. Purchase orders without a linked campus request are hidden from scoped members.
+
+### Intentionally fail-closed
+
+- PPDB scoped-officer access is temporarily denied until every applicant, guardian-document, review and conversion query applies campus authorization atomically.
+- Finance/accounting access for scoped members is denied because journal entries and journal lines do not yet have a reliable campus/cost-center relationship.
+- Scoped procurement and asset writes are denied pending atomic authorization for all referenced suppliers, requests, orders, items and approval transitions.
+- Scoped library-loan creation/return, student identity documents, health profiles and guardian-authority verification remain restricted until their complete resource-specific scope and audit paths are verified.
+- Unknown or unmapped generic module resources remain denied for scoped members. A visible menu or permission alone does not prove that the underlying API enforces scope.
+
+### Additional release blockers
+
+- The current payroll-run schema does not persist a preparer identity, so separation-of-duties/self-approval cannot be proven for payroll approval. A schema change requires a separately approved Development migration.
+- Student identity document encryption requires STUDENT_IDENTITY_ENCRYPTION_KEY; without it, the API must fail closed.
+- Backup automation, immutable/off-site retention and a completed restore drill are not yet evidenced.
+- Real two-tenant login/API isolation, complete browser E2E, institution UAT, disaster recovery, incident response, retention/deletion workflows and regulatory/privacy review remain outstanding.
+- Offline installer, full hybrid sync, native Android/iOS apps, kiosk/wall display and commercial Central Command are not production deliverables in the current repository snapshot.
+
 ## Identity and access
 
 - [ ] Create a separate Neon production branch and enable/configure Neon Auth there.
