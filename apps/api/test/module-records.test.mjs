@@ -372,7 +372,7 @@ test("scoped procurement writes remain fail closed until relation checks are ato
   const pool = { async query(sql) {
     if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
       membership_id: membershipId, organization_id: organizationId,
-      roles: ["procurement_officer"], permissions: ["procurement.requests.write"]
+      roles: ["procurement_officer"], permissions: ["procurement.orders.manage"]
     }] };
     dataQuery = true;
     throw new Error("write must be rejected before a data query");
@@ -380,7 +380,7 @@ test("scoped procurement writes remain fail closed until relation checks are ato
   const req = Readable.from([Buffer.from(JSON.stringify({
     campusId: uuid, requestNumber: "PR-002", purpose: "Perlengkapan kelas"
   }))]);
-  req.method = "POST"; req.url = "/v1/modules/purchase-requests"; req.headers = {};
+  req.method = "POST"; req.url = "/v1/modules/purchase-orders"; req.headers = {};
   const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
   await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
   assert.equal(res.statusCode, 403);
@@ -522,4 +522,93 @@ test("scoped library loan writes remain fail closed", async () => {
   assert.equal(res.statusCode, 403);
   assert.equal(JSON.parse(res.body).error, "module_write_scope_not_supported_for_member");
   assert.equal(dataQuery, false);
+});
+
+
+test("scoped procurement officer creates a request only for an actively assigned campus", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let insertSql = "";
+  let insertValues = [];
+  const pool = { async query(sql, values) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["procurement_officer"], permissions: ["procurement.requests.write"]
+    }] };
+    if (sql.includes("INSERT INTO procurement.purchase_requests")) {
+      insertSql = sql; insertValues = values;
+      return { rows: [{ id: uuid, requestNumber: "PR-001" }] };
+    }
+    return { rows: [] };
+  }};
+  const req = Readable.from([Buffer.from(JSON.stringify({
+    campusId: uuid, requestNumber: "PR-001", requestDate: "2026-11-15",
+    requiredBy: "2026-11-30", purpose: "Perlengkapan kelas"
+  }))]);
+  req.method = "POST"; req.url = "/v1/modules/purchase-requests"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 201);
+  assert.ok(insertSql.includes("INSERT INTO procurement.purchase_requests"));
+  assert.ok(insertSql.includes("membership_campus_scopes"));
+  assert.ok(insertSql.includes("mcs.campus_id=$2::uuid"));
+  assert.deepEqual(insertValues.slice(-1), [membershipId]);
+});
+
+test("scoped procurement officer adds a line only to a draft request in their campus", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let insertSql = "";
+  let insertValues = [];
+  const pool = { async query(sql, values) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["procurement_officer"], permissions: ["procurement.requests.write"]
+    }] };
+    if (sql.includes("INSERT INTO procurement.purchase_request_lines")) {
+      insertSql = sql; insertValues = values;
+      return { rows: [{ id: uuid, requestId: uuid, description: "Kertas A4" }] };
+    }
+    return { rows: [] };
+  }};
+  const req = Readable.from([Buffer.from(JSON.stringify({
+    requestId: uuid, description: "Kertas A4", quantity: 10, estimatedUnitCost: 65000
+  }))]);
+  req.method = "POST"; req.url = "/v1/modules/purchase-request-lines"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 201);
+  assert.ok(insertSql.includes("FROM procurement.purchase_requests pr"));
+  assert.ok(insertSql.includes("pr.request_status='draft'"));
+  assert.ok(insertSql.includes("membership_campus_scopes"));
+  assert.match(insertSql, /mcs\.campus_id\s*=\s*pr\.campus_id/);
+  assert.deepEqual(insertValues.slice(-1), [membershipId]);
+});
+
+test("out-of-scope purchase request creation is rejected before audit or partial insert", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  const calls = [];
+  const pool = { async query(sql) {
+    calls.push(sql);
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["procurement_officer"], permissions: ["procurement.requests.write"]
+    }] };
+    if (sql.includes("INSERT INTO procurement.purchase_requests")) return { rows: [] };
+    return { rows: [] };
+  }};
+  const req = Readable.from([Buffer.from(JSON.stringify({
+    campusId: uuid, requestNumber: "PR-002", requestDate: "2026-11-15",
+    purpose: "Perlengkapan kelas"
+  }))]);
+  req.method = "POST"; req.url = "/v1/modules/purchase-requests"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "campus_scope_required_or_request_not_draft");
+  assert.equal(calls.some(sql => sql.includes("INSERT INTO audit.audit_events")), false);
 });
