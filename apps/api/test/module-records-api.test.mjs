@@ -444,6 +444,7 @@ test("scoped boarding assignment creation rejects an unassigned bed or cross-cam
   const pool = { async query(sql, values) {
     calls.push({ sql, values });
     if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["boarding.assignments.manage"], ["boarding_supervisor"])] };
+    if (sql.includes("FROM academic.student_profiles")) return { rows: [{ id: "523e4567-e89b-42d3-a456-426614174000" }] };
     if (sql.includes("FROM boarding.beds b")) return { rows: [] };
     if (sql.startsWith("INSERT INTO boarding.bed_assignments")) throw new Error("out-of-scope assignment must never be inserted");
     return { rows: [] };
