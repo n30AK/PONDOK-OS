@@ -142,12 +142,17 @@ export async function handleHrRequest(
     if (contractId && !UUID.test(contractId)) { reply(res, 400, { error: "invalid_employment_contract_id" }); return true; }
     const limitRaw = Number(url.searchParams.get("limit") ?? "50");
     const limit = Number.isInteger(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
+    // Contract metadata and compensation are separate disclosure levels.
+    // A department/campus scope plus hr.contracts.read must not expose salary.
+    // Compensation is returned only with the explicit payroll-read permission.
+    const compensationProjection = tenant.permissions.includes("hr.payroll.read")
+      ? `, c.base_salary AS "baseSalary", c.currency_code AS "currencyCode"`
+      : "";
     const result = await pool.query(
       `SELECT c.id, c.employee_id AS "employeeId", e.employee_number AS "employeeNumber",
               e.legal_name AS "employeeName", c.position_id AS "positionId",
               p.position_name AS "positionName", c.contract_type AS "contractType",
-              c.starts_on AS "startsOn", c.ends_on AS "endsOn",
-              c.base_salary AS "baseSalary", c.currency_code AS "currencyCode",
+              c.starts_on AS "startsOn", c.ends_on AS "endsOn"${compensationProjection},
               c.status
        FROM hr.employment_contracts c
        JOIN hr.employees e ON e.organization_id = c.organization_id AND e.id = c.employee_id
