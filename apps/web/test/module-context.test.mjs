@@ -49,3 +49,11 @@ test("HR organization workspaces use scope-aware read endpoints and lookups", as
   ]) assert.ok(source.includes(path), `missing scoped HR path ${path}`);
   assert.match(source, /endpoint\.startsWith\("\/v1\/"\)/);
 });
+
+
+test("scoped HR API rows are normalized to the workspace's snake-case columns", async () => {
+  const source = await readFile(new URL("apps/web/src/ModuleWorkspace.tsx", root), "utf8");
+  assert.match(source, /function normalizeApiRow\(row:Row\):Row/);
+  assert.match(source, /setRows\(\(result\.data\?\?\[\]\)\.map\(normalizeApiRow\)\)/);
+  assert.match(source, /map\(normalizeApiRow\)\.map\(row=>\(\{id:String\(row\.id\)/);
+});
