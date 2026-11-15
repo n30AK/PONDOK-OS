@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { employeeScopePredicate, hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
+import { departmentScopePredicate, employeeScopePredicate, hasTenantWideOperationalAccess, loadTenantContext, positionScopePredicate } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -101,6 +101,77 @@ export async function handleHrRequest(
     return true;
   }
 
+  if (path === "/v1/hr/campuses" && req.method === "GET") {
+    if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
+    const result = await pool.query(
+      `SELECT c.id, c.code, c.name
+       FROM core.campuses c
+       WHERE c.organization_id=$1::uuid
+         AND ($3::boolean OR EXISTS (
+           SELECT 1 FROM core.membership_campus_scopes mcs
+           WHERE mcs.organization_id=$1::uuid AND mcs.membership_id=$2::uuid
+             AND mcs.campus_id=c.id AND mcs.revoked_at IS NULL
+             AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+         ))
+       ORDER BY c.name LIMIT 100`,
+      [organizationId, tenant.membershipId, tenantWide],
+    );
+    reply(res, 200, { data: result.rows }); return true;
+  }
+
+  if (path === "/v1/hr/departments" && req.method === "GET") {
+    if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
+    const result = await pool.query(
+      `SELECT d.id, d.department_code AS "departmentCode", d.department_name AS "departmentName",
+              d.parent_department_id AS "parentDepartmentId", d.head_employee_id AS "headEmployeeId",
+              d.campus_id AS "campusId", d.effective_from AS "effectiveFrom",
+              d.effective_until AS "effectiveUntil", d.is_active AS "isActive"
+       FROM hr.departments d
+       WHERE d.organization_id=$1::uuid
+         AND ${departmentScopePredicate("d", "$1", "$2", "$3")}
+       ORDER BY d.department_name LIMIT 100`,
+      [organizationId, tenant.membershipId, tenantWide],
+    );
+    reply(res, 200, { data: result.rows }); return true;
+  }
+
+  if (path === "/v1/hr/positions" && req.method === "GET") {
+    if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
+    const result = await pool.query(
+      `SELECT p.id, p.position_code AS "positionCode", p.position_name AS "positionName",
+              p.department_id AS "departmentId", p.parent_position_id AS "parentPositionId",
+              p.job_family AS "jobFamily", p.position_level AS "positionLevel",
+              p.job_description AS "jobDescription", p.approval_scope AS "approvalScope",
+              p.is_active AS "isActive"
+       FROM hr.positions p
+       LEFT JOIN hr.departments d ON d.organization_id=p.organization_id AND d.id=p.department_id
+       WHERE p.organization_id=$1::uuid
+         AND ${positionScopePredicate("p", "d", "$1", "$2", "$3")}
+       ORDER BY p.position_level NULLS LAST, p.position_name LIMIT 100`,
+      [organizationId, tenant.membershipId, tenantWide],
+    );
+    reply(res, 200, { data: result.rows }); return true;
+  }
+
+  if (path === "/v1/hr/educators" && req.method === "GET") {
+    if (!tenant.permissions.includes("hr.educators.read")) { reply(res, 403, { error: "permission_required", permission: "hr.educators.read" }); return true; }
+    const result = await pool.query(
+      `SELECT i.id, i.employee_id AS "employeeId", e.employee_number AS "employeeNumber",
+              e.legal_name AS "employeeName", i.educator_number AS "educatorNumber",
+              i.educator_type AS "educatorType", i.highest_qualification AS "highestQualification",
+              i.specialization, i.certification_summary AS "certificationSummary",
+              i.teaching_experience_years AS "teachingExperienceYears",
+              i.employment_category AS "employmentCategory", i.is_active AS "isActive"
+       FROM academic.instructors i
+       JOIN hr.employees e ON e.organization_id=i.organization_id AND e.id=i.employee_id
+       WHERE i.organization_id=$1::uuid
+         AND ${employeeScopePredicate("e", "$1", "$2", "$3")}
+       ORDER BY e.legal_name LIMIT 100`,
+      [organizationId, tenant.membershipId, tenantWide],
+    );
+    reply(res, 200, { data: result.rows }); return true;
+  }
+
   const assignmentMatch = path.match(/^\/v1\/hr\/employee-assignments(?:\/([0-9a-f-]{36}))?$/i);
   if (assignmentMatch && req.method === "GET") {
     if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
@@ -122,6 +193,21 @@ export async function handleHrRequest(
        LEFT JOIN hr.positions p ON p.organization_id = a.organization_id AND p.id = a.position_id
        WHERE a.organization_id = $1::uuid
          AND ${employeeScopePredicate("e", "$1", "$2", "$3")}
+         AND (
+           $3::boolean
+           OR EXISTS (
+             SELECT 1 FROM core.membership_campus_scopes mcs
+             WHERE mcs.organization_id=$1::uuid AND mcs.membership_id=$2::uuid
+               AND mcs.campus_id=e.campus_id AND mcs.revoked_at IS NULL
+               AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+           )
+           OR EXISTS (
+             SELECT 1 FROM core.membership_department_scopes mds
+             WHERE mds.organization_id=$1::uuid AND mds.membership_id=$2::uuid
+               AND mds.department_id=a.department_id AND mds.revoked_at IS NULL
+               AND mds.valid_from<=now() AND (mds.valid_until IS NULL OR mds.valid_until>now())
+           )
+         )
          AND ($4::uuid IS NULL OR a.id = $4::uuid)
        ORDER BY a.starts_on DESC, e.legal_name
        LIMIT $5`,
