@@ -80,11 +80,13 @@ export default function Operations({ organizationId, permissions, initialArea = 
   useEffect(() => { if (canReadArea(area)) void reload(area); }, [area, reload, permissions]);
   useEffect(() => {
     let active = true;
-    void request("/v1/modules/campuses").then((result) => {
+    const path = area === "hr" ? "/v1/hr/campuses" : area === "inventory" ? "/v1/inventory/campuses" : "";
+    if (!path) { setCampuses([]); return () => { active = false; }; }
+    void request(path).then((result) => {
       if (active) setCampuses(Array.isArray(result) ? result : []);
     }).catch(() => { if (active) setCampuses([]); });
     return () => { active = false; };
-  }, [request]);
+  }, [request, area]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
