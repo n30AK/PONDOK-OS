@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { canReadStudentOptions, getModuleRecordProjection, handleModuleRecordsRequest, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
-s=s.replace("import assert from \"node:assert/strict\";","import assert from \"node:assert/strict\";\nimport { Readable } from \"node:stream\";
+import { Readable } from "node:stream";
+import { campusScopePredicate, employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
 import { campusScopePredicate, employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
