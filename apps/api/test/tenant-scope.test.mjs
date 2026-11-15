@@ -133,3 +133,27 @@ test("attendance scope predicates are tenant-bound and honor active campus/class
   assert.ok(sessionSql.includes("ats.class_group_id"));
   assert.ok(recordSql.includes("ar.attendance_session_id"));
 });
+
+
+test("boarding scope predicates enforce tenant-bound campus, dormitory and room grants", () => {
+  const dorm = boardingDormitoryScopePredicate("d", "$1", "$2", "$3");
+  const room = boardingRoomScopePredicate("r", "$1", "$2", "$3");
+  const bed = boardingBedScopePredicate("b", "$1", "$2", "$3");
+  const assignment = boardingAssignmentScopePredicate("ba", "$1", "$2", "$3");
+  const student = boardingStudentScopePredicate("sp", "$1", "$2", "$3");
+  const record = boardingStudentRecordScopePredicate("lr", "$1", "$2", "$3");
+  for (const sql of [dorm, room, bed, assignment, student, record]) {
+    assert.ok(sql.includes("$1::uuid"));
+    assert.ok(sql.includes("$2::uuid"));
+    assert.ok(sql.includes("$3::boolean"));
+    assert.ok(sql.includes("revoked_at IS NULL"));
+    assert.ok(sql.includes("valid_from<=now()"));
+    assert.ok(sql.includes("valid_until IS NULL OR"));
+  }
+  assert.ok(dorm.includes("membership_dormitory_scopes"));
+  assert.ok(room.includes("membership_room_scopes"));
+  assert.ok(bed.includes("boarding.rooms"));
+  assert.ok(assignment.includes("boarding.beds"));
+  assert.ok(student.includes("boarding.bed_assignments"));
+  assert.ok(record.includes("sp.id=lr.student_id"));
+});
