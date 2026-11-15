@@ -57,3 +57,11 @@ test("scoped HR API rows are normalized to the workspace's snake-case columns", 
   assert.match(source, /setRows\(\(result\.data\?\?\[\]\)\.map\(normalizeApiRow\)\)/);
   assert.match(source, /map\(normalizeApiRow\)\.map\(row=>\(\{id:String\(row\.id\)/);
 });
+
+
+test("operational workspace campus options use module-specific scoped APIs", async () => {
+  const source = await readFile(new URL("apps/web/src/Operations.tsx", root), "utf8");
+  assert.ok(source.includes('area === "hr" ? "/v1/hr/campuses"'));
+  assert.ok(source.includes('area === "inventory" ? "/v1/inventory/campuses"'));
+  assert.ok(!source.includes('request("/v1/modules/campuses")'));
+});
