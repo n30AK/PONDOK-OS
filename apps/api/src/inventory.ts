@@ -73,7 +73,7 @@ export async function handleInventoryRequest(
          ON w.organization_id = m.organization_id AND w.id = m.warehouse_id
         AND ${warehouseScope("w")}
        WHERE i.organization_id = $1::uuid AND i.is_active = true
-       GROUP BY i.id ORDER BY i.item_code LIMIT 500`, [organizationId, tenant.membershipId]`, [organizationId],
+       GROUP BY i.id ORDER BY i.item_code LIMIT 500`, [organizationId, tenant.membershipId],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
