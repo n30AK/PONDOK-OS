@@ -79,7 +79,7 @@ const RESOURCES: Record<string, Resource> = {
   "donor-pledges": { table: "crm.donor_pledges", permission: "crm.donations.manage", fields: { contactId:{column:"contact_id",kind:"uuid",required:true}, pledgeReference:{column:"pledge_reference",required:true,max:64}, pledgedAmount:{column:"pledged_amount",kind:"number",required:true,minValue:0.01}, currencyCode:{column:"currency_code",max:3}, pledgedOn:{column:"pledged_on",kind:"date"}, expectedOn:{column:"expected_on",kind:"date"}, pledgeStatus:{column:"pledge_status",max:24,values:["pledged"]}, notes:{column:"notes",max:1000} } },
   "assets": { table: "assets.asset_register", permission: "assets.register.read", writePermission: "assets.register.write", fields: { campusId:{column:"campus_id",kind:"uuid"}, assetCode:{column:"asset_code",required:true,max:48}, assetName:{column:"asset_name",required:true,max:180}, category:{column:"category",required:true,max:80}, acquisitionDate:{column:"acquisition_date",kind:"date"}, acquisitionCost:{column:"acquisition_cost",kind:"number"}, usefulLifeMonths:{column:"useful_life_months",kind:"number",minValue:1,integer:true}, assetStatus:{column:"asset_status",max:24,values:["active"]}, locationLabel:{column:"location_label",max:180} } },
   "suppliers": { table: "procurement.suppliers", permission: "procurement.suppliers.manage", fields: { supplierCode:{column:"supplier_code",required:true,max:48}, supplierName:{column:"supplier_name",required:true,max:180}, taxNumber:{column:"tax_number",max:40}, email:{column:"email",max:254}, phone:{column:"phone",max:32}, address:{column:"address",kind:"json"} } },
-  "purchase-requests": { table: "procurement.purchase_requests", actorColumn: "requested_by", permission: "procurement.requests.read", writePermission: "procurement.requests.write", fields: { campusId:{column:"campus_id",kind:"uuid"}, requestNumber:{column:"request_number",required:true,max:48}, requestDate:{column:"request_date",kind:"date"}, requiredBy:{column:"required_by",kind:"date"}, purpose:{column:"purpose",required:true,max:1000} } },
+  "purchase-requests": { table: "procurement.purchase_requests", actorColumn: "requested_by", permission: "procurement.requests.read", writePermission: "procurement.requests.write", fields: { campusId:{column:"campus_id",kind:"uuid"}, requestNumber:{column:"request_number",required:true,max:48}, requestDate:{column:"request_date",kind:"date",required:true}, requiredBy:{column:"required_by",kind:"date"}, purpose:{column:"purpose",required:true,max:1000} } },
   "academic-class-subjects": { table: "academic.class_subjects", permission: "academic.classes.read", writePermission: "academic.classes.write", fields: { classGroupId:{column:"class_group_id",kind:"uuid",required:true}, subjectId:{column:"subject_id",kind:"uuid",required:true}, weeklyPeriods:{column:"weekly_periods",kind:"number",minValue:1,maxValue:30,integer:true} } },
   "guardians": { table: "academic.guardians", permission: "academic.students.read", writePermission: "academic.students.create", fields: { displayName:{column:"display_name",required:true,max:180}, relationshipDefault:{column:"relationship_default",max:40}, phonePrimary:{column:"phone_primary",max:32}, phoneAlternate:{column:"phone_alternate",max:32}, email:{column:"email",max:254}, occupation:{column:"occupation",max:120}, address:{column:"address",kind:"json"}, preferredContactChannel:{column:"preferred_contact_channel",max:24,values:["whatsapp","phone","email","letter","none"]}, consentStatus:{column:"consent_status",max:24,values:["pending","granted","withdrawn","not_required"]} } },
   "student-guardians": { table: "academic.student_guardians", permission: "academic.students.read", writePermission: "academic.students.update", fields: { studentId:{column:"student_id",kind:"uuid",required:true}, guardianId:{column:"guardian_id",kind:"uuid",required:true}, relationshipCode:{column:"relationship_code",required:true,max:40}, isPrimary:{column:"is_primary",kind:"boolean"}, isEmergencyContact:{column:"is_emergency_contact",kind:"boolean"}, validFrom:{column:"valid_from",kind:"date"}, validUntil:{column:"valid_until",kind:"date"} } },
@@ -724,12 +724,16 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const scopedCampusReadResource = ["purchase-requests", "purchase-request-lines", "purchase-orders", "purchase-order-lines", "assets", "asset-events"].includes(match[1] ?? "");
   const scopedLibraryReadResource = ["library-catalog", "library-copies", "library-loans"].includes(match[1] ?? "");
   // Procurement, asset and library reads have resource-specific scope joins.
-  // Writes remain tenant-authority-only until every relationship and approval
-  // path has a same-statement authorization check.
+  // Purchase-request and request-line creates also authorize campus/request
+  // ownership in the INSERT statement; other writes remain tenant-authority-only.
   if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource && !scopedCampusReadResource && !scopedLibraryReadResource) {
     reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
   }
-  if (!tenantWide && write && (scopedCampusReadResource || scopedLibraryReadResource)) {
+  const scopedCampusCreateResource = ["purchase-requests", "purchase-request-lines"].includes(match[1] ?? "");
+  if (!tenantWide && write && (scopedLibraryReadResource || (scopedCampusReadResource && !scopedCampusCreateResource))) {
+    reply(res,403,{error:"module_write_scope_not_supported_for_member",resource:match[1]}); return true;
+  }
+  if (!tenantWide && write && scopedCampusCreateResource && req.method !== "POST") {
     reply(res,403,{error:"module_write_scope_not_supported_for_member",resource:match[1]}); return true;
   }
   if (!write) {
@@ -1140,8 +1144,36 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
   await pool.query("SAVEPOINT module_record_write");
   try {
-    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`,values);
-    const record = result.rows[0] as Record<string, unknown>;
+    let insertSql = `INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
+    let insertValues: unknown[] = values;
+    if (!tenantWide && match[1] === "purchase-requests") {
+      insertSql = `INSERT INTO procurement.purchase_requests (${columns.join(",")})
+        SELECT ${placeholders.join(",")}
+        WHERE $2::uuid IS NOT NULL AND EXISTS (
+          SELECT 1 FROM core.membership_campus_scopes mcs
+          WHERE mcs.organization_id=$1::uuid AND mcs.membership_id=$8::uuid
+            AND mcs.campus_id=$2::uuid AND mcs.revoked_at IS NULL
+            AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+        )
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
+      insertValues = [...values, tenant.membershipId];
+    } else if (!tenantWide && match[1] === "purchase-request-lines") {
+      insertSql = `INSERT INTO procurement.purchase_request_lines (${columns.join(",")})
+        SELECT ${placeholders.join(",")}
+        FROM procurement.purchase_requests pr
+        WHERE pr.organization_id=$1::uuid AND pr.id=$2::uuid
+          AND pr.request_status='draft'
+          AND ${campusScopePredicate("pr", "$1", "$6", "false")}
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
+      insertValues = [...values, tenant.membershipId];
+    }
+    const result=await pool.query(insertSql,insertValues);
+    const record = result.rows[0] as Record<string, unknown> | undefined;
+    if (!record) {
+      await pool.query("ROLLBACK TO SAVEPOINT module_record_write");
+      await pool.query("RELEASE SAVEPOINT module_record_write");
+      reply(res,403,{error:"campus_scope_required_or_request_not_draft"}); return true;
+    }
     if (match[1] === "boarding-assignments") {
       const bedStatusUpdate = await pool.query(
         `UPDATE boarding.beds SET bed_status=CASE WHEN $3::date>CURRENT_DATE THEN 'reserved' ELSE 'occupied' END
