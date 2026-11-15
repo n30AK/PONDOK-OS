@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { canReadStudentOptions, getModuleRecordProjection, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
-import { employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
+import { campusScopePredicate, employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -301,4 +301,15 @@ test("generic module projections are explicit, resource-specific, and exclude un
     assert.ok(!projection.includes("*"));
     assert.ok(projection.startsWith("id, organization_id,"));
   }
+});
+
+
+test("campus scope predicate denies null-campus records and checks active membership grants", () => {
+  const sql = campusScopePredicate("pr", "$1", "$2", "$3");
+  for (const expected of [
+    "$3::boolean", "pr.campus_id IS NOT NULL", "membership_campus_scopes",
+    "mcs.organization_id = $1::uuid", "mcs.membership_id = $2::uuid",
+    "mcs.campus_id = pr.campus_id", "revoked_at IS NULL",
+    "valid_from <= now()", "valid_until IS NULL OR"
+  ]) assert.ok(sql.includes(expected), `missing ${expected}`);
 });
