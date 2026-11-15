@@ -795,7 +795,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     } else if (match[1] === "assets") {
       const qualifiedProjection = projection.split(",").map((column) => `a.${column.trim()}`).join(", ");
       result = await pool.query(
-        `SELECT ${qualifiedProjection} FROM assets.fixed_assets a
+        `SELECT ${qualifiedProjection} FROM assets.asset_register a
          WHERE a.organization_id=$1::uuid
            AND ${campusScopePredicate("a", "$1", "$2", "$3")}
          ORDER BY a.created_at DESC, a.id LIMIT $4`,
@@ -805,7 +805,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       const qualifiedProjection = projection.split(",").map((column) => `ae.${column.trim()}`).join(", ");
       result = await pool.query(
         `SELECT ${qualifiedProjection} FROM assets.asset_events ae
-         JOIN assets.fixed_assets a
+         JOIN assets.asset_register a
            ON a.organization_id=ae.organization_id AND a.id=ae.asset_id
          WHERE ae.organization_id=$1::uuid
            AND ${campusScopePredicate("a", "$1", "$2", "$3")}
