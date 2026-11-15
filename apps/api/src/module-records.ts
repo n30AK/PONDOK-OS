@@ -934,7 +934,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
       updateSql = `UPDATE academic.attendance_sessions AS ats SET ${sets.join(",")}
         WHERE ats.organization_id=${orgPlaceholder}::uuid AND ats.id=$${values.length-2}::uuid
           AND ${attendanceSessionScopePredicate("ats", orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
-        RETURNING ${moduleRecordProjection(resource)}`;
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     } else if (["dormitories", "boarding-rooms", "boarding-beds", "boarding-assignments", "leave-requests", "incidents"].includes(match[1] ?? "")) {
       const configs: Record<string, { alias: string; predicate: (alias: string, org: string, member: string, wide: string) => string }> = {
         "dormitories": { alias: "d", predicate: boardingDormitoryScopePredicate },
@@ -954,9 +954,9 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
         WHERE ${config.alias}.organization_id=${orgPlaceholder}::uuid
           AND ${config.alias}.id=$${values.length-2}::uuid
           AND ${config.predicate(config.alias, orgPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
-        RETURNING ${moduleRecordProjection(resource)}`;
+        RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     } else {
-      updateSql = `UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource)}`;
+      updateSql = `UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`;
     }
     await pool.query("SAVEPOINT module_record_write");
     try {
@@ -1108,7 +1108,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
   await pool.query("SAVEPOINT module_record_write");
   try {
-    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource)}`,values);
+    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING ${moduleRecordProjection(resource, tenant.permissions)}`,values);
     const record = result.rows[0] as Record<string, unknown>;
     if (match[1] === "boarding-assignments") {
       const bedStatusUpdate = await pool.query(
