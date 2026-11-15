@@ -174,32 +174,56 @@ test("guardian relationship is never treated as legal authority or pickup permis
 });
 
 
-test("PPDB lifecycle fails closed for scoped admission members until campus predicates are atomic", async () => {
+test("scoped PPDB reads filter periods and applicant records by active campus grant", async () => {
   const organizationId = "123e4567-e89b-42d3-a456-426614174002";
   const userId = "123e4567-e89b-42d3-a456-426614174003";
   const membershipId = "123e4567-e89b-42d3-a456-426614174005";
   const calls = [];
-  const pool = { async query(sql) {
-    calls.push(sql);
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
     if (sql.includes("FROM core.organization_memberships")) return { rows: [{
       membership_id: membershipId, organization_id: organizationId,
       roles: ["admission_officer"], permissions: ["admissions.applications.read", "admissions.applications.review", "admissions.periods.manage"]
     }] };
-    throw new Error("admissions data query must not run for scoped members");
+    if (sql.includes("FROM admissions.admission_periods p")) return { rows: [] };
+    if (sql.includes("FROM admissions.applications a")) return { rows: [] };
+    if (sql.includes("INSERT INTO audit.audit_events")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
   }};
-  for (const [method, url, body] of [
-    ["GET", "/v1/admissions/periods"],
-    ["GET", "/v1/admissions/applications"],
-    ["POST", "/v1/admissions/periods", period],
-    ["POST", "/v1/admissions/applications", application],
-    ["POST", "/v1/admissions/applications/123e4567-e89b-42d3-a456-426614174000/review", { decision: "accepted" }],
-    ["POST", "/v1/admissions/applications/123e4567-e89b-42d3-a456-426614174000/enroll", { campusId: "123e4567-e89b-42d3-a456-426614174004", studentNumber: "SAN-1" }]
-  ]) {
-    const req = { method, url, headers: {}, async *[Symbol.asyncIterator]() { if (body) yield Buffer.from(JSON.stringify(body)); } };
+  for (const url of ["/v1/admissions/periods", "/v1/admissions/applications"]) {
+    const req = { method: "GET", url, headers: {}, async *[Symbol.asyncIterator]() {} };
     const res = { status: 0, headers: {}, body: "", writeHead(status, headers = {}) { this.status = status; Object.assign(this.headers, headers); }, end(value = "") { this.body = value; } };
     assert.equal(await handleAdmissionsRequest(req, res, pool, userId, organizationId), true);
-    assert.equal(res.status, 403);
-    assert.equal(JSON.parse(res.body).error, "admissions_scope_enforcement_required");
+    assert.equal(res.status, 200);
   }
-  assert.equal(calls.filter(sql => sql.includes("FROM core.organization_memberships")).length, 6);
+  const periodQuery = calls.find(call => call.sql.includes("FROM admissions.admission_periods p"));
+  assert.ok(periodQuery.sql.includes("membership_campus_scopes"));
+  assert.ok(periodQuery.sql.includes("p.campus_id"));
+  assert.deepEqual(periodQuery.values, [organizationId, membershipId, false]);
+  const applicationQuery = calls.find(call => call.sql.includes("FROM admissions.applications a"));
+  assert.ok(applicationQuery.sql.includes("JOIN admissions.admission_periods p"));
+  assert.ok(applicationQuery.sql.includes("membership_campus_scopes"));
+  assert.ok(applicationQuery.sql.includes("p.campus_id"));
+  assert.deepEqual(applicationQuery.values, [organizationId, true, membershipId, false, 50]);
+});
+
+test("scoped PPDB officers cannot create, review or convert until lifecycle writes are atomic", async () => {
+  const organizationId = "123e4567-e89b-42d3-a456-426614174002";
+  const userId = "123e4567-e89b-42d3-a456-426614174003";
+  const membershipId = "123e4567-e89b-42d3-a456-426614174005";
+  let dataQuery = false;
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["admission_officer"], permissions: ["admissions.applications.read", "admissions.applications.review", "admissions.periods.manage", "academic.students.create"]
+    }] };
+    dataQuery = true;
+    throw new Error("scoped PPDB writes must be rejected before data SQL");
+  }};
+  const req = { method: "POST", url: "/v1/admissions/applications", headers: {}, async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify(application)); } };
+  const res = { status: 0, headers: {}, body: "", writeHead(status, headers = {}) { this.status = status; Object.assign(this.headers, headers); }, end(value = "") { this.body = value; } };
+  await handleAdmissionsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "admissions_write_scope_not_supported_for_member");
+  assert.equal(dataQuery, false);
 });
