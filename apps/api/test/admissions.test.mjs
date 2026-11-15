@@ -172,3 +172,34 @@ test("guardian relationship is never treated as legal authority or pickup permis
   assert.match(source, /guardianAuthorityVerified', false/);
   assert.match(source, /consent_status\)\s*SELECT[^;]*'pending'/s);
 });
+
+
+test("PPDB lifecycle fails closed for scoped admission members until campus predicates are atomic", async () => {
+  const organizationId = "123e4567-e89b-42d3-a456-426614174002";
+  const userId = "123e4567-e89b-42d3-a456-426614174003";
+  const membershipId = "123e4567-e89b-42d3-a456-426614174005";
+  const calls = [];
+  const pool = { async query(sql) {
+    calls.push(sql);
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["admission_officer"], permissions: ["admissions.applications.read", "admissions.applications.review", "admissions.periods.manage"]
+    }] };
+    throw new Error("admissions data query must not run for scoped members");
+  }};
+  for (const [method, url, body] of [
+    ["GET", "/v1/admissions/periods"],
+    ["GET", "/v1/admissions/applications"],
+    ["POST", "/v1/admissions/periods", period],
+    ["POST", "/v1/admissions/applications", application],
+    ["POST", "/v1/admissions/applications/123e4567-e89b-42d3-a456-426614174000/review", { decision: "accepted" }],
+    ["POST", "/v1/admissions/applications/123e4567-e89b-42d3-a456-426614174000/enroll", { campusId: "123e4567-e89b-42d3-a456-426614174004", studentNumber: "SAN-1" }]
+  ]) {
+    const req = { method, url, headers: {}, async *[Symbol.asyncIterator]() { if (body) yield Buffer.from(JSON.stringify(body)); } };
+    const res = { status: 0, headers: {}, body: "", writeHead(status, headers = {}) { this.status = status; Object.assign(this.headers, headers); }, end(value = "") { this.body = value; } };
+    assert.equal(await handleAdmissionsRequest(req, res, pool, userId, organizationId), true);
+    assert.equal(res.status, 403);
+    assert.equal(JSON.parse(res.body).error, "admissions_scope_enforcement_required");
+  }
+  assert.equal(calls.filter(sql => sql.includes("FROM core.organization_memberships")).length, 6);
+});
