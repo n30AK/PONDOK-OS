@@ -121,3 +121,23 @@ test("scoped member cannot mutate the tenant-wide item catalog", async () => {
   assert.equal(res.statusCode, 403);
   assert.equal(JSON.parse(res.body).error, "inventory_item_catalog_management_requires_tenant_authority");
 });
+
+
+test("scoped transfer requires both source and destination warehouses in scope", async () => {
+  let insertQuery = "";
+  let insertValues = [];
+  const pool = { async query(sql, values) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [inventoryTenant(["inventory.movements.write"])] };
+    insertQuery = sql; insertValues = values;
+    return { rows: [] };
+  }};
+  const res = inventoryResponse();
+  await handleInventoryRequest(inventoryRequest("POST", "/v1/inventory/movements", {
+    itemId: item, movementType: "transfer", fromWarehouseId: whA, toWarehouseId: whB, quantity: 3
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.ok(insertQuery.includes("authorized_warehouses"));
+  assert.ok(insertQuery.includes("(SELECT COUNT(*) FROM authorized_warehouses)=2"));
+  assert.ok(insertQuery.includes("membership_campus_scopes"));
+  assert.deepEqual(insertValues.slice(0, 5), [organizationId, membershipId, item, whA, whB]);
+});
