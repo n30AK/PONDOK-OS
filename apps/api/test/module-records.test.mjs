@@ -387,3 +387,59 @@ test("scoped procurement writes remain fail closed until relation checks are ato
   assert.equal(JSON.parse(res.body).error, "module_write_scope_not_supported_for_member");
   assert.equal(dataQuery, false);
 });
+
+
+test("generic employment-contract projections redact compensation without payroll-read", () => {
+  const ordinary = getModuleRecordProjection("hr-contracts");
+  const payroll = getModuleRecordProjection("hr-contracts", ["hr.payroll.read"]);
+  assert.ok(!ordinary.includes("base_salary"));
+  assert.ok(!ordinary.includes("currency_code"));
+  assert.ok(payroll.includes("base_salary"));
+  assert.ok(payroll.includes("currency_code"));
+});
+
+test("generic employment-contract GET does not select or return salary without payroll-read", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let queryText = "";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: "423e4567-e89b-42d3-a456-426614174000",
+      organization_id: organizationId, roles: ["institution_owner"], permissions: ["hr.contracts.read"]
+    }] };
+    queryText = sql;
+    return { rows: [{ id: uuid, employee_id: uuid, contract_type: "permanent" }] };
+  }};
+  const req = Readable.from([]);
+  req.method = "GET"; req.url = "/v1/modules/hr-contracts"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(!queryText.includes("base_salary"));
+  assert.ok(!queryText.includes("currency_code"));
+  assert.ok(!JSON.parse(res.body).data[0].base_salary);
+});
+
+test("generic employment-contract compensation writes require payroll preparation permission", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let dataQuery = false;
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: "423e4567-e89b-42d3-a456-426614174000",
+      organization_id: organizationId, roles: ["institution_owner"], permissions: ["hr.contracts.write"]
+    }] };
+    dataQuery = true;
+    throw new Error("compensation write must be rejected before data SQL");
+  }};
+  const req = Readable.from([Buffer.from(JSON.stringify({
+    employeeId: uuid, contractType: "permanent", startsOn: "2026-01-01",
+    baseSalary: 5000000, currencyCode: "IDR", status: "draft"
+  }))]);
+  req.method = "POST"; req.url = "/v1/modules/hr-contracts"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "compensation_permission_required");
+  assert.equal(dataQuery, false);
+});
