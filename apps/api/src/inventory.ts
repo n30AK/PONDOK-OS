@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { loadTenantContext } from "./tenant-access.js";
+import { hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -50,25 +50,31 @@ export async function handleInventoryRequest(
   if (!path.startsWith("/v1/inventory/")) return false;
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
+  const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+  const warehouseScope = (alias: string) => `(${tenantWide ? "true" : "false"}::boolean OR EXISTS (
+    SELECT 1 FROM core.membership_campus_scopes mcs
+    WHERE mcs.organization_id = $1::uuid AND mcs.membership_id = $2::uuid
+      AND mcs.campus_id = ${alias}.campus_id
+      AND mcs.revoked_at IS NULL AND mcs.valid_from <= now()
+      AND (mcs.valid_until IS NULL OR mcs.valid_until > now())
+  ))`;
 
   if (path === "/v1/inventory/items" && req.method === "GET") {
     if (!tenant.permissions.includes("inventory.items.read")) { reply(res, 403, { error: "permission_required", permission: "inventory.items.read" }); return true; }
     const result = await pool.query(
       `SELECT i.id, i.item_code AS "itemCode", i.item_name AS "itemName", i.unit_code AS "unitCode",
               i.reorder_level AS "reorderLevel", i.is_active AS "isActive",
-              COALESCE(SUM(CASE WHEN m.movement_type IN ('receipt','transfer_in') THEN m.quantity
-                                WHEN m.movement_type IN ('issue','transfer_out') THEN -m.quantity ELSE 0 END),0) AS "onHand"
+              COALESCE(SUM(CASE WHEN w.id IS NOT NULL AND m.movement_type IN ('receipt','transfer_in') THEN m.quantity
+                                WHEN w.id IS NOT NULL AND m.movement_type IN ('issue','transfer_out') THEN -m.quantity ELSE 0 END),0) AS "onHand"
        FROM inventory.items i
-       LEFT JOIN inventory.stock_movements m
-         ON m.organization_id = i.organization_id AND m.item_id = i.id
-       WHERE i.organization_id = $1::uuid AND i.is_active = true
-       GROUP BY i.id ORDER BY i.item_code LIMIT 500`, [organizationId],
+[organizationId]`, [organizationId],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
 
   if (path === "/v1/inventory/items" && req.method === "POST") {
     if (!tenant.permissions.includes("inventory.items.write")) { reply(res, 403, { error: "permission_required", permission: "inventory.items.write" }); return true; }
+    if (!tenantWide) { reply(res, 403, { error: "inventory_item_catalog_management_requires_tenant_authority" }); return true; }
     const body = await readJson(req);
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const error = validateInventoryItemInput(body);
@@ -93,8 +99,9 @@ export async function handleInventoryRequest(
     const result = await pool.query(
       `SELECT id, campus_id AS "campusId", warehouse_code AS "warehouseCode",
               warehouse_name AS "warehouseName", is_active AS "isActive"
-       FROM inventory.warehouses WHERE organization_id = $1::uuid AND is_active = true
-       ORDER BY warehouse_code LIMIT 200`, [organizationId],
+       FROM inventory.warehouses w WHERE w.organization_id = $1::uuid AND w.is_active = true
+         AND ${warehouseScope("w")}
+       ORDER BY w.warehouse_code LIMIT 200`, [organizationId],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
@@ -108,12 +115,24 @@ export async function handleInventoryRequest(
       reply(res, 422, { error: "invalid_warehouse_input" }); return true;
     }
     try {
+      if (!tenantWide && typeof body.campusId !== "string") {
+        reply(res, 403, { error: "warehouse_campus_scope_required" }); return true;
+      }
       const result = await pool.query(
         `INSERT INTO inventory.warehouses (organization_id, campus_id, warehouse_code, warehouse_name)
-         VALUES ($1::uuid, $2::uuid, $3, $4)
+         SELECT $1::uuid, $2::uuid, $3, $4
+         WHERE $5::boolean OR EXISTS (
+           SELECT 1 FROM core.campuses c
+           JOIN core.membership_campus_scopes mcs
+             ON mcs.organization_id=c.organization_id AND mcs.campus_id=c.id
+           WHERE c.organization_id=$1::uuid AND c.id=$2::uuid
+             AND mcs.membership_id=$6::uuid AND mcs.revoked_at IS NULL
+             AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+         )
          RETURNING id, campus_id AS "campusId", warehouse_code AS "warehouseCode", warehouse_name AS "warehouseName"`,
-        [organizationId, body.campusId ?? null, body.warehouseCode, (body.warehouseName as string).trim()],
+        [organizationId, body.campusId ?? null, body.warehouseCode, (body.warehouseName as string).trim(), tenantWide, tenant.membershipId],
       );
+      if (!result.rows[0]) { reply(res, 403, { error: "warehouse_campus_outside_member_scope" }); return true; }
       reply(res, 201, { data: result.rows[0] });
     } catch (reason) {
       const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
@@ -135,8 +154,9 @@ export async function handleInventoryRequest(
        FROM inventory.stock_movements m
        JOIN inventory.items i ON i.organization_id = m.organization_id AND i.id = m.item_id
        JOIN inventory.warehouses w ON w.organization_id = m.organization_id AND w.id = m.warehouse_id
-       WHERE m.organization_id = $1::uuid ORDER BY m.occurred_at DESC LIMIT $2`,
-      [organizationId, limit],
+       WHERE m.organization_id = $1::uuid AND ${warehouseScope("w")}
+       ORDER BY m.occurred_at DESC LIMIT $3`,
+      [organizationId, tenant.membershipId, limit],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
@@ -150,27 +170,38 @@ export async function handleInventoryRequest(
     try {
       if (body.movementType === "transfer") {
         const result = await pool.query(
-          `WITH group_ref AS (SELECT gen_random_uuid() AS id),
+          `WITH authorized_warehouses AS (
+             SELECT w.id FROM inventory.warehouses w
+             WHERE w.organization_id=$1::uuid AND w.id IN ($3::uuid,$4::uuid)
+               AND ${warehouseScope("w")}
+           ), group_ref AS (SELECT gen_random_uuid() AS id),
            inserted AS (
              INSERT INTO inventory.stock_movements
                (organization_id, item_id, warehouse_id, movement_group_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, recorded_by)
              SELECT $1::uuid, $2::uuid, v.warehouse_id, group_ref.id, v.movement_type, $5, $6, 'transfer', $7, $8, $9::uuid
              FROM group_ref CROSS JOIN (VALUES ($3::uuid, 'transfer_out'), ($4::uuid, 'transfer_in')) AS v(warehouse_id, movement_type)
+             WHERE (SELECT COUNT(*) FROM authorized_warehouses)=2
+               AND EXISTS (SELECT 1 FROM inventory.items i WHERE i.organization_id=$1::uuid AND i.id=$2::uuid AND i.is_active=true)
              RETURNING id, movement_type AS "movementType", warehouse_id AS "warehouseId", quantity
            )
            SELECT group_ref.id AS "movementGroupId", json_agg(inserted) AS movements FROM group_ref, inserted GROUP BY group_ref.id`,
-          [organizationId, body.itemId, body.fromWarehouseId, body.toWarehouseId, body.quantity, body.unitCost ?? null, body.referenceId ?? null, body.notes ?? null, userId],
+          [organizationId, body.itemId, body.fromWarehouseId, body.toWarehouseId, body.quantity, body.unitCost ?? null, body.referenceId ?? null, body.notes ?? null, userId, tenant.membershipId],
         );
+        if (!result.rows[0]) { reply(res, 403, { error: "inventory_item_or_warehouse_outside_member_scope" }); return true; }
         reply(res, 201, { data: result.rows[0] });
       } else {
         const result = await pool.query(
           `INSERT INTO inventory.stock_movements
              (organization_id, item_id, warehouse_id, movement_type, quantity, unit_cost, reference_type, reference_id, notes, recorded_by)
-           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, 'manual', $7, $8, $9::uuid)
+           SELECT $1::uuid, i.id, w.id, $4, $5, $6, 'manual', $7, $8, $9::uuid
+           FROM inventory.items i JOIN inventory.warehouses w ON w.organization_id=i.organization_id
+           WHERE i.organization_id=$1::uuid AND i.id=$2::uuid AND i.is_active=true
+             AND w.id=$3::uuid AND w.is_active=true AND ${warehouseScope("w")}
            RETURNING id, item_id AS "itemId", warehouse_id AS "warehouseId", movement_type AS "movementType",
                      quantity, unit_cost AS "unitCost", occurred_at AS "occurredAt"`,
-          [organizationId, body.itemId, body.warehouseId, body.movementType, body.quantity, body.unitCost ?? null, body.referenceId ?? null, body.notes ?? null, userId],
+          [organizationId, body.itemId, body.warehouseId, body.movementType, body.quantity, body.unitCost ?? null, body.referenceId ?? null, body.notes ?? null, userId, tenant.membershipId],
         );
+        if (!result.rows[0]) { reply(res, 403, { error: "inventory_item_or_warehouse_outside_member_scope" }); return true; }
         reply(res, 201, { data: result.rows[0] });
       }
     } catch (reason) {
