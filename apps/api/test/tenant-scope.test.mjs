@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { withTenantScope } from "../dist/tenant-db.js";
-import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, loadTenantContext } from "../dist/tenant-access.js";
+import { attendanceClassScopePredicate, attendanceRecordScopePredicate, attendanceSessionScopePredicate, boardingAssignmentScopePredicate, boardingBedScopePredicate, boardingDormitoryScopePredicate, boardingRoomScopePredicate, boardingStudentRecordScopePredicate, boardingStudentScopePredicate, loadTenantContext } from "../dist/tenant-access.js";
 
 const tenantA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const tenantB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
