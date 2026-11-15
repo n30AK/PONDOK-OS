@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateEmployeeInput, validatePayrollRunInput } from "../dist/hr.js";
+import { handleHrRequest, validateEmployeeInput, validatePayrollRunInput } from "../dist/hr.js";
+import { Readable } from "node:stream";
 
 const employeeId = "123e4567-e89b-42d3-a456-426614174000";
 const periodId = "223e4567-e89b-42d3-a456-426614174000";
@@ -21,4 +22,97 @@ test("validates payroll lines and component types", () => {
   assert.equal(validatePayrollRunInput(valid), null);
   assert.equal(validatePayrollRunInput({ ...valid, lines: [{ ...valid.lines[0], amount: 0 }] }), "invalid_component_amount");
   assert.equal(validatePayrollRunInput({ ...valid, lines: [{ ...valid.lines[0], componentType: "other" }] }), "invalid_component_type");
+});
+
+
+const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+const userId = "323e4567-e89b-42d3-a456-426614174000";
+
+function hrResponse() {
+  return { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+}
+function hrRequest(method, url, body) {
+  const stream = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]);
+  stream.method = method; stream.url = url; stream.headers = {};
+  return stream;
+}
+function hrTenant(permissions, roles = ["hr_payroll_officer"]) {
+  return { membership_id: membershipId, organization_id: organizationId, roles, permissions };
+}
+
+test("scoped payroll run list only aggregates employees in the caller's campus or department scope", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.payroll.read"])] };
+    if (sql.includes("FROM hr.payroll_runs r")) return { rows: [{ id: periodId, earnings: "5000000", deductions: "100000" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/payroll/runs"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  const query = calls.find(call => call.sql.includes("FROM hr.payroll_runs r"));
+  assert.ok(query.sql.includes("JOIN hr.employees e"));
+  assert.ok(query.sql.includes("membership_campus_scopes"));
+  assert.ok(query.sql.includes("membership_department_scopes"));
+  assert.deepEqual(query.values, [organizationId, membershipId, false]);
+});
+
+test("scoped payroll preparation inserts lines only when every employee is within scope", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.payroll.prepare"])] };
+    if (sql.includes("WITH input_lines AS")) return { rows: [{ id: periodId, runNumber: "PAY-2026-11-A", lineCount: 2 }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const body = {
+    payrollPeriodId: periodId, runNumber: "PAY-2026-11-A", runType: "regular",
+    lines: [
+      { employeeId, componentCode: "BASE", componentName: "Gaji pokok", componentType: "earning", amount: 5000000 },
+      { employeeId, componentCode: "CUT", componentName: "Potongan", componentType: "deduction", amount: 100000 }
+    ]
+  };
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("POST", "/v1/hr/payroll/runs", body), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 201);
+  const query = calls.find(call => call.sql.includes("WITH input_lines AS"));
+  assert.ok(query.sql.includes("authorized_employees"));
+  assert.ok(query.sql.includes("COUNT(DISTINCT employee_id)"));
+  assert.ok(query.sql.includes("membership_campus_scopes"));
+  assert.ok(query.sql.includes("membership_department_scopes"));
+  assert.deepEqual(query.values.slice(-2), [membershipId, false]);
+});
+
+test("scoped payroll members cannot approve or pay an organization-wide run", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.payroll.approve", "hr.payroll.pay"])] };
+    throw new Error("approval and payment must be rejected before SQL");
+  }};
+  const approve = hrResponse();
+  await handleHrRequest(hrRequest("POST", "/v1/hr/payroll/runs/" + periodId + "/approve"), approve, pool, userId, organizationId);
+  assert.equal(approve.statusCode, 403);
+  assert.equal(JSON.parse(approve.body).error, "payroll_approval_requires_tenant_authority");
+  const pay = hrResponse();
+  await handleHrRequest(hrRequest("POST", "/v1/hr/payroll/runs/" + periodId + "/pay"), pay, pool, userId, organizationId);
+  assert.equal(pay.statusCode, 403);
+  assert.equal(JSON.parse(pay.body).error, "payroll_payment_requires_tenant_authority");
+});
+
+test("scoped payroll members can read periods but cannot create organization-wide periods", async () => {
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.payroll.read", "hr.payroll.prepare"])] };
+    if (sql.includes("FROM hr.payroll_periods WHERE organization_id")) return { rows: [{ id: periodId, periodCode: "2026-11" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const get = hrResponse();
+  await handleHrRequest(hrRequest("GET", "/v1/hr/payroll/periods"), get, pool, userId, organizationId);
+  assert.equal(get.statusCode, 200);
+  const post = hrResponse();
+  await handleHrRequest(hrRequest("POST", "/v1/hr/payroll/periods", {
+    periodCode: "2026-12", startsOn: "2026-12-01", endsOn: "2026-12-31", payDate: "2027-01-01"
+  }), post, pool, userId, organizationId);
+  assert.equal(post.statusCode, 403);
+  assert.equal(JSON.parse(post.body).error, "payroll_period_management_requires_tenant_authority");
 });
