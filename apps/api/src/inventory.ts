@@ -58,6 +58,24 @@ export async function handleInventoryRequest(
       AND mcs.revoked_at IS NULL AND mcs.valid_from <= now()
       AND (mcs.valid_until IS NULL OR mcs.valid_until > now())
   ))`;
+  if (path === "/v1/inventory/campuses" && req.method === "GET") {
+    if (!tenant.permissions.includes("inventory.items.read")) { reply(res, 403, { error: "permission_required", permission: "inventory.items.read" }); return true; }
+    const result = await pool.query(
+      `SELECT c.id, c.code, c.name
+       FROM core.campuses c
+       WHERE c.organization_id=$1::uuid
+         AND ($3::boolean OR EXISTS (
+           SELECT 1 FROM core.membership_campus_scopes mcs
+           WHERE mcs.organization_id=$1::uuid AND mcs.membership_id=$2::uuid
+             AND mcs.campus_id=c.id AND mcs.revoked_at IS NULL
+             AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+         ))
+       ORDER BY c.name LIMIT 100`,
+      [organizationId, tenant.membershipId, tenantWide],
+    );
+    reply(res, 200, { data: result.rows }); return true;
+  }
+
 
   if (path === "/v1/inventory/items" && req.method === "GET") {
     if (!tenant.permissions.includes("inventory.items.read")) { reply(res, 403, { error: "permission_required", permission: "inventory.items.read" }); return true; }
