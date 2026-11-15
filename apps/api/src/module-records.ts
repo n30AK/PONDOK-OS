@@ -92,6 +92,15 @@ const RESOURCES: Record<string, Resource> = {
   "purchase-orders": { table: "procurement.purchase_orders", permission: "procurement.orders.manage", fields: { supplierId:{column:"supplier_id",kind:"uuid",required:true}, requestId:{column:"request_id",kind:"uuid"}, orderNumber:{column:"order_number",required:true,max:48}, orderedOn:{column:"ordered_on",kind:"date"}, expectedOn:{column:"expected_on",kind:"date"}, totalAmount:{column:"total_amount",kind:"number"} } }
 };
 
+/** Build a SQL projection only from server-owned resource metadata. Newly-added table columns stay private by default. */
+export function moduleRecordProjection(resource: Resource): string {
+  const columns = new Set<string>(["id", "organization_id"]);
+  for (const field of Object.values(resource.fields)) columns.add(field.column);
+  if (resource.actorColumn) columns.add(resource.actorColumn);
+  columns.add(resource.order ?? "created_at");
+  return [...columns].join(", ");
+}
+
 function reply(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
   res.end(JSON.stringify(body));
@@ -179,7 +188,7 @@ async function handleLibraryLoanReturn(res: ServerResponse, pool: Pick<Pool, "qu
       await pool.query("RELEASE SAVEPOINT library_loan_return");
       reply(res, 409, { error: "copy_not_on_loan" }); return;
     }
-    const returned = await pool.query("UPDATE library.loans SET loan_status='returned', returned_at=now(), received_by=$1::uuid WHERE organization_id=$2::uuid AND id=$3::uuid AND loan_status='open' RETURNING *", [userId, organizationId, loanId]);
+    const returned = await pool.query("UPDATE library.loans SET loan_status='returned', returned_at=now(), received_by=$1::uuid WHERE organization_id=$2::uuid AND id=$3::uuid AND loan_status='open' RETURNING id, organization_id, copy_id, borrower_type, borrower_id, checked_out_at, due_at, returned_at, loan_status, issued_by, received_by, created_at", [userId, organizationId, loanId]);
     await pool.query("UPDATE library.copies SET copy_status='available' WHERE organization_id=$1::uuid AND id=$2::uuid", [organizationId, loan.copy_id]);
     await pool.query("INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)", [organizationId, userId, "library.loan.return", "library.loans", loanId, JSON.stringify({ copyId: loan.copy_id })]);
     await pool.query("RELEASE SAVEPOINT library_loan_return");
@@ -220,7 +229,7 @@ async function createLibraryLoan(res: ServerResponse, pool: Pick<Pool, "query">,
       await pool.query("ROLLBACK TO SAVEPOINT library_loan_issue"); await pool.query("RELEASE SAVEPOINT library_loan_issue");
       reply(res, 409, { error: "library_copy_unavailable" }); return;
     }
-    const loan = await pool.query("INSERT INTO library.loans (organization_id, copy_id, borrower_type, borrower_id, due_at, issued_by) VALUES ($1::uuid,$2::uuid,'student',$3::uuid,$4::timestamptz,$5::uuid) RETURNING *", [organizationId, copyId, borrowerId, dueAt, userId]);
+    const loan = await pool.query("INSERT INTO library.loans (organization_id, copy_id, borrower_type, borrower_id, due_at, issued_by) VALUES ($1::uuid,$2::uuid,'student',$3::uuid,$4::timestamptz,$5::uuid) RETURNING id, organization_id, copy_id, borrower_type, borrower_id, checked_out_at, due_at, returned_at, loan_status, issued_by, received_by, created_at", [organizationId, copyId, borrowerId, dueAt, userId]);
     const loanId = String((loan.rows[0] as { id: string }).id);
     await pool.query("INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)", [organizationId, userId, "library.loan.issue", "library.loans", loanId, JSON.stringify({ copyId, borrowerType: "student", borrowerId })]);
     await pool.query("RELEASE SAVEPOINT library_loan_issue");
@@ -704,7 +713,8 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   if (!write) {
     const limitRaw=Number(url.searchParams.get("limit") ?? String(resource.limit ?? 100));
     const limit=Number.isInteger(limitRaw)?Math.min(Math.max(limitRaw,1),200):100;
-    const result=await pool.query(`SELECT * FROM ${resource.table} WHERE organization_id=$1::uuid ORDER BY ${resource.order ?? "created_at"} DESC LIMIT $2`,[organizationId,limit]);
+    const projection = moduleRecordProjection(resource);
+    const result=await pool.query(`SELECT ${projection} FROM ${resource.table} WHERE organization_id=$1::uuid ORDER BY ${resource.order ?? "created_at"} DESC LIMIT $2`,[organizationId,limit]);
     const data = result.rows.map((row) => filterModuleRecordForPermissions(match[1] ?? "", row as Record<string, unknown>, tenant.permissions));
     reply(res,200,{data,pagination:{limit,returned:data.length}}); return true;
   }
@@ -722,7 +732,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     values.push(organizationId,recordId);
     await pool.query("SAVEPOINT module_record_write");
     try {
-      const result=await pool.query(`UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING *`,values);
+      const result=await pool.query(`UPDATE ${resource.table} SET ${sets.join(",")} WHERE organization_id=${values.length-1}::uuid AND id=${values.length}::uuid RETURNING id, organization_id, copy_id, borrower_type, borrower_id, checked_out_at, due_at, returned_at, loan_status, issued_by, received_by, created_at`,values);
       if (!result.rows.length) { reply(res,404,{error:"record_not_found"}); return true; }
       const record=result.rows[0] as Record<string,unknown>;
       await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,[organizationId,userId,"module.record.update",resource.table,String(record.id ?? ""),JSON.stringify({resource:match[1],fields:entries.map(([key])=>key)})]);
@@ -748,7 +758,7 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const placeholders=values.map((_,i)=>{ const kind=i===0 || (Boolean(resource.actorColumn) && i===values.length-1) ? "uuid" : entries[i-1]?.[1].kind; const suffix=kind==="uuid"?"::uuid":kind==="date"?"::date":kind==="timestamp"?"::timestamptz":kind==="json"?"::jsonb":""; return "$"+String(i+1)+suffix; });
   await pool.query("SAVEPOINT module_record_write");
   try {
-    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING *`,values);
+    const result=await pool.query(`INSERT INTO ${resource.table} (${columns.join(",")}) VALUES (${placeholders.join(",")}) RETURNING id, organization_id, copy_id, borrower_type, borrower_id, checked_out_at, due_at, returned_at, loan_status, issued_by, received_by, created_at`,values);
     const record = result.rows[0] as Record<string, unknown>;
     await pool.query(`INSERT INTO audit.audit_events (organization_id, actor_user_id, action, resource_type, resource_id, metadata) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`, [organizationId,userId,"module.record.create",resource.table,String(record.id ?? ""),JSON.stringify({ resource: match[1] })]);
     await pool.query("RELEASE SAVEPOINT module_record_write");
