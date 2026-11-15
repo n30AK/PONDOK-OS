@@ -186,3 +186,43 @@ test("employment contract detail returns nondisclosing 404 for an out-of-scope c
   assert.equal(res.statusCode, 404);
   assert.equal(JSON.parse(res.body).error, "employment_contract_not_found");
 });
+
+
+test("scoped employee creation checks campus grant in the same INSERT statement", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.employees.write"])] };
+    if (sql.includes("INSERT INTO hr.employees")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("POST", "/v1/hr/employees", {
+    ...validEmployee, campusId: employeeId
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "campus_outside_member_scope");
+  const insert = calls.find(call => call.sql.includes("INSERT INTO hr.employees"));
+  assert.ok(insert.sql.includes("SELECT $1::uuid"));
+  assert.ok(insert.sql.includes("membership_campus_scopes"));
+  assert.ok(insert.sql.includes("mcs.membership_id=$10::uuid"));
+  assert.deepEqual(insert.values.slice(-2), [false, membershipId]);
+  assert.equal(calls.filter(call => call.sql.includes("membership_campus_scopes")).length, 1);
+});
+
+test("tenant owner employee creation uses the same atomic insert without requiring campus scope", async () => {
+  let insertValues;
+  const pool = { async query(sql, values) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [hrTenant(["hr.employees.write"], ["institution_owner"])] };
+    if (sql.includes("INSERT INTO hr.employees")) {
+      insertValues = values;
+      return { rows: [{ id: employeeId, employeeNumber: "PGW-001" }] };
+    }
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = hrResponse();
+  await handleHrRequest(hrRequest("POST", "/v1/hr/employees", validEmployee), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 201);
+  assert.equal(insertValues[8], true);
+  assert.equal(insertValues[9], membershipId);
+});
