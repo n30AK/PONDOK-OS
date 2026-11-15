@@ -756,8 +756,8 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
     reply(res,422,{error:"attendance_relationship_fields_are_immutable"}); return true;
   }
   if (req.method === "PATCH" && match[1] === "attendance-sessions" &&
-      Object.prototype.hasOwnProperty.call(body, "classGroupId")) {
-    reply(res,422,{error:"attendance_session_class_is_immutable"}); return true;
+      (Object.prototype.hasOwnProperty.call(body, "classGroupId") || Object.prototype.hasOwnProperty.call(body, "sessionDate"))) {
+    reply(res,422,{error:"attendance_session_class_and_date_are_immutable"}); return true;
   }
   if (req.method === "PATCH") {
     if (!recordId || !UUID.test(recordId)) { reply(res,400,{error:"valid_record_id_required"}); return true; }
