@@ -68,6 +68,14 @@ test("finance APIs fail closed for scoped members and platform operators", async
 
 
 test("scoped finance members may read account and fiscal-period reference data only", async () => {
+  function response() {
+    return { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, end(body) { this.body = body ?? ""; } };
+  }
+  function request(method, url) {
+    const stream = Readable.from([]);
+    stream.method = method; stream.url = url; stream.headers = {};
+    return stream;
+  }
   const organizationId = "223e4567-e89b-42d3-a456-426614174000";
   const userId = "323e4567-e89b-42d3-a456-426614174000";
   const membershipId = "423e4567-e89b-42d3-a456-426614174000";
