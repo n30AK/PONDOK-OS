@@ -141,3 +141,19 @@ test("scoped transfer requires both source and destination warehouses in scope",
   assert.ok(insertQuery.includes("membership_campus_scopes"));
   assert.deepEqual(insertValues.slice(0, 5), [organizationId, membershipId, item, whA, whB]);
 });
+
+
+test("inventory campus options expose only active campus grants to scoped operators", async () => {
+  let query = "";
+  let values = [];
+  const pool = { async query(sql, params) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [inventoryTenant(["inventory.items.read"])] };
+    query = sql; values = params; return { rows: [] };
+  }};
+  const res = inventoryResponse();
+  await handleInventoryRequest(inventoryRequest("GET", "/v1/inventory/campuses"), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(query.includes("membership_campus_scopes"));
+  assert.ok(query.includes("mcs.campus_id=c.id"));
+  assert.deepEqual(values, [organizationId, membershipId, false]);
+});
