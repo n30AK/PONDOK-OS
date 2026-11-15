@@ -471,3 +471,27 @@ test("scoped boarding assignment cannot be moved to another bed or student", asy
   assert.equal(res.statusCode, 422);
   assert.equal(JSON.parse(res.body).error, "boarding_assignment_relationship_and_start_are_immutable");
 });
+
+
+test("scoped boarding room updates bind tenant and member scope predicates", async () => {
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [tenantRow(["boarding.rooms.manage"], ["boarding_supervisor"])] };
+    if (sql.startsWith("SAVEPOINT") || sql.startsWith("RELEASE SAVEPOINT")) return { rows: [] };
+    if (sql.startsWith("UPDATE boarding.rooms AS r")) return { rows: [{ id: recordId, floor_label: "Lantai 2" }] };
+    if (sql.startsWith("INSERT INTO audit.audit_events")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const res = responseDouble();
+  await handleModuleRecordsRequest(request("PATCH", "/v1/modules/boarding-rooms?id=" + recordId, {
+    floorLabel: "Lantai 2"
+  }), res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  const update = calls.find(call => call.sql.startsWith("UPDATE boarding.rooms AS r"));
+  assert.ok(update.sql.includes("r.organization_id=$2::uuid"));
+  assert.ok(update.sql.includes("r.id=$3::uuid"));
+  assert.ok(update.sql.includes("mrs.membership_id=$4::uuid"));
+  assert.ok(update.sql.includes("$5::boolean"));
+  assert.deepEqual(update.values.slice(-4), [organizationId, recordId, tenantRow([]).membership_id, false]);
+});
