@@ -102,7 +102,7 @@ export async function handleHrRequest(
   }
 
   if (path === "/v1/hr/campuses" && req.method === "GET") {
-    if (!tenant.permissions.includes("hr.organization.read")) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read" }); return true; }
+    if (!["hr.organization.read", "hr.employees.read", "hr.employees.write"].some((permission) => tenant.permissions.includes(permission))) { reply(res, 403, { error: "permission_required", permission: "hr.organization.read_or_employee_access" }); return true; }
     const result = await pool.query(
       `SELECT c.id, c.code, c.name
        FROM core.campuses c
