@@ -583,7 +583,7 @@ test("scoped procurement officer adds a line only to a draft request in their ca
   assert.ok(insertSql.includes("FROM procurement.purchase_requests pr"));
   assert.ok(insertSql.includes("pr.request_status='draft'"));
   assert.ok(insertSql.includes("membership_campus_scopes"));
-  assert.match(insertSql, /mcs\\.campus_id\\s*=\\s*pr\\.campus_id/);
+  assert.match(insertSql, /mcs\.campus_id\s*=\s*pr\.campus_id/);
   assert.deepEqual(insertValues.slice(-1), [membershipId]);
 });
 
