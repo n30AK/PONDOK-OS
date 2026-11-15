@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canReadStudentOptions, getModuleRecordProjection, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
+import { canReadStudentOptions, getModuleRecordProjection, handleModuleRecordsRequest, validateModuleRecordInput, validateModuleRecordPatchInput } from "../dist/module-records.js";
+s=s.replace("import assert from \"node:assert/strict\";","import assert from \"node:assert/strict\";\nimport { Readable } from \"node:stream\";
 import { campusScopePredicate, employeeScopePredicate, hasTenantWideOperationalAccess, studentScopePredicate } from "../dist/tenant-access.js";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
@@ -312,4 +313,77 @@ test("campus scope predicate denies null-campus records and checks active member
     "mcs.campus_id = pr.campus_id", "revoked_at IS NULL",
     "valid_from <= now()", "valid_until IS NULL OR"
   ]) assert.ok(sql.includes(expected), `missing ${expected}`);
+});
+
+
+test("scoped procurement reads join the owning campus request in the same SQL query", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["procurement_officer"], permissions: ["procurement.requests.read"]
+    }] };
+    if (sql.includes("FROM procurement.purchase_requests pr")) return { rows: [{ id: uuid, requestNumber: "PR-001" }] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const req = Readable.from([]);
+  req.method = "GET"; req.url = "/v1/modules/purchase-requests?limit=10"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  assert.equal(await handleModuleRecordsRequest(req, res, pool, userId, organizationId), true);
+  assert.equal(res.statusCode, 200);
+  const query = calls.find(call => call.sql.includes("FROM procurement.purchase_requests pr"));
+  assert.ok(query.sql.includes("membership_campus_scopes"));
+  assert.ok(query.sql.includes("pr.campus_id"));
+  assert.deepEqual(query.values, [organizationId, membershipId, false, 10]);
+});
+
+test("scoped purchase-order reads cannot include unlinked tenant-wide orders", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let queryText = "";
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["procurement_officer"], permissions: ["procurement.orders.manage"]
+    }] };
+    if (sql.includes("FROM procurement.purchase_orders po")) { queryText = sql; return { rows: [] }; }
+    throw new Error("unexpected query: " + sql);
+  }};
+  const req = Readable.from([]);
+  req.method = "GET"; req.url = "/v1/modules/purchase-orders"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(queryText.includes("po.request_id IS NOT NULL"));
+  assert.ok(queryText.includes("JOIN procurement.purchase_requests pr"));
+  assert.ok(queryText.includes("membership_campus_scopes"));
+});
+
+test("scoped procurement writes remain fail closed until relation checks are atomic", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  let dataQuery = false;
+  const pool = { async query(sql) {
+    if (sql.includes("FROM core.organization_memberships om")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["procurement_officer"], permissions: ["procurement.requests.write"]
+    }] };
+    dataQuery = true;
+    throw new Error("write must be rejected before a data query");
+  }};
+  const req = Readable.from([Buffer.from(JSON.stringify({
+    campusId: uuid, requestNumber: "PR-002", purpose: "Perlengkapan kelas"
+  }))]);
+  req.method = "POST"; req.url = "/v1/modules/purchase-requests"; req.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleModuleRecordsRequest(req, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 403);
+  assert.equal(JSON.parse(res.body).error, "module_write_scope_not_supported_for_member");
+  assert.equal(dataQuery, false);
 });
