@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
-import { hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
+import { campusScopePredicate, hasTenantWideOperationalAccess, loadTenantContext } from "./tenant-access.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Json = Record<string, unknown>;
@@ -93,12 +93,12 @@ export async function handleAdmissionsRequest(
   if (!path.startsWith("/v1/admissions/")) return false;
   const tenant = await loadTenantContext(pool, userId, organizationId);
   if (!tenant) { reply(res, 403, { error: "active_membership_required" }); return true; }
-  // Admissions records contain applicant and guardian personal data. Until
-  // every lifecycle query applies campus grants in the same SQL statement,
-  // keep this module tenant-authority-only rather than risk cross-campus reads
-  // or writes for scoped admission officers.
-  if (!hasTenantWideOperationalAccess(tenant.roles)) {
-    reply(res, 403, { error: "admissions_scope_enforcement_required" }); return true;
+  const tenantWide = hasTenantWideOperationalAccess(tenant.roles);
+  // Scoped officers may read only their assigned campus periods and applicant data.
+  // Every write/review/conversion lifecycle remains fail-closed until its
+  // authorization can be applied atomically to all related records.
+  if (!tenantWide && req.method !== "GET") {
+    reply(res, 403, { error: "admissions_write_scope_not_supported_for_member" }); return true;
   }
 
   if (path === "/v1/admissions/periods" && req.method === "GET") {
@@ -109,8 +109,10 @@ export async function handleAdmissionsRequest(
       `SELECT id, campus_id AS "campusId", academic_year_id AS "academicYearId",
               period_code AS "periodCode", name, opens_at AS "opensAt", closes_at AS "closesAt",
               period_status AS status, created_at AS "createdAt"
-       FROM admissions.admission_periods WHERE organization_id = $1::uuid
-       ORDER BY opens_at DESC LIMIT 100`, [organizationId],
+       FROM admissions.admission_periods p
+       WHERE p.organization_id = $1::uuid
+         AND ${campusScopePredicate("p", "$1", "$2", "$3")}
+       ORDER BY p.opens_at DESC LIMIT 100`, [organizationId, tenant.membershipId, tenantWide],
     );
     reply(res, 200, { data: result.rows }); return true;
   }
@@ -207,8 +209,8 @@ export async function handleAdmissionsRequest(
     const allowedStatuses = new Set(["draft", "submitted", "under_review", "accepted", "waitlisted", "rejected", "withdrawn", "enrolled"]);
     if (status && !allowedStatuses.has(status)) { reply(res, 400, { error: "invalid_application_status" }); return true; }
     const canViewSensitive = tenant.permissions.includes("admissions.applications.review") || tenant.permissions.includes("admissions.applications.documents");
-    const values: unknown[] = [organizationId, canViewSensitive];
-    const statusClause = status ? (values.push(status), `AND a.application_status = $3`) : "";
+    const values: unknown[] = [organizationId, canViewSensitive, tenant.membershipId, tenantWide];
+    const statusClause = status ? (values.push(status), `AND a.application_status = $5`) : "";
     values.push(limit);
     const result = await pool.query(
       `SELECT a.id, a.admission_period_id AS "admissionPeriodId", p.name AS "periodName",
@@ -225,8 +227,10 @@ export async function handleAdmissionsRequest(
               a.created_at AS "createdAt"
        FROM admissions.applications a
        JOIN admissions.admission_periods p ON p.organization_id = a.organization_id AND p.id = a.admission_period_id
-       WHERE a.organization_id = $1::uuid ${statusClause}
-       ORDER BY a.created_at DESC LIMIT $${values.length}`, values,
+       WHERE a.organization_id = $1::uuid
+         AND ${campusScopePredicate("p", "$1", "$3", "$4")}
+         ${statusClause}
+       ORDER BY a.created_at DESC LIMIT ${values.length}`, values,
     );
     try {
       await pool.query(
