@@ -261,3 +261,143 @@ export function attendanceRecordScopePredicate(
       AND ${attendanceClassScopePredicate("cg", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
   )`;
 }
+
+
+/** Dormitory access: explicit dormitory grant or campus grant for that dormitory. */
+export function boardingDormitoryScopePredicate(
+  dormitoryAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${tenantWidePlaceholder}::boolean
+    OR EXISTS (
+      SELECT 1 FROM core.membership_campus_scopes mcs
+      WHERE mcs.organization_id=${organizationPlaceholder}::uuid
+        AND mcs.membership_id=${membershipPlaceholder}::uuid
+        AND mcs.campus_id=${dormitoryAlias}.campus_id
+        AND mcs.revoked_at IS NULL AND mcs.valid_from<=now()
+        AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+    )
+    OR EXISTS (
+      SELECT 1 FROM core.membership_dormitory_scopes mds
+      WHERE mds.organization_id=${organizationPlaceholder}::uuid
+        AND mds.membership_id=${membershipPlaceholder}::uuid
+        AND mds.dormitory_id=${dormitoryAlias}.id
+        AND mds.revoked_at IS NULL AND mds.valid_from<=now()
+        AND (mds.valid_until IS NULL OR mds.valid_until>now())
+    )
+  )`;
+}
+
+/** Room access inherits explicit room, parent dormitory, or campus grants. */
+export function boardingRoomScopePredicate(
+  roomAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${tenantWidePlaceholder}::boolean
+    OR EXISTS (
+      SELECT 1 FROM core.membership_room_scopes mrs
+      WHERE mrs.organization_id=${organizationPlaceholder}::uuid
+        AND mrs.membership_id=${membershipPlaceholder}::uuid
+        AND mrs.room_id=${roomAlias}.id
+        AND mrs.revoked_at IS NULL AND mrs.valid_from<=now()
+        AND (mrs.valid_until IS NULL OR mrs.valid_until>now())
+    )
+    OR EXISTS (
+      SELECT 1 FROM boarding.dormitories d
+      WHERE d.organization_id=${organizationPlaceholder}::uuid
+        AND d.id=${roomAlias}.dormitory_id
+        AND (
+          EXISTS (
+            SELECT 1 FROM core.membership_dormitory_scopes mds
+            WHERE mds.organization_id=d.organization_id AND mds.membership_id=${membershipPlaceholder}::uuid
+              AND mds.dormitory_id=d.id AND mds.revoked_at IS NULL AND mds.valid_from<=now()
+              AND (mds.valid_until IS NULL OR mds.valid_until>now())
+          )
+          OR EXISTS (
+            SELECT 1 FROM core.membership_campus_scopes mcs
+            WHERE mcs.organization_id=d.organization_id AND mcs.membership_id=${membershipPlaceholder}::uuid
+              AND mcs.campus_id=d.campus_id AND mcs.revoked_at IS NULL AND mcs.valid_from<=now()
+              AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+          )
+        )
+    )
+  )`;
+}
+
+export function boardingBedScopePredicate(
+  bedAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+): string {
+  return `EXISTS (
+    SELECT 1 FROM boarding.rooms r
+    WHERE r.organization_id=${organizationPlaceholder}::uuid AND r.id=${bedAlias}.room_id
+      AND ${boardingRoomScopePredicate("r", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+  )`;
+}
+
+export function boardingAssignmentScopePredicate(
+  assignmentAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+): string {
+  return `EXISTS (
+    SELECT 1 FROM boarding.beds b
+    WHERE b.organization_id=${organizationPlaceholder}::uuid AND b.id=${assignmentAlias}.bed_id
+      AND ${boardingBedScopePredicate("b", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+  )`;
+}
+
+/** Student boarding data is visible only through campus or a current bed assignment in a granted room/dormitory. */
+export function boardingStudentScopePredicate(
+  studentAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+): string {
+  return `(
+    ${tenantWidePlaceholder}::boolean
+    OR EXISTS (
+      SELECT 1 FROM core.membership_campus_scopes mcs
+      WHERE mcs.organization_id=${organizationPlaceholder}::uuid
+        AND mcs.membership_id=${membershipPlaceholder}::uuid
+        AND mcs.campus_id=${studentAlias}.campus_id
+        AND mcs.revoked_at IS NULL AND mcs.valid_from<=now()
+        AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM boarding.bed_assignments ba
+      JOIN boarding.beds b ON b.organization_id=ba.organization_id AND b.id=ba.bed_id
+      JOIN boarding.rooms r ON r.organization_id=b.organization_id AND r.id=b.room_id
+      JOIN boarding.dormitories d ON d.organization_id=r.organization_id AND d.id=r.dormitory_id
+      WHERE ba.organization_id=${organizationPlaceholder}::uuid
+        AND ba.student_id=${studentAlias}.id
+        AND ba.assigned_from<=CURRENT_DATE
+        AND (ba.assigned_until IS NULL OR ba.assigned_until>=CURRENT_DATE)
+        AND (
+          EXISTS (
+            SELECT 1 FROM core.membership_room_scopes mrs
+            WHERE mrs.organization_id=r.organization_id AND mrs.membership_id=${membershipPlaceholder}::uuid
+              AND mrs.room_id=r.id AND mrs.revoked_at IS NULL AND mrs.valid_from<=now()
+              AND (mrs.valid_until IS NULL OR mrs.valid_until>now())
+          )
+          OR EXISTS (
+            SELECT 1 FROM core.membership_dormitory_scopes mds
+            WHERE mds.organization_id=d.organization_id AND mds.membership_id=${membershipPlaceholder}::uuid
+              AND mds.dormitory_id=d.id AND mds.revoked_at IS NULL AND mds.valid_from<=now()
+              AND (mds.valid_until IS NULL OR mds.valid_until>now())
+          )
+          OR EXISTS (
+            SELECT 1 FROM core.membership_campus_scopes mcs
+            WHERE mcs.organization_id=d.organization_id AND mcs.membership_id=${membershipPlaceholder}::uuid
+              AND mcs.campus_id=d.campus_id AND mcs.revoked_at IS NULL AND mcs.valid_from<=now()
+              AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+          )
+        )
+    )
+  )`;
+}
+
+export function boardingStudentRecordScopePredicate(
+  recordAlias: string, organizationPlaceholder: string, membershipPlaceholder: string, tenantWidePlaceholder: string,
+): string {
+  return `EXISTS (
+    SELECT 1 FROM academic.student_profiles sp
+    WHERE sp.organization_id=${organizationPlaceholder}::uuid AND sp.id=${recordAlias}.student_id
+      AND ${boardingStudentScopePredicate("sp", organizationPlaceholder, membershipPlaceholder, tenantWidePlaceholder)}
+  )`;
+}
