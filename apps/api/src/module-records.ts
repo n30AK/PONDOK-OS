@@ -722,13 +722,14 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
   const scopedAttendanceResource = match[1] === "attendance-sessions" || match[1] === "attendance-records";
   const scopedBoardingResource = ["dormitories", "boarding-rooms", "boarding-beds", "boarding-assignments", "leave-requests", "incidents"].includes(match[1] ?? "");
   const scopedCampusReadResource = ["purchase-requests", "purchase-request-lines", "purchase-orders", "purchase-order-lines", "assets", "asset-events"].includes(match[1] ?? "");
-  // Procurement and asset records are readable by campus scope only. Writes
-  // remain tenant-authority-only until every relationship and approval path
-  // has a same-statement authorization check.
-  if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource && !scopedCampusReadResource) {
+  const scopedLibraryReadResource = ["library-catalog", "library-copies", "library-loans"].includes(match[1] ?? "");
+  // Procurement, asset and library reads have resource-specific scope joins.
+  // Writes remain tenant-authority-only until every relationship and approval
+  // path has a same-statement authorization check.
+  if (!tenantWide && !scopedAttendanceResource && !scopedBoardingResource && !scopedCampusReadResource && !scopedLibraryReadResource) {
     reply(res,403,{error:"module_scope_not_supported_for_member",resource:match[1]}); return true;
   }
-  if (!tenantWide && write && scopedCampusReadResource) {
+  if (!tenantWide && write && (scopedCampusReadResource || scopedLibraryReadResource)) {
     reply(res,403,{error:"module_write_scope_not_supported_for_member",resource:match[1]}); return true;
   }
   if (!write) {
@@ -754,6 +755,37 @@ export async function handleModuleRecordsRequest(req: IncomingMessage, res: Serv
          WHERE ar.organization_id=$1::uuid
            AND ${attendanceRecordScopePredicate("ar", "$1", "$2", "$3")}
          ORDER BY ar.recorded_at DESC, ar.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "library-catalog") {
+      const qualifiedProjection = projection.split(",").map((column) => `li.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM library.catalog_items li
+         WHERE li.organization_id=$1::uuid
+         ORDER BY li.title, li.id LIMIT $2`,
+        [organizationId, limit],
+      );
+    } else if (match[1] === "library-copies") {
+      const qualifiedProjection = projection.split(",").map((column) => `cp.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM library.copies cp
+         WHERE cp.organization_id=$1::uuid
+           AND ${campusScopePredicate("cp", "$1", "$2", "$3")}
+         ORDER BY cp.barcode, cp.id LIMIT $4`,
+        [organizationId, tenant.membershipId, tenantWide, limit],
+      );
+    } else if (match[1] === "library-loans") {
+      const qualifiedProjection = projection.split(",").map((column) => `l.${column.trim()}`).join(", ");
+      result = await pool.query(
+        `SELECT ${qualifiedProjection} FROM library.loans l
+         JOIN library.copies cp
+           ON cp.organization_id=l.organization_id AND cp.id=l.copy_id
+         JOIN academic.student_profiles sp
+           ON sp.organization_id=l.organization_id AND sp.id=l.borrower_id
+         WHERE l.organization_id=$1::uuid AND l.borrower_type='student'
+           AND ${campusScopePredicate("cp", "$1", "$2", "$3")}
+           AND ${studentScopePredicate("sp", "$1", "$2", "$3")}
+         ORDER BY l.created_at DESC, l.id LIMIT $4`,
         [organizationId, tenant.membershipId, tenantWide, limit],
       );
     } else if (match[1] === "purchase-requests") {
