@@ -71,31 +71,28 @@ export async function handleHrRequest(
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
     const error = validateEmployeeInput(body);
     if (error) { reply(res, 422, { error }); return true; }
-    if (!tenantWide) {
-      if (typeof body.campusId !== "string") {
-        reply(res, 403, { error: "employee_create_requires_assigned_campus" }); return true;
-      }
-      const assignedCampus = await pool.query(
-        `SELECT 1 FROM core.membership_campus_scopes
-         WHERE organization_id=$1::uuid AND membership_id=$2::uuid AND campus_id=$3::uuid
-           AND revoked_at IS NULL AND valid_from<=now()
-           AND (valid_until IS NULL OR valid_until>now()) LIMIT 1`,
-        [organizationId, tenant.membershipId, body.campusId],
-      );
-      if (!assignedCampus.rows.length) {
-        reply(res, 403, { error: "campus_outside_member_scope" }); return true;
-      }
+    if (!tenantWide && typeof body.campusId !== "string") {
+      reply(res, 403, { error: "employee_create_requires_assigned_campus" }); return true;
     }
     try {
+      // Keep authorization and insertion in one statement so a revoked campus
+      // grant cannot race a preflight SELECT and still create an employee.
       const result = await pool.query(
         `INSERT INTO hr.employees
            (organization_id, campus_id, employee_number, legal_name, preferred_name, email, phone, joined_on)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::date)
+         SELECT $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::date
+         WHERE $9::boolean OR EXISTS (
+           SELECT 1 FROM core.membership_campus_scopes mcs
+           WHERE mcs.organization_id=$1::uuid AND mcs.membership_id=$10::uuid
+             AND mcs.campus_id=$2::uuid AND mcs.revoked_at IS NULL
+             AND mcs.valid_from<=now() AND (mcs.valid_until IS NULL OR mcs.valid_until>now())
+         )
          RETURNING id, campus_id AS "campusId", employee_number AS "employeeNumber",
                    legal_name AS "legalName", joined_on AS "joinedOn", employment_status AS "employmentStatus"`,
         [organizationId, body.campusId ?? null, body.employeeNumber, (body.legalName as string).trim(),
-         body.preferredName ?? null, body.email ?? null, body.phone ?? null, body.joinedOn],
+         body.preferredName ?? null, body.email ?? null, body.phone ?? null, body.joinedOn, tenantWide, tenant.membershipId],
       );
+      if (!result.rows[0]) { reply(res, 403, { error: "campus_outside_member_scope" }); return true; }
       reply(res, 201, { data: result.rows[0] });
     } catch (reason) {
       const code = typeof reason === "object" && reason !== null && "code" in reason ? String((reason as { code: unknown }).code) : "";
