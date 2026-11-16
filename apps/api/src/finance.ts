@@ -238,6 +238,7 @@ export async function handleFinanceRequest(
       const result = await pool.query(
         `UPDATE finance.journal_entries SET status = 'posted', posted_by = $3::uuid
          WHERE organization_id = $1::uuid AND id = $2::uuid AND status = 'draft'
+           AND created_by IS DISTINCT FROM $3::uuid
          RETURNING id, entry_number AS "entryNumber", status, posted_at AS "postedAt"`,
         [organizationId, journalId, userId],
       );

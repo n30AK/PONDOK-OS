@@ -100,3 +100,56 @@ test("scoped finance members may read account and fiscal-period reference data o
   assert.ok(calls.some(call => call.sql.includes("FROM finance.fiscal_periods") && call.sql.includes("organization_id = $1::uuid")));
   assert.equal(calls.some(call => call.sql.includes("FROM finance.journal_entries")), false);
 });
+
+
+test("journal maker cannot post their own draft", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const journalId = "523e4567-e89b-42d3-a456-426614174000";
+  const calls = [];
+  const pool = { async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["institution_admin"], permissions: ["finance.journals.post"]
+    }] };
+    if (sql.includes("UPDATE finance.journal_entries SET status = 'posted'")) return { rows: [] };
+    throw new Error("unexpected query: " + sql);
+  }};
+  const stream = Readable.from([]);
+  stream.method = "POST"; stream.url = "/v1/finance/journals/" + journalId + "/post"; stream.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleFinanceRequest(stream, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 409);
+  assert.equal(JSON.parse(res.body).error, "journal_not_found_or_not_draft");
+  const post = calls.find(call => call.sql.includes("UPDATE finance.journal_entries SET status = 'posted'"));
+  assert.ok(post.sql.includes("created_by IS DISTINCT FROM $3::uuid"));
+  assert.deepEqual(post.values, [organizationId, journalId, userId]);
+});
+
+test("journal posting retains a separate-actor path", async () => {
+  const organizationId = "223e4567-e89b-42d3-a456-426614174000";
+  const userId = "323e4567-e89b-42d3-a456-426614174000";
+  const membershipId = "423e4567-e89b-42d3-a456-426614174000";
+  const journalId = "523e4567-e89b-42d3-a456-426614174000";
+  let postQuery;
+  const pool = { async query(sql, values) {
+    if (sql.includes("FROM core.organization_memberships")) return { rows: [{
+      membership_id: membershipId, organization_id: organizationId,
+      roles: ["institution_admin"], permissions: ["finance.journals.post"]
+    }] };
+    if (sql.includes("UPDATE finance.journal_entries SET status = 'posted'")) {
+      postQuery = { sql, values };
+      return { rows: [{ id: journalId, entryNumber: "JV-001", status: "posted" }] };
+    }
+    throw new Error("unexpected query: " + sql);
+  }};
+  const stream = Readable.from([]);
+  stream.method = "POST"; stream.url = "/v1/finance/journals/" + journalId + "/post"; stream.headers = {};
+  const res = { statusCode: 0, headers: {}, body: "", writeHead(status, headers) { this.statusCode = status; this.headers = headers; }, setHeader(name, value) { this.headers[name] = value; }, end(body) { this.body = body ?? ""; } };
+  await handleFinanceRequest(stream, res, pool, userId, organizationId);
+  assert.equal(res.statusCode, 200);
+  assert.ok(postQuery.sql.includes("created_by IS DISTINCT FROM $3::uuid"));
+  assert.deepEqual(postQuery.values, [organizationId, journalId, userId]);
+});
