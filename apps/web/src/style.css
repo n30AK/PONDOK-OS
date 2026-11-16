@@ -272,3 +272,25 @@
 .tenant-add-member footer{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .tenant-add-member footer small{color:var(--muted,#667085)}
 @media(max-width:640px){.tenant-add-member footer{display:grid}.tenant-add-member footer button{width:100%}}
+
+
+/* Dedicated report document: never print the interactive application chrome. */
+.print-report{display:none}
+@page{size:A4 landscape;margin:12mm}
+@media print{
+ html,body{background:#fff!important;color:#111!important;margin:0!important;padding:0!important}
+ body *{visibility:hidden!important}
+ .print-report,.print-report *{visibility:visible!important}
+ .print-report{display:block!important;position:absolute!important;inset:0 auto auto 0!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;background:#fff!important;color:#111!important;font:9pt/1.35 Arial,sans-serif!important}
+ .print-report-header{display:block!important;margin:0 0 8mm!important;padding:0 0 4mm!important;border-bottom:1.5pt solid #244b3d!important}
+ .print-report-brand{font-size:9pt!important;font-weight:700!important;letter-spacing:1.5pt!important;color:#244b3d!important}
+ .print-report-header h1{margin:3mm 0 1.5mm!important;font-size:17pt!important;line-height:1.2!important;color:#111!important}
+ .print-report-header p{margin:1mm 0!important;font-size:8pt!important;color:#444!important}
+ .print-report-table{width:100%!important;border-collapse:collapse!important;table-layout:auto!important;font-size:8pt!important;break-inside:auto!important}
+ .print-report-table thead{display:table-header-group!important}
+ .print-report-table tr{break-inside:avoid!important;page-break-inside:avoid!important}
+ .print-report-table th,.print-report-table td{border:0.5pt solid #9aa39d!important;padding:2.2mm 2mm!important;text-align:left!important;vertical-align:top!important;overflow-wrap:anywhere!important;color:#111!important;background:#fff!important}
+ .print-report-table th{font-weight:700!important;background:#edf2ee!important}
+ .print-report-footer{display:flex!important;justify-content:space-between!important;gap:8mm!important;margin-top:7mm!important;padding-top:2mm!important;border-top:0.5pt solid #9aa39d!important;font-size:7pt!important;color:#444!important}
+ .print-report-footer span{color:#444!important}
+}
