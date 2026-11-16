@@ -230,3 +230,129 @@ export const OPTIONAL_MODULE_CATALOG: OptionalModuleManifest[] = [
     rollout: "catalog_only"
   }
 ];
+
+
+export type EligibilityEvidenceStatus = "pass" | "missing" | "expired" | "unreadable" | "unverified" | "not_applicable" | "manual_verification_required";
+export type OptionalModuleEvidenceRequirement = {
+  id: string;
+  title: string;
+  evidenceType: string;
+  verificationMethod: string;
+  blocking: boolean;
+  sensitivity: "public" | "internal" | "confidential" | "restricted";
+  authority: string;
+};
+const commonGovernance = "Dokumen resmi lembaga atau keputusan internal yang sah; cocokkan penerbit, nomor, tanggal, dan masa berlaku. Checklist ini bukan penetapan legalitas.";
+const commonOperational = "Bukti operasional yang relevan (SOP, penanggung jawab, daftar aset/program); verifikasi oleh petugas berwenang.";
+const REQUIREMENTS: Record<string, OptionalModuleEvidenceRequirement[]> = {
+  "school-diknas": [
+    {id:"school-license",title:"Identitas dan izin satuan pendidikan",evidenceType:"NPSN/izin operasional atau bukti registrasi yang relevan",verificationMethod:commonGovernance,blocking:true,sensitivity:"confidential",authority:"Kemendikdasmen/JDIH dan dinas pendidikan sesuai kewenangan"},
+    {id:"school-operator",title:"Penanggung jawab dan struktur sekolah",evidenceType:"SK kepala sekolah/penanggung jawab dan struktur unit",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen resmi lembaga"}
+  ],
+  madrasah: [
+    {id:"madrasah-registration",title:"Identitas dan status registrasi madrasah",evidenceType:"NSM/NPSN atau izin/registrasi sesuai bentuk madrasah",verificationMethod:commonGovernance,blocking:true,sensitivity:"confidential",authority:"Kemenag/JDIH dan kantor Kemenag setempat"},
+    {id:"madrasah-lead",title:"Kepala madrasah dan struktur akademik",evidenceType:"SK kepala madrasah, GTK, jenjang dan tahun ajaran",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen resmi lembaga"}
+  ],
+  diniyah: [
+    {id:"diniyah-form",title:"Bentuk dan jalur pendidikan diniyah",evidenceType:"Dokumen bentuk satuan/program dan izin/registrasi bila diwajibkan",verificationMethod:commonGovernance,blocking:true,sensitivity:"confidential",authority:"Kemenag/JDIH; verifikasi manual bila status tidak jelas"},
+    {id:"diniyah-curriculum",title:"Kurikulum dan penanggung jawab program",evidenceType:"Kurikulum, jenjang, daftar pengajar dan SK penanggung jawab",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen resmi lembaga"}
+  ],
+  tahfidz: [
+    {id:"tahfidz-program",title:"Program dan target pembelajaran",evidenceType:"Kurikulum/target tahfidz, metode evaluasi dan jadwal halaqah",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Keputusan pengelola pendidikan"},
+    {id:"tahfidz-supervisor",title:"Pembimbing dan otorisasi penilaian",evidenceType:"Daftar pembimbing dan penetapan penanggung jawab",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen resmi lembaga"}
+  ],
+  koperasi: [
+    {id:"coop-legal",title:"Badan hukum dan ruang lingkup koperasi",evidenceType:"Akta/pengesahan dan izin sesuai kegiatan",verificationMethod:commonGovernance,blocking:true,sensitivity:"restricted",authority:"Kemenkop/JDIH dan instansi berwenang"},
+    {id:"coop-governance",title:"Pengurus, pengawas dan kebijakan transaksi",evidenceType:"Keputusan rapat anggota, susunan pengurus dan SOP",verificationMethod:commonOperational,blocking:true,sensitivity:"confidential",authority:"Dokumen resmi koperasi"}
+  ],
+  "pos-retail": [
+    {id:"pos-unit",title:"Legalitas/persetujuan unit usaha dan pengelola",evidenceType:"Penetapan unit, penanggung jawab dan izin yang relevan",verificationMethod:commonGovernance,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga/instansi terkait"},
+    {id:"pos-stock",title:"Daftar barang dan kontrol kas/stok",evidenceType:"Master barang, gudang, SOP kasir, retur dan rekonsiliasi",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen operasional unit"}
+  ],
+  kantin: [
+    {id:"canteen-operator",title:"Pengelola dan status operasional kantin",evidenceType:"Daftar pengelola/pedagang dan perjanjian kerja sama",verificationMethod:commonOperational,blocking:true,sensitivity:"confidential",authority:"Dokumen lembaga/mitra"},
+    {id:"canteen-hygiene",title:"SOP higiene dan sanitasi",evidenceType:"SOP kebersihan, inspeksi dan bukti pemenuhan ketentuan setempat",verificationMethod:"Periksa dokumen dan lakukan verifikasi lapangan bila diwajibkan.",blocking:true,sensitivity:"internal",authority:"Dinas/otoritas kesehatan dan ketentuan daerah"}
+  ],
+  catering: [
+    {id:"catering-kitchen",title:"Kelayakan unit dapur dan penanggung jawab",evidenceType:"Penetapan unit, SOP produksi dan sanitasi",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga dan ketentuan kesehatan setempat"},
+    {id:"catering-food-safety",title:"Pengendalian keamanan pangan",evidenceType:"SOP penyimpanan, kebersihan, alergen dan distribusi",verificationMethod:"Tinjau SOP; verifikasi izin/sertifikasi pangan hanya jika berlaku.",blocking:true,sensitivity:"confidential",authority:"Otoritas keamanan pangan/kesehatan sesuai kegiatan"}
+  ],
+  laundry: [
+    {id:"laundry-unit",title:"Penanggung jawab dan SOP laundry",evidenceType:"Penetapan unit, alur penerimaan, pencucian dan serah terima",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga"},
+    {id:"laundry-safety",title:"Keselamatan kerja dan pengelolaan limbah",evidenceType:"SOP bahan kimia, APD dan pembuangan limbah",verificationMethod:"Tinjau SOP dan bukti fasilitas sesuai skala kegiatan.",blocking:true,sensitivity:"internal",authority:"Ketentuan K3 dan lingkungan setempat"}
+  ],
+  agribusiness: [
+    {id:"farm-land",title:"Hak/penguasaan lahan dan lokasi usaha",evidenceType:"Bukti kepemilikan, sewa, wakaf atau izin pemanfaatan yang sah",verificationMethod:commonGovernance,blocking:true,sensitivity:"restricted",authority:"Dokumen pertanahan/yayasan dan otoritas terkait"},
+    {id:"farm-safety",title:"SOP budidaya dan keselamatan",evidenceType:"Rencana tanam, penanggung jawab, SOP input dan lingkungan",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen operasional dan ketentuan lingkungan"}
+  ],
+  livestock: [
+    {id:"livestock-facility",title:"Lokasi kandang dan penanggung jawab",evidenceType:"Bukti penggunaan lokasi dan penetapan pengelola",verificationMethod:commonGovernance,blocking:true,sensitivity:"confidential",authority:"Dokumen lembaga/otoritas setempat"},
+    {id:"livestock-health",title:"SOP kesejahteraan dan kesehatan hewan",evidenceType:"SOP pemeliharaan, biosekuriti dan catatan veteriner",verificationMethod:"Tinjau SOP; verifikasi tenaga/izin veteriner sesuai jenis kegiatan.",blocking:true,sensitivity:"internal",authority:"Otoritas peternakan/veteriner"}
+  ],
+  aquaculture: [
+    {id:"fish-facility",title:"Sarana budidaya dan hak penggunaan lokasi",evidenceType:"Bukti penggunaan kolam/lahan dan data sarana",verificationMethod:commonGovernance,blocking:true,sensitivity:"confidential",authority:"Dokumen lembaga/otoritas setempat"},
+    {id:"fish-environment",title:"SOP budidaya dan pengelolaan lingkungan",evidenceType:"SOP kualitas air, pakan, limbah dan penggunaan bahan",verificationMethod:"Tinjau SOP dan verifikasi izin lingkungan bila diwajibkan.",blocking:true,sensitivity:"internal",authority:"Otoritas perikanan/lingkungan"}
+  ],
+  convection: [
+    {id:"convection-unit",title:"Unit produksi dan penanggung jawab",evidenceType:"Penetapan unit, kapasitas, daftar mesin dan operator",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga"},
+    {id:"convection-safety",title:"SOP keselamatan produksi",evidenceType:"SOP mesin, listrik, APD dan inspeksi",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Ketentuan K3 yang relevan"}
+  ],
+  printing: [
+    {id:"printing-unit",title:"Unit percetakan dan ruang lingkup layanan",evidenceType:"Penetapan unit, mesin dan daftar layanan",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga"},
+    {id:"printing-rights",title:"Kontrol hak cipta dan persetujuan naskah",evidenceType:"SOP penerimaan naskah, lisensi aset dan persetujuan proof",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen operasional dan ketentuan hak cipta"}
+  ],
+  "digital-services": [
+    {id:"digital-unit",title:"Unit, tim dan penanggung jawab layanan",evidenceType:"Penetapan unit, daftar personel dan katalog layanan",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga"},
+    {id:"digital-security",title:"Perlindungan data dan aset klien",evidenceType:"SOP akses akun, penyimpanan file, persetujuan dan serah terima",verificationMethod:"Tinjau kontrol akses, retensi dan prosedur insiden.",blocking:true,sensitivity:"confidential",authority:"Kebijakan keamanan dan perlindungan data"}
+  ],
+  rental: [
+    {id:"rental-assets",title:"Daftar aset dan kewenangan pemanfaatan",evidenceType:"Register aset serta status kepemilikan/wakaf/sewa",verificationMethod:commonGovernance,blocking:true,sensitivity:"restricted",authority:"Dokumen aset dan legalitas yayasan"},
+    {id:"rental-policy",title:"Tarif, kontrak dan SOP serah terima",evidenceType:"SK tarif, format perjanjian dan berita acara",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen resmi pengelola"}
+  ],
+  transport: [
+    {id:"transport-fleet",title:"Dokumen kendaraan dan kelayakan armada",evidenceType:"Register kendaraan, STNK/KIR bila berlaku dan jadwal perawatan",verificationMethod:"Cocokkan identitas kendaraan dan masa berlaku dokumen.",blocking:true,sensitivity:"confidential",authority:"Kepolisian/dinas perhubungan sesuai jenis kendaraan"},
+    {id:"transport-driver",title:"Pengemudi dan SOP keselamatan",evidenceType:"Daftar pengemudi, SIM sesuai kelas dan SOP perjalanan",verificationMethod:"Verifikasi masa berlaku dan kelas dokumen pengemudi.",blocking:true,sensitivity:"confidential",authority:"Kepolisian/dinas perhubungan"}
+  ],
+  "bmt-kspps": [
+    {id:"bmt-legal",title:"Badan hukum, izin dan ruang lingkup layanan",evidenceType:"Pengesahan badan hukum dan izin spesifik aktivitas keuangan",verificationMethod:"Verifikasi langsung pada otoritas penerbit; jangan aktifkan transaksi jika izin tidak jelas.",blocking:true,sensitivity:"restricted",authority:"Kemenkop/OJK atau otoritas sesuai bentuk dan kegiatan"},
+    {id:"bmt-controls",title:"Pengurus, pengawasan dan kepatuhan",evidenceType:"Susunan pengurus, SOP AML/CFT bila berlaku, audit dan pengaduan",verificationMethod:"Pemeriksaan manual oleh reviewer kompeten.",blocking:true,sensitivity:"restricted",authority:"Regulator sesuai bentuk lembaga"}
+  ],
+  ziswaf: [
+    {id:"ziswaf-authority",title:"Kewenangan pengelolaan tiap jenis dana",evidenceType:"Dokumen kewenangan/izin dan pemisahan zakat, infak, sedekah serta wakaf",verificationMethod:"Verifikasi status dan kewenangan kepada otoritas terkait; jenis dana tidak boleh disatukan tanpa klasifikasi.",blocking:true,sensitivity:"restricted",authority:"BAZNAS/LAZ/BWI atau otoritas sesuai jenis dana"},
+    {id:"ziswaf-governance",title:"Tata kelola, penyaluran dan audit",evidenceType:"Kebijakan penerimaan, penyaluran, penerima manfaat dan pelaporan",verificationMethod:"Pemeriksaan manual dan rekonsiliasi dokumen.",blocking:true,sensitivity:"restricted",authority:"Dokumen resmi lembaga dan regulator terkait"}
+  ],
+  "business-incubator": [
+    {id:"incubator-program",title:"Program, mentor dan kriteria peserta",evidenceType:"SK program, kurikulum, mentor dan kriteria seleksi",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga"},
+    {id:"incubator-funding",title:"Tata kelola dana program",evidenceType:"Sumber dana, persetujuan, batas penggunaan dan pelaporan",verificationMethod:"Tinjau pemisahan dana dan otorisasi pengeluaran.",blocking:true,sensitivity:"confidential",authority:"Dokumen keuangan lembaga"}
+  ],
+  "blk-lpk": [
+    {id:"training-license",title:"Status lembaga pelatihan dan izin",evidenceType:"Identitas lembaga, izin/registrasi sesuai bentuk dan skema",verificationMethod:commonGovernance,blocking:true,sensitivity:"restricted",authority:"Kemnaker/dinas tenaga kerja dan otoritas sertifikasi sesuai skema"},
+    {id:"training-program",title:"Program, instruktur dan asesmen",evidenceType:"Kurikulum, unit kompetensi, instruktur dan metode asesmen",verificationMethod:commonOperational,blocking:true,sensitivity:"internal",authority:"Dokumen lembaga/otoritas skema"}
+  ],
+  "health-uks": [
+    {id:"health-scope",title:"Batas layanan dan kewenangan tenaga",evidenceType:"Penetapan jenis layanan, tenaga kompeten dan izin fasilitas bila diwajibkan",verificationMethod:"Verifikasi manual oleh reviewer kompeten; fitur klinis tetap terkunci sampai kewenangan terbukti.",blocking:true,sensitivity:"restricted",authority:"Kemenkes/dinas kesehatan sesuai jenis fasilitas"},
+    {id:"health-privacy",title:"Tata kelola rekam kesehatan",evidenceType:"Kebijakan akses, persetujuan, retensi dan penanganan insiden data kesehatan",verificationMethod:"Security/privacy review wajib; jangan unggah rekam medis santri untuk pemeriksaan kelayakan modul.",blocking:true,sensitivity:"restricted",authority:"Ketentuan perlindungan data dan kesehatan"}
+  ],
+  safeguarding: [
+    {id:"safeguarding-policy",title:"Kebijakan perlindungan dan petugas penanggung jawab",evidenceType:"Kebijakan perlindungan, kode etik dan SK petugas",verificationMethod:"Pemeriksaan manual oleh penanggung jawab perlindungan yang ditetapkan.",blocking:true,sensitivity:"restricted",authority:"Ketentuan perlindungan anak dan kebijakan lembaga"},
+    {id:"safeguarding-response",title:"Prosedur pelaporan dan eskalasi aman",evidenceType:"SOP kanal rahasia, eskalasi, rujukan dan pembatasan akses",verificationMethod:"Uji prosedur tanpa mengunggah identitas atau detail kasus nyata.",blocking:true,sensitivity:"restricted",authority:"Kebijakan perlindungan dan otoritas rujukan"}
+  ],
+  "foundation-governance": [
+    {id:"foundation-legal",title:"Akta dan status badan hukum yayasan",evidenceType:"Akta pendirian/perubahan dan bukti pengesahan yang relevan",verificationMethod:commonGovernance,blocking:true,sensitivity:"restricted",authority:"Kemenkum/JDIH dan dokumen notaris"},
+    {id:"foundation-organs",title:"Susunan organ dan masa jabatan",evidenceType:"Keputusan pengangkatan pembina, pengurus dan pengawas",verificationMethod:commonGovernance,blocking:true,sensitivity:"confidential",authority:"Akta/keputusan organ yayasan"}
+  ]
+};
+export function getOptionalModuleEvidenceRequirements(moduleId: string): OptionalModuleEvidenceRequirement[] {
+  return REQUIREMENTS[moduleId] ?? [];
+}
+export function evaluateOptionalModuleEvidence(
+  moduleId: string,
+  evidence: Record<string, EligibilityEvidenceStatus>,
+): {status: "eligible_for_admin_review" | "needs_correction" | "manual_verification_required"; findings: Array<{requirementId:string;status:EligibilityEvidenceStatus}> } {
+  const requirements = getOptionalModuleEvidenceRequirements(moduleId);
+  if (!requirements.length) return {status:"manual_verification_required",findings:[]};
+  const findings = requirements.map((item) => ({requirementId:item.id,status:evidence[item.id] ?? "missing" as EligibilityEvidenceStatus}));
+  if (findings.some((item) => item.status === "missing" || item.status === "expired" || item.status === "unreadable")) return {status:"needs_correction",findings};
+  if (findings.some((item) => item.status === "unverified" || item.status === "manual_verification_required" || item.status === "not_applicable")) return {status:"manual_verification_required",findings};
+  return {status:"eligible_for_admin_review",findings};
+}
