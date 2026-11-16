@@ -353,6 +353,6 @@ export function evaluateOptionalModuleEvidence(
   if (!requirements.length) return {status:"manual_verification_required",findings:[]};
   const findings = requirements.map((item) => ({requirementId:item.id,status:evidence[item.id] ?? "missing" as EligibilityEvidenceStatus}));
   if (findings.some((item) => item.status === "missing" || item.status === "expired" || item.status === "unreadable")) return {status:"needs_correction",findings};
-  if (findings.some((item) => item.status === "unverified" || item.status === "manual_verification_required")) return {status:"manual_verification_required",findings};
+  if (findings.some((item) => item.status === "unverified" || item.status === "manual_verification_required" || item.status === "not_applicable")) return {status:"manual_verification_required",findings};
   return {status:"eligible_for_admin_review",findings};
 }
