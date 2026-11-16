@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-11-16  
 **Status:** execution control plan; not a release approval or certification  
-**Source baseline:** current `main` at merge commit `d33592b24f19bedd9dd240fbd23f4964388198b3` (PR #257) and the implementation/readiness documents in that commit. Evidence below is refreshed from the PR #257 merge workflows on 2026-11-16.
+**Source baseline:** current `main` at merge commit `668c53cd661854745f279632c347673b2e1b175b` (PR #258), following PR #257. PR #258 post-merge PONDOK OS CI #2130 and Release Bundle #202 passed; the documentation-only merge did not trigger a Development Function redeployment.
 
 ## 1. Release decision
 
@@ -27,9 +27,9 @@ Release scope must be earned gate by gate. A limited pilot may only be described
 | Gate / domain | Evidence currently available | Remaining blocker | Status |
 |---|---|---|---|
 | G0 — build and Development deployment | On merge commit `d33592b`: PONDOK OS CI #2128, Neon Function Bundle #454, Release Bundle #201 and Development API deployment #107 passed. Deployment #107 directly returned HTTP 200 from `/health/live` (`ok`) and `/health/ready` (`database`, `tenantSecurity`, `platformSecurity` all `ok`); retired bootstrap endpoint returned HTTP 410. | Repeat checks for each later candidate commit; this does not prove tenant isolation or business workflow acceptance | Verified for this commit; ongoing |
-| G1 — tenant/security baseline | 67/67 organization-owned tables with RLS ENABLE + FORCE; restricted runtime policy coverage previously verified at 63/63 tenant and 79/79 platform tables; CI uses two synthetic identities and disposable PostgreSQL | Live Neon Auth test with two independent users and two real non-production tenants; rate limits, security logging/abuse monitoring, broader sensitive-read audit and session lifecycle | Blocked |
+| G1 — tenant/security baseline | Read-only Development audit on 2026-11-16: 73/73 tables with `organization_id` have RLS ENABLE + FORCE; all 79 platform tables have RLS ENABLE + FORCE; runtime roles are NOLOGIN/NOBYPASSRLS. Earlier restricted runtime policy coverage was verified at 63/63 tenant and 79/79 platform tables; CI uses synthetic identities and disposable PostgreSQL. | Only one Development organization and one membership exist; live Neon Auth test needs two independent users and two authorized non-production tenants. Rate limits, security logging/abuse monitoring, broader sensitive-read audit and session lifecycle also remain open | Blocked |
 | Identity data protection | Health encryption key configured; identity document API is designed to fail closed when its separate key is missing | Provision identity key only through approved secret vault; recoverable encrypted backup; rotation and recovery drill | Blocked |
-| Backup / DR | Backup metadata and policy UI foundations exist | No working executor, immutable/off-site backup, completed restore test or proven RPO/RTO | Blocked |
+| Backup / DR | Read-only Development audit on 2026-11-16 found one disabled `DEMO Daily DB Backup` policy and one failed run with `DEMO_SIMULATED_FAILURE`; the run explicitly says no real backup occurred | No working executor, immutable/off-site backup, completed restore test or proven RPO/RTO | Blocked |
 | Secure attachments | Coverage blueprint and metadata foundations exist. A read-only Development access/UAT runbook snapshot dated 2026-11-13 records Neon Object Storage as active with private bucket `uploads`. | The bucket observation does not prove API integration, quarantine/scanning, binary versioning, signed download, tenant/platform authorization or backup/restore; verify the current provider configuration before use | Blocked |
 | G2 — institution onboarding | Activation request/approval foundations exist | Authorized non-production institution, independent reviewer, owner handover and completed activation acceptance | Blocked |
 | G3 — operational workflows | Student, guardian, academic, boarding, finance, inventory, procurement and HR foundations exist | End-to-end role-based UAT and unresolved workflow gaps; scoped-member paths intentionally fail closed in several domains | Blocked |
@@ -37,6 +37,30 @@ Release scope must be earned gate by gate. A limited pilot may only be described
 | G5 — pilot acceptance | Test harnesses and readiness checklists exist | Real users, signed test evidence, reconciled reports, defect closure and customer acceptance | Blocked |
 | G6 — limited commercial release | Commercial readiness baseline exists | Exact package scope, pricing/terms, support, privacy, security and operational sign-off | Blocked |
 | G7 — general availability | Cloud-connected architecture foundations exist | Capacity, disaster recovery, sustained operations; native mobile, offline installer and full hybrid sync are not release-ready | Blocked |
+
+
+
+## 3A. Read-only Development evidence snapshot (2026-11-16)
+
+The following observations were collected with SELECT-only queries against project `frosty-cherry-92983148`, Development branch `br-proud-paper-b312lfxi`. No writes, migrations, seed operations or Production queries were performed.
+
+| Check | Observed result | Interpretation |
+|---|---:|---|
+| Organizations | 1 | One demo institution is not sufficient for two-tenant acceptance |
+| Organization memberships | 1 | No independent second tenant identity/membership pair is available |
+| Student profiles | 5 | Demo records only; not a real institution UAT |
+| HR employees | 5 | Demo records only; not a real institution UAT |
+| Platform customers | 1 | Demo commercial record only |
+| Subscriptions | 1 | Existence does not prove invoice/payment/entitlement lifecycle |
+| Module entitlements | 1 | Demo record only; not proof of activation approval or customer acceptance |
+| Tables with `organization_id` | 73; all 73 RLS-enabled and FORCE-RLS | Structural RLS coverage only; live API boundary acceptance is still required |
+| Platform tables | 79; all 79 RLS-enabled and FORCE-RLS | Structural RLS coverage only; does not replace runtime-role negative tests |
+| Runtime roles | `pondok_runtime` and `pondok_platform_runtime` are NOLOGIN and NOBYPASSRLS | Positive role posture; does not alone prove every policy/query path |
+| Migration ledger | Latest recorded migration `0039` | Development schema is ahead of the earlier migration snapshot in older documents |
+| Backup policies | 1, disabled, named `DEMO Daily DB Backup` | No scheduled backup is enabled |
+| Backup runs | 1 failed, `DEMO_SIMULATED_FAILURE` | Run record explicitly states that no real backup was executed; no restore test exists |
+
+The live tenant acceptance harness must not be run by fabricating credentials or bypassing Central Command approval. It remains blocked until the two real test identities and two authorized non-production tenants exist. Similarly, a demo backup row must never be represented as a successful backup.
 
 ## 4. Workstreams and ownership model
 
