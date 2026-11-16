@@ -10,6 +10,7 @@
     "start": "node dist/main.js",
     "db:migrate": "pnpm build && node dist/run-migrations.js",
     "test:tenant-rls": "node scripts/test-tenant-rls.mjs",
+    "test:live-tenant-auth": "node scripts/test-live-tenant-auth-isolation.mjs",
     "bundle:function": "pnpm --filter @pondok-os/domain-contracts build && pnpm build && esbuild src/neon-function.ts --bundle --platform=node --target=node24 --format=esm --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/neon-function/index.mjs && cd dist/neon-function && zip -q -j ../pondok-api-function.zip index.mjs",
     "deploy:function": "node scripts/deploy-neon-function.mjs"
   },
