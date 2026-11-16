@@ -55,6 +55,14 @@ async function call(path, token, organizationId, method = "GET", body) {
 }
 
 async function verifyTenant(label, token, ownOrganization, foreignOrganization, ownSentinel, foreignSentinel) {
+  const platformIdentity = await call("/v1/platform/admin/me", token, ownOrganization);
+  assert.equal(platformIdentity.status, 200, `${label}: platform identity endpoint must be available`);
+  assert.equal(
+    platformIdentity.data?.data?.isSuperAdmin,
+    label === "Tenant A",
+    `${label}: only the designated company account may retain platform Super Admin authority`,
+  );
+
   const context = await call("/v1/tenant/context", token, ownOrganization);
   assert.equal(context.status, 200, `${label}: own tenant context must be accessible`);
   assert.equal(context.data?.organizationId, ownOrganization, `${label}: context must resolve the correct tenant`);

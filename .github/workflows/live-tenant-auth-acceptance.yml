@@ -1,0 +1,45 @@
+name: PONDOK OS Live Tenant Auth Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pondok-live-tenant-auth-acceptance
+  cancel-in-progress: false
+
+jobs:
+  live-tenant-auth-acceptance:
+    name: two-tenant Development isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PONDOK_API_BASE_URL: https://br-proud-paper-b312lfxi-pondokapi.compute.c-4.ap-southeast-1.aws.neon.tech
+      TENANT_A_BEARER_TOKEN: ${{ secrets.TENANT_A_BEARER_TOKEN }}
+      TENANT_B_BEARER_TOKEN: ${{ secrets.TENANT_B_BEARER_TOKEN }}
+      TENANT_A_ORGANIZATION_ID: ${{ secrets.TENANT_A_ORGANIZATION_ID }}
+      TENANT_B_ORGANIZATION_ID: ${{ secrets.TENANT_B_ORGANIZATION_ID }}
+      TENANT_A_SENTINEL_PROGRAM_CODE: ${{ secrets.TENANT_A_SENTINEL_PROGRAM_CODE }}
+      TENANT_B_SENTINEL_PROGRAM_CODE: ${{ secrets.TENANT_B_SENTINEL_PROGRAM_CODE }}
+    steps:
+      - name: Checkout reviewed repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate required secrets without printing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in TENANT_A_BEARER_TOKEN TENANT_B_BEARER_TOKEN TENANT_A_ORGANIZATION_ID TENANT_B_ORGANIZATION_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required Actions secret is missing: $name"
+              exit 1
+            fi
+          done
+      - name: Run live Development two-tenant isolation acceptance
+        working-directory: apps/api
+        run: node scripts/test-live-tenant-auth-isolation.mjs
