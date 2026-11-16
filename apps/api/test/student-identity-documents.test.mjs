@@ -126,3 +126,60 @@ test("fails closed for malformed or non-canonical student identity key material"
     if(previousVersion===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION=previousVersion;
   }
 });
+
+
+test("fails closed when a stored identity record uses a different encryption-key version", async () => {
+  const previousKey=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY;
+  const previousVersion=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=Buffer.alloc(32,7).toString("base64");
+  process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION="identity-current-v2";
+  const calls=[];
+  const pool={async query(sql) {
+    calls.push(sql);
+    if(sql.includes("FROM core.organization_memberships")) return {rows:[tenantRow(["academic.students.identity.read"])]};
+    if(sql.includes("FROM academic.student_identity_documents d")) return {rows:[{
+      id:recordId,student_id:userId,document_type:"nik",document_number_ciphertext:Buffer.from("ciphertext"),
+      encryption_key_version:"identity-previous-v1",issuer:null,issued_on:null,expires_on:null,
+      verified_at:null,created_at:new Date(),legal_name:"Santri Uji"
+    }]};
+    throw new Error("unexpected query: "+sql);
+  }};
+  try {
+    const res=responseDouble();
+    await handleModuleRecordsRequest(request("GET","/v1/modules/student-identity-documents"),res,pool,userId,organizationId);
+    assert.equal(res.statusCode,503);
+    assert.equal(JSON.parse(res.body).error,"student_identity_read_or_audit_failed");
+    assert.equal(JSON.stringify(JSON.parse(res.body)).includes("Santri Uji"),false);
+    assert.equal(calls.some(sql=>sql.startsWith("INSERT INTO audit.audit_events")),false);
+  } finally {
+    if(previousKey===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=previousKey;
+    if(previousVersion===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION=previousVersion;
+  }
+});
+
+test("denies restricted identity documents to scoped tenant members before reading identity rows", async () => {
+  const previousKey=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY;
+  const previousVersion=process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION;
+  process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=Buffer.alloc(32,7).toString("base64");
+  process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION="identity-test-v1";
+  const calls=[];
+  const pool={async query(sql) {
+    calls.push(sql);
+    if(sql.includes("FROM core.organization_memberships")) return {rows:[{
+      membership_id:"423e4567-e89b-42d3-a456-426614174000",
+      organization_id:organizationId,roles:["teacher"],
+      permissions:["academic.students.identity.read"]
+    }]};
+    throw new Error("identity data must not be queried for scoped members");
+  }};
+  try {
+    const res=responseDouble();
+    await handleModuleRecordsRequest(request("GET","/v1/modules/student-identity-documents"),res,pool,userId,organizationId);
+    assert.equal(res.statusCode,403);
+    assert.equal(JSON.parse(res.body).error,"restricted_student_data_requires_tenant_authority");
+    assert.equal(calls.some(sql=>sql.includes("FROM academic.student_identity_documents d")),false);
+  } finally {
+    if(previousKey===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY=previousKey;
+    if(previousVersion===undefined) delete process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION; else process.env.STUDENT_IDENTITY_ENCRYPTION_KEY_VERSION=previousVersion;
+  }
+});
