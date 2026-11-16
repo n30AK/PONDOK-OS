@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-11-16  
 **Status:** execution control plan; not a release approval or certification  
-**Source baseline:** current `main` at `8b96e3dea6c52e574df89dd94510ed078b22ae84` and the implementation/readiness documents in that commit.
+**Source baseline:** current `main` at merge commit `d33592b24f19bedd9dd240fbd23f4964388198b3` (PR #257) and the implementation/readiness documents in that commit. Evidence below is refreshed from the PR #257 merge workflows on 2026-11-16.
 
 ## 1. Release decision
 
@@ -26,11 +26,11 @@ Release scope must be earned gate by gate. A limited pilot may only be described
 
 | Gate / domain | Evidence currently available | Remaining blocker | Status |
 |---|---|---|---|
-| G0 — build and Development deployment | CI, Pages, Release Bundle and Development Function deployment evidence is recorded in the implementation status | Reconfirm latest workflow and direct Development HTTP checks for the exact current commit | Partial |
+| G0 — build and Development deployment | On merge commit `d33592b`: PONDOK OS CI #2128, Neon Function Bundle #454, Release Bundle #201 and Development API deployment #107 passed. Deployment #107 directly returned HTTP 200 from `/health/live` (`ok`) and `/health/ready` (`database`, `tenantSecurity`, `platformSecurity` all `ok`); retired bootstrap endpoint returned HTTP 410. | Repeat checks for each later candidate commit; this does not prove tenant isolation or business workflow acceptance | Verified for this commit; ongoing |
 | G1 — tenant/security baseline | 67/67 organization-owned tables with RLS ENABLE + FORCE; restricted runtime policy coverage previously verified at 63/63 tenant and 79/79 platform tables; CI uses two synthetic identities and disposable PostgreSQL | Live Neon Auth test with two independent users and two real non-production tenants; rate limits, security logging/abuse monitoring, broader sensitive-read audit and session lifecycle | Blocked |
 | Identity data protection | Health encryption key configured; identity document API is designed to fail closed when its separate key is missing | Provision identity key only through approved secret vault; recoverable encrypted backup; rotation and recovery drill | Blocked |
 | Backup / DR | Backup metadata and policy UI foundations exist | No working executor, immutable/off-site backup, completed restore test or proven RPO/RTO | Blocked |
-| Secure attachments | Coverage blueprint and metadata foundations exist | No confirmed private object-storage integration, malware quarantine/scanner, binary versioning or signed download | Blocked |
+| Secure attachments | Coverage blueprint and metadata foundations exist. A read-only Development access/UAT runbook snapshot dated 2026-11-13 records Neon Object Storage as active with private bucket `uploads`. | The bucket observation does not prove API integration, quarantine/scanning, binary versioning, signed download, tenant/platform authorization or backup/restore; verify the current provider configuration before use | Blocked |
 | G2 — institution onboarding | Activation request/approval foundations exist | Authorized non-production institution, independent reviewer, owner handover and completed activation acceptance | Blocked |
 | G3 — operational workflows | Student, guardian, academic, boarding, finance, inventory, procurement and HR foundations exist | End-to-end role-based UAT and unresolved workflow gaps; scoped-member paths intentionally fail closed in several domains | Blocked |
 | G4 — commercial operations | Lead/customer, quote/contract/subscription, invoice/payment and entitlement foundations exist | Complete lifecycle, recurring billing, tax, refunds, reconciliation, entitlement automation, support/SLA and offboarding | Blocked |
@@ -53,7 +53,7 @@ Tracking: GitHub issue #252.
 ### B. Data resilience and continuity — P0
 - Inventory every recoverable data class: database, private object binaries, encryption-key recovery material, audit evidence and deployment configuration.
 - Define RPO/RTO by service tier and approved retention policy.
-- Implement encrypted scheduled backups, immutable/off-site copies, integrity verification, alerting and a restore executor.
+- Implement encrypted scheduled backups, immutable/off-site copies, integrity verification, alerting and a restore executor. A private bucket in the same Neon project is not automatically an independent off-site copy or immutable backup; verify failure-domain separation and retention lock before counting it.
 - Restore into an isolated target; verify checksums, row counts, relationships, RLS, login and business workflows.
 - Conduct repeatable restore drills. A green backup job without a restore drill is not readiness.
 
@@ -61,7 +61,7 @@ Tracking: GitHub issue #253.
 
 ### C. Identity encryption and secure attachments — P0
 - Review AES-GCM key versioning, missing-key behavior, rotation and disaster recovery.
-- Select a private object-storage provider only after evaluating data location, access control, lifecycle, cost, backup, availability and processor terms.
+- Evaluate the existing private Neon Object Storage bucket `uploads` before selecting another provider; verify its current access policy, API capabilities, lifecycle, data location, cost, availability, processor terms and backup/failure-domain separation. A bucket being private is not evidence that the attachment workflow is implemented.
 - Use quarantine → signature/MIME validation → malware scan → available lifecycle.
 - Enforce API authorization for every metadata and binary operation; signed URLs must be short-lived and never logged.
 - Separate tenant and platform scopes. Restrict health, identity, HR/payroll and child-protection categories.
@@ -188,4 +188,4 @@ Do not store secrets, full personal records, identity numbers, raw documents, JW
 
 ## 9. Release statement
 
-As of 2026-11-16, PONDOK OS is in Development / controlled pilot preparation. It is **not yet approved for live institutional operations, limited commercial release or general availability**. The gates above are mandatory. This document creates no schema, database, secret, tenant, entitlement, billing or deployment changes.
+As of 2026-11-16, PONDOK OS is in Development / controlled pilot preparation. PR #257 is merged; the merge commit's CI, Function Bundle, Release Bundle and Development API deployment passed, including direct liveness/readiness HTTP checks. These are G0 technical checks only. It is **not yet approved for live institutional operations, limited commercial release or general availability**. The gates above are mandatory. This document creates no schema, database, secret, tenant, entitlement, billing or deployment changes.
