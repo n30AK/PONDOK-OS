@@ -167,18 +167,12 @@ export default function Operations({ organizationId, permissions, initialArea = 
   if (!canReadArea(area)) return <section className="operations-panel">
     <div className="operations-heading"><div><div className="eyebrow">OPERASIONAL INSTITUSI</div><h2>{area === "finance" ? "Keuangan & Akuntansi" : area === "inventory" ? "Inventaris" : "SDM & Payroll"}</h2><p>Akses ke ruang kerja ini belum diberikan kepada akun Anda.</p></div></div>
     <div className="alert warning">Tidak ada izin baca yang sesuai untuk modul ini. Menu tidak akan dialihkan ke modul lain. Hubungi administrator institusi untuk penyesuaian peran.</div>
-    {availableAreas.length > 0 && <div className="operations-tabs">{availableAreas.map((item) => <button key={item} className="operation-tab" onClick={() => setArea(item)}>{item === "finance" ? "Keuangan & Akuntansi" : item === "inventory" ? "Inventaris" : "SDM & Payroll"}</button>)}</div>}
   </section>;
 
   return <section className="operations-panel">
     <div className="operations-heading">
-      <div><div className="eyebrow">OPERASIONAL INSTITUSI</div><h2>Ruang kerja operasional</h2><p>Kelola data dasar melalui API tenant dan hak akses yang berlaku.</p></div>
+      <div><div className="eyebrow">OPERASIONAL INSTITUSI</div><h2>{area === "finance" ? "Keuangan & Akuntansi" : area === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll"}</h2><p>{area === "finance" ? "Kelola bagan akun, periode pembukuan, dan jurnal keuangan pesantren." : area === "inventory" ? "Kelola barang, gudang, dan pergerakan persediaan pesantren." : "Kelola data pegawai dan periode penggajian lembaga."} Data dibatasi oleh hak akses tenant.</p></div>
       <button className="outline-button" onClick={() => void reload(area)} disabled={busy}>{busy ? "Memuat…" : "↻ Muat ulang"}</button>
-    </div>
-    <div className="operations-tabs">
-      {availableAreas.map((item) => <button key={item} className={area === item ? "operation-tab active" : "operation-tab"} onClick={() => { setArea(item); setShowForm(false); setForm({}); }}>
-        {item === "finance" ? "Keuangan & Akuntansi" : item === "inventory" ? "Inventaris" : "SDM & Payroll"}
-      </button>)}
     </div>
     <div className="operations-tabs">
       {availableAreas.map((item) => <button key={item} className={area === item ? "operation-tab active" : "operation-tab"} onClick={() => { setArea(item); setShowForm(false); setForm({}); }}>
