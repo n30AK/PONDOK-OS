@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { createAuthClient } from "@neondatabase/auth";
-import { OPTIONAL_MODULE_CATALOG, OPTIONAL_MODULE_CATALOG_VERSION, type OptionalModuleCategory } from "./module-catalog";
+import { OPTIONAL_MODULE_CATALOG, OPTIONAL_MODULE_CATALOG_VERSION, getOptionalModuleEvidenceRequirements, type OptionalModuleCategory } from "./module-catalog";
 
 type User = { id: string; email?: string; name?: string };
 type Tenant = { organizationId: string; name: string; slug: string; organizationType: string; status: string; createdAt: string; memberCount: number; planCode?: string | null; licenseStatus?: string | null; licenseEndsAt?: string | null };
@@ -473,6 +473,10 @@ function OptionalModuleMarketplace({tenants}:{tenants:Tenant[]}) {
         <div><h3>Prasyarat teknis/operasional</h3><ul>{selected.prerequisites.map(x=><li key={x}>{x}</li>)}</ul></div>
       </div>
       <h3>Kriteria kelayakan lembaga</h3><ul>{selected.eligibility.map(x=><li key={x}>{x}</li>)}</ul>
+      <h3>Checklist bukti kelayakan terstruktur</h3>
+      <p className="muted">Daftar ini adalah persyaratan awal untuk diperiksa. Status bukti belum diverifikasi dan tidak otomatis membuktikan legalitas lembaga. Verifikasi sumber resmi dan pemeriksaan manual tetap diperlukan.</p>
+      <div className="table-wrap"><table><thead><tr><th>Persyaratan</th><th>Bukti yang diminta</th><th>Metode pemeriksaan</th><th>Sumber kewenangan</th><th>Status</th></tr></thead><tbody>{getOptionalModuleEvidenceRequirements(selected.id).map(item=><tr key={item.id}><td><b>{item.title}</b><small>{item.id} · {item.sensitivity} · {item.blocking ? "Wajib" : "Advisory"}</small></td><td>{item.evidenceType}</td><td>{item.verificationMethod}</td><td>{item.authority}</td><td><span className="pill warning">Belum diperiksa</span></td></tr>)}</tbody></table></div>
+
       <div className="regulatory-notice"><b>Catatan kepatuhan</b><p>{selected.complianceNote}</p></div>
       <div className="toolbar"><label style={{flex:1}}>Pilih pesantren target<select value={tenantId} onChange={e=>{setTenantId(e.target.value);setPlanReady(false);}}><option value="">Pilih lembaga terdaftar</option>{tenants.map(x=><option key={x.organizationId} value={x.organizationId}>{x.name} · {x.slug} · {x.status}</option>)}</select></label><button className="primary" type="button" disabled={!tenantId||!tenant||tenant.status!=="active"} onClick={()=>setPlanReady(true)}>Siapkan pemeriksaan kelayakan</button></div>
       {tenantId&&tenant&&tenant.status!=="active"&&<div className="alert warning">Tenant belum berstatus aktif. Permintaan pemasangan tidak dapat dilanjutkan.</div>}
