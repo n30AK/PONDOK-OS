@@ -377,3 +377,22 @@ a,button{-webkit-tap-highlight-color:transparent}
   .photo-card img,.photo-card-wide img{min-height:220px}
   .photo-caption b{font-size:13px}
 }
+
+
+/* Customer onboarding and activation journey */
+.activation-section{padding:108px 0;background:#f7f8f4;border-bottom:1px solid var(--line)}
+.activation-inner{display:grid;grid-template-columns:.82fr 1.18fr;gap:42px 76px;align-items:start}
+.activation-heading h2{font:700 clamp(38px,4.5vw,56px)/1.08 var(--display);letter-spacing:-.07em;margin:20px 0}
+.activation-heading h2 em{font-style:normal;color:#557e64}
+.activation-heading p{font-size:13px;line-height:1.9;color:var(--muted);max-width:440px}
+.activation-steps{border-top:1px solid #d6dfd5}
+.activation-step{display:grid;grid-template-columns:38px minmax(0,1fr);gap:15px;padding:20px 0;border-bottom:1px solid #d6dfd5}
+.activation-step>span{font:700 11px var(--display);color:#77917d;padding-top:3px}
+.activation-step b{font:700 15px var(--display);letter-spacing:-.03em}
+.activation-step p{font-size:11px;line-height:1.8;color:#6d7b72;margin:7px 0 0}
+.activation-note{grid-column:1/-1;display:grid;gap:6px;padding:17px 20px;background:#e8eee5;border-left:3px solid #557e64}
+.activation-note b{font:700 12px var(--display)}
+.activation-note span{font-size:11px;line-height:1.7;color:#68766f}
+.activation-cta{grid-column:1/-1;justify-self:start}
+@media(max-width:900px){.activation-inner{grid-template-columns:1fr;gap:28px}.activation-note,.activation-cta{grid-column:auto}}
+@media(max-width:640px){.activation-section{padding:68px 0}.activation-heading h2{font-size:clamp(31px,8.5vw,39px)}.activation-step{grid-template-columns:28px minmax(0,1fr);gap:10px;padding:17px 0}.activation-step b{font-size:13px}.activation-step p{font-size:10px}.activation-note{padding:14px}.activation-cta{width:100%}}
