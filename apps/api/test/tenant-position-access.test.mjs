@@ -101,7 +101,7 @@ test("institution owner and institution admin always receive tenant access-manag
  assert.match(access,/permissions\.add\("core\.roles\.manage"\)/);
  assert.match(access,/permissions\.add\("core\.members\.manage"\)/);
  assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
- assert.match(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
+ assert.doesNotMatch(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
  assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Jabatan, Peran & Hak Akses"/);
 });
 
