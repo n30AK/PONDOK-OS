@@ -47,7 +47,7 @@ test("tenant administrators have a permission-matrix workspace with custom roles
  const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
  assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
  assert.match(app,/canManageTenantAccess\(tenant\) && <button[^]*Jabatan, Peran & Hak Akses/);
- assert.match(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
+ assert.doesNotMatch(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
  assert.match(app,/TenantAccessAdmin organizationId=\{tenant\.organizationId\} permissions=\{tenant\.permissions\}/);
  assert.match(ui,/Jabatan, peran & hak akses/);
  assert.match(ui,/Buat peran khusus/);
