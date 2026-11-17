@@ -15,7 +15,22 @@ type Student = {
   status: string; createdAt: string; profileData?: Record<string, string> | null;
 };
 type Screen = "overview" | "students" | "modules" | "operations" | "admissions" | "access" | "audit";
+
 type OperationsArea = "finance" | "inventory" | "hr";
+
+const LOGIN_ROLE_GROUPS = [
+  { label: "Pemilik & Administrasi Pesantren", roles: [{ value: "institution_owner", label: "Pemilik Institusi" }, { value: "institution_admin", label: "Admin Pesantren" }] },
+  { label: "Yayasan & Pimpinan", roles: [{ value: "foundation_chair", label: "Ketua Yayasan" }, { value: "foundation_secretary", label: "Sekretaris Yayasan" }, { value: "foundation_treasurer", label: "Bendahara Yayasan" }, { value: "pondok_leader", label: "Pimpinan Pesantren" }, { value: "pondok_deputy", label: "Wakil Pimpinan" }, { value: "pondok_secretary", label: "Sekretaris Pesantren" }, { value: "pondok_treasurer", label: "Bendahara Pesantren" }] },
+  { label: "Pendidikan & Kesantrian", roles: [{ value: "academic_admin", label: "Admin Akademik" }, { value: "academic_coordinator", label: "Koordinator Akademik" }, { value: "school_principal", label: "Kepala Sekolah" }, { value: "homeroom_teacher", label: "Wali Kelas" }, { value: "teacher", label: "Guru / Pengajar" }, { value: "student_affairs_coordinator", label: "Koordinator Kesantrian" }, { value: "musyrif", label: "Musyrif" }, { value: "safeguarding_officer", label: "Petugas Perlindungan Santri" }] },
+  { label: "Layanan & Operasional", roles: [{ value: "finance_admin", label: "Admin Keuangan" }, { value: "finance_cashier", label: "Kasir" }, { value: "finance_verifier", label: "Verifikator Keuangan" }, { value: "hr_admin", label: "Admin SDM" }, { value: "hr_officer", label: "Petugas SDM" }, { value: "procurement_officer", label: "Petugas Pengadaan" }, { value: "warehouse_staff", label: "Petugas Gudang" }, { value: "librarian", label: "Pustakawan" }, { value: "admission_officer", label: "Petugas PPDB" }, { value: "inventory_manager", label: "Pengelola Inventaris" }, { value: "boarding_supervisor", label: "Pengawas Asrama" }, { value: "cms_editor", label: "Editor Website" }, { value: "health_officer", label: "Petugas Kesehatan" }] },
+  { label: "Pengawasan", roles: [{ value: "read_only_auditor", label: "Auditor / Pengawas" }] },
+];
+const LOGIN_ROLE_LABELS = Object.fromEntries(LOGIN_ROLE_GROUPS.flatMap(group => group.roles.map(role => [role.value, role.label]))) as Record<string, string>;
+const KNOWN_LOGIN_ROLE_KEYS = new Set(Object.keys(LOGIN_ROLE_LABELS));
+const loginRoleMatches = (selection: string, assignedRoles: string[]) => selection === "__custom_assigned__"
+  ? assignedRoles.some(role => !KNOWN_LOGIN_ROLE_KEYS.has(role))
+  : assignedRoles.includes(selection);
+
 
 const PREVIEW_PERMISSIONS: string[] = [];
 
@@ -145,6 +160,7 @@ export default function App() {
   const [operationsArea, setOperationsArea] = useState<OperationsArea>("finance");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedLoginRole, setSelectedLoginRole] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
@@ -265,6 +281,7 @@ export default function App() {
     setBusy(true); setError(""); setNotice("");
     try {
       const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
+      if (!loginRoleMatches(selectedLoginRole, context.roles)) throw new Error("Peran yang dipilih tidak terdaftar pada pesantren ini. Pilih peran yang benar-benar diberikan administrator kepada akun Anda.");
       setTenant(context);
       setCampusId(localStorage.getItem(`pondok.campusId.${orgId}`) ?? "");
       localStorage.setItem("pondok.organizationId", orgId);
@@ -307,6 +324,11 @@ export default function App() {
           const orgId = available[0]!.id;
           const context = await apiRequest<Tenant>("/v1/tenant/context", orgId);
           if (!active) return;
+          if (!loginRoleMatches(selectedLoginRole, context.roles)) {
+            setTenant(null);
+            setError("Peran yang dipilih tidak cocok dengan penugasan akun pada pesantren ini. Keluar dan masuk kembali dengan memilih peran yang benar.");
+            return;
+          }
           setTenant(context);
           setCampusId(localStorage.getItem(`pondok.campusId.${orgId}`) ?? "");
           localStorage.setItem("pondok.organizationId", orgId);
@@ -335,6 +357,7 @@ export default function App() {
   const signIn = async (event: FormEvent) => {
     event.preventDefault();
     if (!authClient) return;
+    if (!selectedLoginRole) { setError("Pilih jabatan atau peran sebelum masuk."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await authClient.signIn.email({ email: email.trim(), password });
@@ -504,6 +527,14 @@ export default function App() {
           <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
           <div className="trial-login-note"><strong>Uji coba gratis 14 hari untuk lembaga baru.</strong><span>Hitungan dimulai saat workspace pertama kali dibuka setelah aktivasi disetujui.</span></div>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
+          <label>Masuk sebagai
+            <select value={selectedLoginRole} onChange={(event) => setSelectedLoginRole(event.target.value)} required>
+              <option value="">Pilih jabatan / peran Anda</option>
+              {LOGIN_ROLE_GROUPS.map((group) => <optgroup key={group.label} label={group.label}>{group.roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</optgroup>)}
+              <option value="__custom_assigned__">Peran khusus lembaga</option>
+            </select>
+          </label>
+          <p className="login-note">Pilihan ini hanya menentukan jalur masuk. PONDOK OS tetap memverifikasi penugasan peran dari server; pilihan yang tidak sesuai akan ditolak.</p>
           <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
           <label>Kata sandi<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /><button type="button" className="password-visibility" aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
           <button type="button" className="text-button forgot-password-link" onClick={() => { setForgotPasswordMode(true); setError(""); setNotice(""); setPassword(""); }}>Lupa kata sandi?</button>
@@ -593,7 +624,7 @@ export default function App() {
         {error && <div className="alert error global-alert">{error}<button onClick={() => setError("")}>×</button></div>}
         {notice && <div className="alert success global-alert">{notice}<button onClick={() => setNotice("")}>×</button></div>}
         {!tenant && !previewMode ? !platformAccessChecked ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">MEMERIKSA AKSES</div><h1>Memverifikasi sesi dan hak akses…</h1><p>Mohon tunggu. Formulir aktivasi tidak akan ditampilkan sebelum status akun berhasil diverifikasi.</p></div></section> : platformAccessError ? <section className="welcome-card"><div className="welcome-copy"><div className="eyebrow">PEMERIKSAAN AKSES GAGAL</div><h1>Sesi belum dapat diverifikasi</h1><div className="alert error">{platformAccessError}</div><p className="muted">Jangan kirim permohonan aktivasi lembaga saat status hak akses akun belum berhasil diperiksa. Data lembaga Anda tidak perlu diisi ulang.</p><button type="button" className="primary" onClick={() => window.location.reload()}>Coba periksa kembali</button></div></section> : <><section className="welcome-card">
-          <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1>
+          <div className="welcome-copy"><div className="eyebrow">WORKSPACE PESANTREN</div><h1>Selamat datang,<br /><em>{user.name || user.email?.split("@")[0]}</em></h1><p className="role-context-label">Peran terverifikasi: <strong>{tenant?.roles.map((role) => LOGIN_ROLE_LABELS[role] ?? role).join(", ") || "Menunggu verifikasi keanggotaan"}</strong></p>
             {busy ? <p>Memuat daftar pesantren dan hak akses Anda…</p> : organizations.length > 1 ? <>
               <p>Akun Anda terhubung ke beberapa pesantren. Pilih pesantren untuk membuka ruang kerja.</p>
               <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
