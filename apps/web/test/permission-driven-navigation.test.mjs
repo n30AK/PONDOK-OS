@@ -65,7 +65,7 @@ test("all active tenant members can inspect their own roles while management rem
   const app = await read("apps/web/src/App.tsx");
   const access = await read("apps/web/src/TenantAccessAdmin.tsx");
   assert.match(app, /tenant && <button[^>]*screen === "access"/);
-  assert.match(app, /screen === "access" && !canManageTenantAccess/);
+  assert.doesNotMatch(app, /screen === "access" && !canManageTenantAccess/);
   assert.match(access, /Peran dan hak akses akun Anda/);
   assert.match(access, /Mode baca saja/);
   assert.match(access, /canManageRoles&&/);
