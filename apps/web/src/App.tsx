@@ -61,6 +61,24 @@ const canSeeModuleCard = (permissions: readonly string[] | undefined, moduleKey:
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const SUPPORT_WHATSAPP_NUMBER = (import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ?? "").replace(/\D/g, "");
 
+function AccessPolicyGuide() {
+  return <details className="login-note access-guidance">
+    <summary><strong>Peran dan hak akses PONDOK OS</strong></summary>
+    <p>Peran menentukan ruang kerja dan tindakan yang boleh dilakukan. Peran diberikan oleh pengelola lembaga setelah akun terverifikasi dan keanggotaan lembaga sah; pengguna tidak dapat menaikkan perannya sendiri saat mendaftar.</p>
+    <ul>
+      <li><b>Pemilik Institusi / Admin Pesantren:</b> tata kelola lembaga, anggota, peran, dan seluruh kewenangan tenant.</li>
+      <li><b>Ketua Yayasan dan Pimpinan Pesantren:</b> pengawasan dan persetujuan sesuai mandat.</li>
+      <li><b>Sekretaris dan Bendahara:</b> administrasi, dokumen, keuangan, dan pelaporan sesuai izin.</li>
+      <li><b>Admin Akademik, Guru, Wali Kelas, dan Musyrif:</b> data pendidikan serta kesantrian sesuai penugasan.</li>
+      <li><b>Petugas Keuangan, SDM, PPDB, Inventaris, dan Perpustakaan:</b> fungsi operasional sesuai tugas.</li>
+      <li><b>Auditor/Pengawas:</b> akses baca dan audit sesuai cakupan yang ditetapkan.</li>
+      <li><b>Wali Santri:</b> informasi santri yang terhubung dan diizinkan untuk keluarganya.</li>
+    </ul>
+    <p>Hak akses dibatasi per lembaga dan dapat dibatasi lagi menurut kampus, unit, kelas, mata pelajaran, asrama, atau kamar. Super Administrator platform terpisah dari Pemilik Institusi dan tidak otomatis memperoleh akses data pesantren.</p>
+    <p>Setelah masuk, buka menu <b>Peran &amp; Hak Akses Saya</b>. Pemilik/Admin yang berwenang juga dapat mengelola anggota, matriks izin, dan penugasan.</p>
+  </details>;
+}
+
 function SupportLink() {
   if (!/^[1-9]\d{7,14}$/.test(SUPPORT_WHATSAPP_NUMBER)) return null;
   const message = encodeURIComponent("Assalamu’alaikum, saya pengguna PONDOK OS dan membutuhkan bantuan terkait: ");
@@ -234,7 +252,7 @@ export default function App() {
       (screen === "modules" && (moduleResource === "all" ? !hasReadableModuleResource(permissions) : !hasReadableModuleGroup(moduleResource, permissions))) ||
       (screen === "operations" && !hasAnyPermission(permissions, (OPERATIONS_ACCESS[operationsArea] ?? []))) ||
       (screen === "admissions" && !hasAnyPermission(permissions, ADMISSIONS_ACCESS)) ||
-      (screen === "access" && !canManageTenantAccess(tenant)) ||
+      
       (screen === "audit" && !permissions.includes("audit.events.read")) ||
       (screen === "students" && !permissions.includes("academic.students.read"));
     if (denied) {
@@ -477,7 +495,7 @@ export default function App() {
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Mendaftarkan akun…" : "Daftar akun"}</button>
-          <p className="login-note">Setelah email terverifikasi, masuk kembali untuk mengajukan aktivasi lembaga. Trial berlaku 14 hari sejak workspace diaktifkan.</p>
+          <p className="login-note">Setelah email terverifikasi, masuk kembali untuk mengajukan aktivasi lembaga. Trial berlaku 14 hari sejak workspace diaktifkan.</p><AccessPolicyGuide />
           <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(false); setError(""); setNotice(""); setPassword(""); }}>← Kembali ke login</button>
           <SupportLink />
         </form> : <form className="login-card" onSubmit={signIn}>
