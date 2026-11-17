@@ -303,3 +303,77 @@ a,button{-webkit-tap-highlight-color:transparent}
 .footer-contact a:hover{color:#c8ef70}
 @media(max-width:900px){.footer-inner{grid-template-columns:1fr 1fr}.footer-inner>small{grid-column:1/-1}}
 @media(max-width:640px){.footer-inner{grid-template-columns:1fr;gap:15px}.footer-nav,.footer-contact{gap:10px}.footer-inner>small{grid-column:auto}}
+
+
+/* Visual refresh: larger hero artwork and responsive pesantren photo gallery. */
+@media(min-width:901px){
+  .hero{
+    grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr);
+    min-height:760px;
+    gap:28px;
+    padding-top:58px;
+    padding-bottom:70px;
+  }
+  .hero-visual{
+    height:clamp(500px,48vw,650px);
+    max-height:none;
+  }
+  .hero-art{object-fit:contain}
+}
+.photo-gallery{
+  display:grid;
+  grid-template-columns:1.25fr 1fr 1fr;
+  gap:14px;
+  margin-top:38px;
+}
+.photo-card{
+  position:relative;
+  min-width:0;
+  min-height:230px;
+  overflow:hidden;
+  border-radius:5px;
+  background:#e6ece5;
+  box-shadow:0 12px 28px #172d2012;
+}
+.photo-card img{
+  display:block;
+  width:100%;
+  height:100%;
+  min-height:230px;
+  object-fit:cover;
+  transition:transform .45s ease;
+}
+.photo-card:hover img{transform:scale(1.035)}
+.photo-card-wide{min-height:280px}
+.photo-card-wide img{min-height:280px}
+.photo-caption{
+  position:absolute;
+  inset:auto 0 0;
+  display:grid;
+  gap:4px;
+  padding:28px 18px 16px;
+  color:#fff;
+  background:linear-gradient(transparent,#102b22e8);
+}
+.photo-caption b{font:700 14px Manrope,sans-serif}
+.photo-caption span{font-size:10px;color:#e0e9e1}
+.photo-attribution{
+  margin:12px 0 0;
+  color:#87948b;
+  font-size:9px;
+  line-height:1.7;
+}
+@media(max-width:900px){
+  .hero-visual{height:auto;max-height:none;aspect-ratio:16/10}
+  .hero-art{height:100%;object-fit:contain}
+  .photo-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .photo-card-wide{grid-column:1/-1}
+}
+@media(max-width:640px){
+  .hero-visual{height:auto;min-height:0;aspect-ratio:16/10;max-height:none}
+  .hero-art{height:100%;object-fit:contain}
+  .photo-gallery{grid-template-columns:1fr;gap:12px;margin-top:26px}
+  .photo-card,.photo-card-wide{min-height:220px;grid-column:auto}
+  .photo-card img,.photo-card-wide img{min-height:220px}
+  .photo-caption b{font-size:13px}
+}
