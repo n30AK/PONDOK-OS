@@ -46,8 +46,8 @@ test("tenant administrators have a permission-matrix workspace with custom roles
  const app=await read("apps/web/src/App.tsx");
  const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
  assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
- assert.match(app,/canManageTenantAccess\(tenant\) && <button[^]*Jabatan, Peran & Hak Akses/);
- assert.match(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
+ assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Jabatan, Peran & Hak Akses"/);
+ assert.doesNotMatch(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
  assert.match(app,/TenantAccessAdmin organizationId=\{tenant\.organizationId\} permissions=\{tenant\.permissions\}/);
  assert.match(ui,/Jabatan, peran & hak akses/);
  assert.match(ui,/Buat peran khusus/);
@@ -101,8 +101,8 @@ test("institution owner and institution admin always receive tenant access-manag
  assert.match(access,/permissions\.add\("core\.roles\.manage"\)/);
  assert.match(access,/permissions\.add\("core\.members\.manage"\)/);
  assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
- assert.match(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
- assert.match(app,/canManageTenantAccess\(tenant\) && <button[^]*Jabatan, Peran & Hak Akses/);
+ assert.doesNotMatch(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
+ assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Jabatan, Peran & Hak Akses"/);
 });
 
 

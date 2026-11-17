@@ -60,3 +60,22 @@ test("CSV export controls require the dedicated reports.export permission", asyn
   const moduleWorkspace = await read("apps/web/src/ModuleWorkspace.tsx");
   assert.ok(moduleWorkspace.includes('!permissions.includes("reports.export")'));
 });
+
+test("all active tenant members can inspect their own roles while management remains permission-gated", async () => {
+  const app = await read("apps/web/src/App.tsx");
+  const access = await read("apps/web/src/TenantAccessAdmin.tsx");
+  assert.match(app, /tenant && <button[^>]*screen === "access"/);
+  assert.doesNotMatch(app, /screen === "access" && !canManageTenantAccess/);
+  assert.match(access, /Peran dan hak akses akun Anda/);
+  assert.match(access, /Mode baca saja/);
+  assert.match(access, /canManageRoles&&/);
+  assert.match(access, /canManageMembers&&/);
+});
+
+test("signin and signup explain the role lifecycle without allowing self-assignment", async () => {
+  const app = await read("apps/web/src/App.tsx");
+  assert.match(app, /function AccessPolicyGuide/);
+  assert.match(app, /pengguna tidak dapat menaikkan perannya sendiri saat mendaftar/);
+  assert.match(app, /<AccessPolicyGuide \/>/);
+  assert.match(app, /Super Administrator platform terpisah dari Pemilik Institusi/);
+});

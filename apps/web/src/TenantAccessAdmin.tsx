@@ -21,6 +21,19 @@ const ROLE_GROUPS = [
   { title: "Layanan & Operasional", keys: ["finance_admin","finance_cashier","finance_verifier","hr_admin","hr_officer","procurement_officer","warehouse_staff","librarian","admission_officer","inventory_manager","boarding_supervisor","cms_editor","health_officer"] },
   { title: "Pengawasan", keys: ["read_only_auditor"] },
 ];
+const ROLE_DISPLAY_NAMES: Record<string,string> = {
+  institution_owner: "Pemilik Institusi", institution_admin: "Admin Pesantren",
+  foundation_chair: "Ketua Yayasan", foundation_secretary: "Sekretaris Yayasan", foundation_treasurer: "Bendahara Yayasan",
+  pondok_leader: "Pimpinan Pesantren", pondok_deputy: "Wakil Pimpinan", pondok_secretary: "Sekretaris Pesantren", pondok_treasurer: "Bendahara Pesantren",
+  academic_admin: "Admin Akademik", academic_coordinator: "Koordinator Akademik", school_principal: "Kepala Sekolah",
+  homeroom_teacher: "Wali Kelas", teacher: "Guru / Pengajar", student_affairs_coordinator: "Koordinator Kesantrian",
+  musyrif: "Musyrif", safeguarding_officer: "Petugas Perlindungan Santri",
+  finance_admin: "Admin Keuangan", finance_cashier: "Kasir", finance_verifier: "Verifikator Keuangan",
+  hr_admin: "Admin SDM", hr_officer: "Petugas SDM", procurement_officer: "Petugas Pengadaan",
+  warehouse_staff: "Petugas Gudang", librarian: "Pustakawan", admission_officer: "Petugas PPDB",
+  inventory_manager: "Pengelola Inventaris", boarding_supervisor: "Pengawas Asrama", cms_editor: "Editor Website",
+  health_officer: "Petugas Kesehatan", read_only_auditor: "Auditor / Pengawas",
+};
 const GROUP_LABELS: Record<string,string> = {
   academic:"Akademik & data santri", admissions:"PPDB", assets:"Aset", audit:"Audit", boarding:"Asrama & kesantrian",
   cms:"Website & publikasi", core:"Tata kelola", crm:"CRM, alumni & donatur", finance:"Keuangan & akuntansi",
@@ -199,6 +212,21 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
   return <section className="tenant-access-page">
     <div className="page-heading"><div><span className="eyebrow">TATA KELOLA ORGANISASI</span><h1>Jabatan, peran & hak akses</h1><p>Kelola peran kerja, izin setiap modul, dan penugasan anggota. Hak akses tetap diperiksa oleh API dan database, bukan hanya disembunyikan dari menu.</p></div><button className="outline-button" type="button" onClick={()=>void load()} disabled={loading}>Muat ulang</button></div>
     <div className="alert info">Peran bawaan merupakan template sistem dan tidak dapat diubah. Buat peran khusus untuk menyesuaikan kewenangan lembaga. Izin administrasi anggota, pengelolaan peran, konfigurasi lembaga, dan kontrol sinkronisasi tidak dapat diberikan melalui peran khusus.</div>
+    <section className="tenant-add-member" aria-labelledby="my-access-heading">
+      <div><span className="eyebrow">IDENTITAS AKSES</span><h2 id="my-access-heading">Peran dan hak akses akun Anda</h2>
+        <p>Informasi ini berasal dari keanggotaan aktif pada lembaga yang sedang dibuka. Peran platform dan peran institusi merupakan kewenangan yang berbeda.</p>
+      </div>
+      <div className="tenant-role-groups">
+        <fieldset><legend>Peran aktif</legend><div>
+          {institutionRoles.length ? institutionRoles.map((role)=><label key={role}><span><strong>{ROLE_DISPLAY_NAMES[role]??role}</strong><small>{role}</small></span></label>) : <p className="muted">Belum ada peran institusi yang tercatat. Hubungi administrator lembaga.</p>}
+        </div></fieldset>
+        <fieldset><legend>Ringkasan izin efektif</legend><div>
+          <p><strong>{permissions.length}</strong> izin efektif tersedia untuk akun ini.</p>
+          {permissions.length ? <details><summary>Lihat daftar izin teknis</summary><ul>{[...permissions].sort().map((permission)=><li key={permission}><code>{permission}</code></li>)}</ul></details> : <p className="muted">Belum ada izin yang diberikan.</p>}
+        </div></fieldset>
+      </div>
+      <p className="muted">Izin tetap dibatasi oleh organisasi, kebijakan API, database/RLS, dan cakupan penugasan yang berlaku. Anda tidak dapat mengubah peran sendiri.</p>
+    </section>
     {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
     {loading?<p className="muted">Memuat katalog peran dan anggota…</p>:null}
 
@@ -289,6 +317,6 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
         </article>)}
       </section>
     </>}
-    {!canManageRoles&&!canManageMembers&&<div className="alert warning">Akun Anda belum memiliki izin untuk mengelola peran atau anggota lembaga.</div>}
+    {!canManageRoles&&!canManageMembers&&<div className="alert info">Mode baca saja. Anda dapat melihat peran dan izin akun sendiri, tetapi tidak dapat mengubah peran, mengundang anggota, atau mengatur cakupan akses. Hubungi Pemilik Institusi/Admin Pesantren jika memerlukan perubahan.</div>}
   </section>;
 }
