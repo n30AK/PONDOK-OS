@@ -424,3 +424,21 @@ a,button{-webkit-tap-highlight-color:transparent}
   .module-group .module-card{padding:18px}
   .module-status{padding-top:12px;font-size:9px}
 }
+
+
+/* Phased implementation guidance and consultation pathway */
+.implementation-section{padding:108px 0;background:#e8eee5;border-top:1px solid #d6dfd5;border-bottom:1px solid #d6dfd5}
+.implementation-inner{display:grid;grid-template-columns:.82fr 1.18fr;gap:34px 76px;align-items:start}
+.implementation-intro h2{font:700 clamp(37px,4.4vw,55px)/1.08 var(--display);letter-spacing:-.07em;margin:20px 0}
+.implementation-intro h2 em{font-style:normal;color:#557e64}
+.implementation-intro p{font-size:13px;line-height:1.9;color:#68766f;max-width:450px}
+.implementation-steps{border-top:1px solid #cbd5ca}
+.implementation-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:14px;align-items:start;padding:20px 0;border-bottom:1px solid #cbd5ca}
+.implementation-step>span{font:700 11px var(--display);color:#77917d;padding-top:3px}
+.implementation-step b{font:700 14px var(--display);letter-spacing:-.03em}
+.implementation-step p{font-size:11px;line-height:1.8;color:#6d7b72;margin:7px 0 0;max-width:470px}
+.implementation-step>small{font-size:9px;color:#557e64;background:#dce7da;padding:6px 8px;white-space:nowrap}
+.implementation-disclaimer{grid-column:2;font-size:10px;line-height:1.8;color:#68766f;margin:0}
+.implementation-cta{grid-column:2;justify-self:start}
+@media(max-width:900px){.implementation-inner{grid-template-columns:1fr;gap:25px}.implementation-disclaimer,.implementation-cta{grid-column:auto}}
+@media(max-width:640px){.implementation-section{padding:68px 0}.implementation-intro h2{font-size:clamp(31px,8.5vw,39px)}.implementation-step{grid-template-columns:26px minmax(0,1fr);gap:10px;padding:16px 0}.implementation-step b{font-size:13px}.implementation-step p{font-size:10px}.implementation-step>small{grid-column:2;justify-self:start;margin-top:-3px}.implementation-disclaimer{font-size:9px}.implementation-cta{width:100%;text-align:center}}
