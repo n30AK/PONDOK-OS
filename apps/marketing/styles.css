@@ -442,3 +442,24 @@ a,button{-webkit-tap-highlight-color:transparent}
 .implementation-cta{grid-column:2;justify-self:start}
 @media(max-width:900px){.implementation-inner{grid-template-columns:1fr;gap:25px}.implementation-disclaimer,.implementation-cta{grid-column:auto}}
 @media(max-width:640px){.implementation-section{padding:68px 0}.implementation-intro h2{font-size:clamp(31px,8.5vw,39px)}.implementation-step{grid-template-columns:26px minmax(0,1fr);gap:10px;padding:16px 0}.implementation-step b{font-size:13px}.implementation-step p{font-size:10px}.implementation-step>small{grid-column:2;justify-self:start;margin-top:-3px}.implementation-disclaimer{font-size:9px}.implementation-cta{width:100%;text-align:center}}
+
+
+/* Explicit delivery scope and acceptance framework */
+.scope-section{padding:104px 0;background:#fbfcf8;border-bottom:1px solid var(--line)}
+.scope-heading{max-width:760px;margin-bottom:34px}
+.scope-heading h2{font:700 clamp(37px,4.4vw,55px)/1.08 var(--display);letter-spacing:-.07em;margin:20px 0}
+.scope-heading h2 em{font-style:normal;color:#557e64}
+.scope-heading p{font-size:13px;line-height:1.9;color:#68766f;max-width:680px}
+.scope-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.scope-card{min-width:0;padding:27px 28px;background:#f0f3ed;border:1px solid #dce4da}
+.scope-card-accent{background:#e8eee5;border-color:#d2dfd1}
+.scope-kicker{font-size:9px;font-weight:700;letter-spacing:.16em;color:#66806b}
+.scope-card h3{font:700 20px/1.3 var(--display);letter-spacing:-.04em;margin:13px 0 16px;color:#203a2d}
+.scope-card ul{margin:0;padding-left:18px;color:#5f6f64;font-size:11px;line-height:1.85}
+.scope-card li+li{margin-top:7px}
+.scope-responsibilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.scope-responsibilities>div{padding:19px 22px;border-top:2px solid #6d8a70;background:#f6f8f3}
+.scope-responsibilities b{font:700 13px var(--display)}
+.scope-responsibilities p{font-size:11px;line-height:1.8;color:#68766f;margin:7px 0 0}
+.scope-disclaimer{margin:18px 0 0;padding-left:14px;border-left:2px solid #a88a53;color:#737e74;font-size:10px;line-height:1.85}
+@media(max-width:760px){.scope-section{padding:70px 0}.scope-grid,.scope-responsibilities{grid-template-columns:1fr}.scope-card{padding:21px}.scope-card h3{font-size:18px}.scope-heading h2{font-size:clamp(31px,8.5vw,39px)}.scope-heading p{font-size:11px}}
