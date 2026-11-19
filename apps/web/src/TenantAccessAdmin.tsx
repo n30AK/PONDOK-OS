@@ -162,7 +162,6 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
     }catch(reason){setError(reason instanceof Error?reason.message:"Gagal menambahkan anggota.");}
     finally{setAdding(false);}
   };
-  const toggleNewRole=(key:string,checked:boolean)=>setNewRoles((current)=>checked?[...current,key]:current.filter((item)=>item!==key));
   const saveMember=async(member:Member)=>{
     setSaving(member.membership_id);setError("");setNotice("");
     try{
@@ -210,8 +209,8 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
   };
 
   return <section className="tenant-access-page">
-    <div className="page-heading"><div><span className="eyebrow">TATA KELOLA ORGANISASI</span><h1>Jabatan, peran & hak akses</h1><p>Kelola peran kerja, izin setiap modul, dan penugasan anggota. Hak akses tetap diperiksa oleh API dan database, bukan hanya disembunyikan dari menu.</p></div><button className="outline-button" type="button" onClick={()=>void load()} disabled={loading}>Muat ulang</button></div>
-    <div className="alert info">Peran bawaan merupakan template sistem dan tidak dapat diubah. Buat peran khusus untuk menyesuaikan kewenangan lembaga. Izin administrasi anggota, pengelolaan peran, konfigurasi lembaga, dan kontrol sinkronisasi tidak dapat diberikan melalui peran khusus.</div>
+    <div className="page-heading"><div><span className="eyebrow">PENGELOLAAN AKUN LEMBAGA</span><h1>Pengguna & Jabatan</h1><p>Tambahkan akun ke pesantren, pilih jabatan yang sesuai, lalu atur cakupan tugas bila diperlukan. Hak akses tetap diverifikasi oleh server.</p></div><button className="outline-button" type="button" onClick={()=>void load()} disabled={loading}>Muat ulang</button></div>
+    <div className="alert info">Cara cepat: masukkan email akun yang sudah terdaftar dan terverifikasi, pilih satu jabatan, lalu tambahkan. Pengaturan izin teknis dan penugasan rinci tersedia di bagian lanjutan.</div>
     <section className="tenant-add-member" aria-labelledby="my-access-heading">
       <div><span className="eyebrow">IDENTITAS AKSES</span><h2 id="my-access-heading">Peran dan hak akses akun Anda</h2>
         <p>Informasi ini berasal dari keanggotaan aktif pada lembaga yang sedang dibuka. Peran platform dan peran institusi merupakan kewenangan yang berbeda.</p>
@@ -230,7 +229,8 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
     {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
     {loading?<p className="muted">Memuat katalog peran dan anggota…</p>:null}
 
-    {canManageRoles&&<>
+    {canManageRoles&&<details className="tenant-advanced-settings">
+      <summary>Pengaturan lanjutan: matriks izin & peran khusus</summary>
       <section className="tenant-add-member">
         <div><h2>Peran & matriks izin</h2><p>Pilih template bawaan untuk melihat izin, atau buat peran khusus dengan hak akses minimum yang dibutuhkan.</p></div>
         <div className="form-grid">
@@ -260,22 +260,27 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
           </div></footer>
         </form>}
       </section>
-    </>}
+    </details>}
 
     {canManageMembers&&<>
       <form className="tenant-add-member" onSubmit={addMember}>
-        <div><h2>Tambah anggota lembaga</h2><p>Masukkan email akun PONDOK OS yang sudah terdaftar dan diverifikasi. Peran khusus lembaga juga dapat langsung diberikan.</p></div>
-        <label className="tenant-member-email">Email akun<input type="email" value={newEmail} onChange={(event)=>setNewEmail(event.target.value)} placeholder="nama@lembaga.id" required maxLength={254}/></label>
-        <div className="tenant-role-groups">{ROLE_GROUPS.map((group)=><fieldset key={group.title}><legend>{group.title}</legend><div>{group.keys.map((key)=>{
-          const role=roles.find((item)=>item.role_key===key);if(!role)return null;
-          return <label key={key}><input type="checkbox" checked={newRoles.includes(key)} onChange={(event)=>toggleNewRole(key,event.target.checked)}/><span>{role.role_name}</span></label>;
-        })}</div></fieldset>)}{roles.some((role)=>!role.is_system)&&<fieldset key="tenant-custom-roles"><legend>Peran khusus lembaga</legend><div>{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={newRoles.includes(role.role_key)} onChange={(event)=>toggleNewRole(role.role_key,event.target.checked)}/><span>{role.role_name}</span></label>)}</div></fieldset>}</div>
-        <footer><small>{newRoles.length} peran dipilih</small><button className="primary" type="submit" disabled={adding||!newEmail.trim()||newRoles.length===0}>{adding?"Menambahkan…":"Tambah anggota & tetapkan peran"}</button></footer>
+        <div><h2>Tambah pengguna</h2><p>Masukkan email akun PONDOK OS yang sudah dibuat dan diverifikasi oleh calon pengguna. Sistem tidak meminta atau membagikan kata sandi.</p></div>
+        <label className="tenant-member-email">Email pengguna<input type="email" value={newEmail} onChange={(event)=>setNewEmail(event.target.value)} placeholder="nama@lembaga.id" required maxLength={254}/></label>
+        <label>Jabatan
+          <select value={newRoles[0]??""} onChange={(event)=>setNewRoles(event.target.value?[event.target.value]:[])} required>
+            <option value="">Pilih jabatan</option>
+            {roles.filter((role)=>!["institution_owner","institution_admin"].includes(role.role_key)).map((role)=><option key={role.id} value={role.role_key}>{role.role_name}{role.is_system?" · Jabatan bawaan":" · Khusus lembaga"}</option>)}
+          </select>
+        </label>
+        <p className="muted">Pemilik Institusi dan Admin Pesantren tidak dapat ditetapkan melalui formulir ini. Penetapan jabatan tersebut mengikuti proses otorisasi khusus.</p>
+        <footer><small>{newRoles.length ? "1 jabatan dipilih" : "Belum ada jabatan dipilih"}</small><button className="primary" type="submit" disabled={adding||!newEmail.trim()||newRoles.length!==1}>{adding?"Menambahkan…":"Tambahkan pengguna"}</button></footer>
       </form>
-      <section className="tenant-member-list"><div className="page-heading"><div><h2>Anggota & penugasan</h2><p>Anggota pemilik dan administrator utama dilindungi dari perubahan melalui layar ini.</p></div></div>
+      <section className="tenant-member-list"><div className="page-heading"><div><h2>Pengguna pesantren</h2><p>Pemilik dan administrator utama dilindungi dari perubahan melalui layar ini.</p></div></div>
         {members.length===0?<p className="muted">Belum ada anggota terdaftar atau akses daftar anggota tidak tersedia.</p>:members.map((member)=><article className="tenant-member-card" key={member.membership_id}>
           <header><div><strong>Anggota lembaga</strong><small>ID akun: {member.user_id}</small><small>Status: {member.membership_status}</small></div><span className="member-current-roles">{member.roles.map((key)=>roles.find((role)=>role.role_key===key)?.role_name??key).join(" · ")||"Belum ada peran"}</span></header>
-          <div className="tenant-scope-tools">
+          <details className="tenant-member-advanced">
+            <summary>Pengaturan lanjutan: jabatan & cakupan tugas</summary>
+            <div className="tenant-scope-tools">
             <button type="button" className="outline-button" disabled={scopeLoading} onClick={()=>scopeMemberId===member.membership_id?setScopeMemberId(""):void loadMemberScopes(member)}>
               {scopeMemberId===member.membership_id?"Tutup cakupan akses":"Atur cakupan akses"}
             </button>
@@ -314,6 +319,8 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
             })}</div></fieldset>)}{roles.some((role)=>!role.is_system)&&<fieldset key="tenant-custom-roles"><legend>Peran khusus lembaga</legend><div>{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={(drafts[member.membership_id]??member.roles).includes(role.role_key)} onChange={(event)=>toggleMemberRole(member.membership_id,role.role_key,event.target.checked)}/><span>{role.role_name}</span></label>)}</div></fieldset>}</div>
             <footer><small>{(drafts[member.membership_id]??member.roles).length} peran dipilih</small><button className="primary" type="button" disabled={Boolean(saving)||JSON.stringify([...(drafts[member.membership_id]??member.roles)].sort())===JSON.stringify([...member.roles].sort())} onClick={()=>void saveMember(member)}>{saving===member.membership_id?"Menyimpan…":"Simpan penugasan"}</button></footer>
           </>}
+            </div>
+          </details>
         </article>)}
       </section>
     </>}
