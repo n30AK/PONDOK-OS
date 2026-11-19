@@ -727,10 +727,20 @@ export async function handlePlatformRequest(
                     organization_slug AS "organizationSlug", organization_type AS "organizationType",
                     campus_code AS "campusCode", campus_name AS "campusName", status,
                     reviewed_by AS "reviewedBy", reviewed_at AS "reviewedAt",
-                    review_note AS "reviewNote", created_at AS "createdAt"
-             FROM platform.activation_requests
-             WHERE ($1::text IS NULL OR status = $1)
-             ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at ASC
+                    review_note AS "reviewNote", created_at AS "createdAt",
+                    review.summary AS "agentReviewSummary",
+                    review.recommendation AS "agentReviewRecommendation",
+                    review.findings AS "agentReviewFindings"
+             FROM platform.activation_requests r
+             LEFT JOIN LATERAL (
+               SELECT ar.summary, ar.model_metadata->>'recommendation' AS recommendation, ar.findings
+               FROM platform.agent_runs ar
+               WHERE ar.agent_key = 'orchestrator'
+                 AND ar.model_metadata->>'activationRequestId' = r.id::text
+               ORDER BY ar.created_at DESC LIMIT 1
+             ) review ON true
+             WHERE ($1::text IS NULL OR r.status = $1)
+             ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, r.created_at ASC
              LIMIT 200`,
             [validStatus],
           ));
@@ -781,11 +791,11 @@ export async function handlePlatformRequest(
                  estimated_cost, started_at, finished_at)
                VALUES ($1, 'manual', 'succeeded', $2, $3::jsonb, $4::jsonb, $5::jsonb, 0, now(), now())`,
               [agent.key, agent.summary, JSON.stringify(agent.findings), JSON.stringify(agent.proposedActions),
-                JSON.stringify({ activationRequestId: requestId, engine: "deterministic-rule-agents-v1", aiModelEnabled: false })],
+                JSON.stringify({ activationRequestId: requestId, engine: "deterministic-rule-agents-v1", aiModelEnabled: false, recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review" })],
             );
           }
           const report = agents.find((agent) => agent.key === "orchestrator");
-          await auditPlatform(client, userId, "activation.ai_review_completed", "activation_request", requestId, {
+          await auditPlatform(client, userId, "activation.agent_review_completed", "activation_request", requestId, {
             engine: "deterministic-rule-agents-v1", aiModelEnabled: false,
             recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review",
             agentCount: agents.length,
