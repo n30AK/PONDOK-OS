@@ -586,6 +586,43 @@ export default function App() {
       <button type="button" className="text-button" onClick={() => void signOut()}>Keluar</button>
     </section></main>;
   }
+  // A user without an active tenant must not see the tenant navigation shell.
+  // Platform operators are directed to the separate Command Central application;
+  // tenant users receive the institution onboarding/invitation path instead.
+  if (!tenant && !previewMode) {
+    return <main className="auth-layout">
+      <section className="login-card workspace-gateway">
+        <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>{isSuperAdmin ? "AKVISIO COMMAND CENTRAL" : "PONDOK OS"}</strong><small>{isSuperAdmin ? "PLATFORM WORKSPACE" : "PESANTREN WORKSPACE"}</small></div></div>
+        {busy ? <>
+          <div className="eyebrow">MENYIAPKAN WORKSPACE</div>
+          <h2>Memeriksa ruang kerja Anda</h2>
+          <p className="muted">Kami sedang memuat workspace yang memang diizinkan untuk akun ini.</p>
+        </> : organizations.length > 1 ? <>
+          <div className="eyebrow">PILIH WORKSPACE</div>
+          <h2>Anda memiliki beberapa pesantren</h2>
+          <p className="muted">Pilih lembaga yang ingin Anda kelola. Data setiap pesantren tetap terpisah.</p>
+          <div className="org-choice-list">{organizations.map((org) => <button key={org.id} type="button" className="org-choice" disabled={busy} onClick={() => void chooseOrganization(org.id)}><span><strong>{org.name}</strong><small>{org.slug}</small></span><b>Masuk →</b></button>)}</div>
+        </> : isSuperAdmin ? <>
+          <div className="eyebrow">AKSES PLATFORM TERVERIFIKASI</div>
+          <h2>Workspace pesantren tidak diperlukan untuk akun ini</h2>
+          <p className="muted">Akun ini memiliki kewenangan platform AKVISIO, tetapi belum memiliki keanggotaan pesantren. Command Central adalah aplikasi terpisah dan tidak dibuka melalui menu PONDOK OS.</p>
+          <div className="alert warning">Akses platform tidak otomatis memberikan akses ke data pesantren. Jangan membuat membership lembaga hanya untuk membuka Command Central.</div>
+        </> : <>
+          <div className="eyebrow">WORKSPACE PESANTREN</div>
+          <h2>Belum ada workspace pesantren</h2>
+          <p className="muted">Jika Anda staf, minta Pemilik atau Admin Pesantren mengirim undangan. Jika Anda penanggung jawab lembaga baru, ajukan aktivasi di bawah ini.</p>
+          <div className="alert warning">Pendaftaran akun tidak otomatis memberikan jabatan atau hak akses. Workspace hanya terbuka setelah keanggotaan atau aktivasi disetujui.</div>
+          <InstitutionActivation />
+        </>}
+        {error && <div className="alert error">{error}</div>}
+        <div className="form-actions">
+          <button type="button" className="outline-button" onClick={() => void signOut()}>Keluar</button>
+          <button type="button" className="text-button" onClick={() => window.location.reload()}>Muat ulang</button>
+        </div>
+      </section>
+    </main>;
+  }
+
   return <div className={mobileNavOpen ? "app-shell mobile-nav-open" : "app-shell"}>
     <aside id="workspace-sidebar" className="sidebar" onClickCapture={() => setMobileNavOpen(false)}>
       <div className="brand-lockup"><div className="brand-mark small">P</div><div><strong>PONDOK OS</strong><small>INSTITUTION WORKSPACE</small></div></div>
@@ -613,7 +650,7 @@ export default function App() {
     </aside>
     {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Tutup menu navigasi" onClick={() => setMobileNavOpen(false)} />}
     <main className="main-area">
-      <header className="topbar"><div className="topbar-leading"><button type="button" className="mobile-menu-toggle" aria-label={mobileNavOpen ? "Tutup menu navigasi" : "Buka menu navigasi"} aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar" onClick={() => setMobileNavOpen(value => !value)}><span /><span /><span /></button><div className="topbar-crumbs"><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : screen === "access" ? "Hak Akses" : screen === "audit" ? "Audit Aktivitas" : "Ringkasan"}</strong></div></div><div className="top-actions"><span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
+      <header className="topbar"><div className="topbar-leading"><button type="button" className="mobile-menu-toggle" aria-label={mobileNavOpen ? "Tutup menu navigasi" : "Buka menu navigasi"} aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar" onClick={() => setMobileNavOpen(value => !value)}><span /><span /><span /></button><div className="topbar-crumbs"><span className="breadcrumb">Workspace</span><span className="crumb-sep">/</span><strong>{screen === "students" ? "Data Santri" : screen === "modules" ? getModuleResourceLabel(moduleResource) : screen === "operations" ? (operationsArea === "finance" ? "Keuangan & Akuntansi" : operationsArea === "inventory" ? "Inventaris & Gudang" : "SDM & Payroll") : screen === "admissions" ? "PPDB" : screen === "access" ? "Hak Akses" : screen === "audit" ? "Audit Aktivitas" : "Ringkasan"}</strong></div></div><div className="top-actions">{organizations.length > 1 && <button className="outline-button" onClick={() => { setTenant(null); setScreen("overview"); setNotice("Pilih pesantren untuk melanjutkan."); }}>Ganti pesantren</button>}<span className="live-pill"><i /> Workspace aktif</span><button className="outline-button" onClick={() => void signOut()}>Keluar</button></div></header>
       {tenant?.license?.status === "trial" && tenant.license.endsAt ? (
         <TrialCountdown key={tenant.license.endsAt} endsAt={tenant.license.endsAt} serverNow={tenant.serverNow} />
       ) : tenant?.license?.status === "trial" ? (
