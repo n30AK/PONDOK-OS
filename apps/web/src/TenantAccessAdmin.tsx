@@ -162,7 +162,6 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
     }catch(reason){setError(reason instanceof Error?reason.message:"Gagal menambahkan anggota.");}
     finally{setAdding(false);}
   };
-  const toggleNewRole=(key:string,checked:boolean)=>setNewRoles((current)=>checked?[...current,key]:current.filter((item)=>item!==key));
   const saveMember=async(member:Member)=>{
     setSaving(member.membership_id);setError("");setNotice("");
     try{
