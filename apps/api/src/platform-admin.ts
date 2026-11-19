@@ -36,6 +36,20 @@ async function readJson(req: IncomingMessage, maxBytes = 16_384): Promise<Json |
   } catch { return null; }
 }
 
+export function normalizeActivationRequest(value: Json): Json {
+  const organizationName = typeof value.organizationName === "string" ? value.organizationName.trim() : "";
+  const generatedSlug = organizationName.toLowerCase().normalize("NFKD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70).replace(/-+$/g, "");
+  const organizationSlug = typeof value.organizationSlug === "string" && value.organizationSlug.trim()
+    ? value.organizationSlug.trim().toLowerCase() : (generatedSlug || "lembaga");
+  const campusCode = typeof value.campusCode === "string" && value.campusCode.trim()
+    ? value.campusCode.trim().toUpperCase() : "UTAMA";
+  const campusName = typeof value.campusName === "string" && value.campusName.trim()
+    ? value.campusName.trim() : "Kampus Utama";
+  return { ...value, organizationSlug, campusCode, campusName };
+}
+
 export function validateActivationRequest(value: Json): string | null {
   if (typeof value.contactEmail !== "string" || value.contactEmail.trim().length > 254
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.contactEmail.trim())) return "invalid_contact_email";
@@ -532,7 +546,8 @@ export async function handlePlatformRequest(
   if (path === "/v1/platform/activation-requests" && req.method === "POST") {
     const body = await readJson(req);
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
-    const validation = validateActivationRequest(body);
+    const normalizedBody = normalizeActivationRequest(body);
+    const validation = validateActivationRequest(normalizedBody);
     if (validation) { reply(res, 422, { error: validation }); return true; }
     try {
       const authUser = await pool.query<{ email: string }>(
@@ -541,7 +556,7 @@ export async function handlePlatformRequest(
       );
       const verifiedEmail = authUser.rows[0]?.email?.trim().toLowerCase();
       if (!verifiedEmail) { reply(res, 403, { error: "verified_email_required" }); return true; }
-      if ((body.contactEmail as string).trim().toLowerCase() !== verifiedEmail) {
+      if ((normalizedBody.contactEmail as string).trim().toLowerCase() !== verifiedEmail) {
         reply(res, 422, { error: "contact_email_must_match_verified_account" }); return true;
       }
     } catch {
@@ -555,9 +570,9 @@ export async function handlePlatformRequest(
              organization_type, campus_code, campus_name)
            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id, status, created_at AS "createdAt"`,
-          [userId, (body.contactEmail as string).trim().toLowerCase(), (body.contactName as string).trim(),
-            (body.organizationName as string).trim(), body.organizationSlug, body.organizationType,
-            body.campusCode, (body.campusName as string).trim()],
+          [userId, (normalizedBody.contactEmail as string).trim().toLowerCase(), (normalizedBody.contactName as string).trim(),
+            (normalizedBody.organizationName as string).trim(), normalizedBody.organizationSlug, normalizedBody.organizationType,
+            normalizedBody.campusCode, (normalizedBody.campusName as string).trim()],
         );
         await auditPlatform(client, userId, "activation.requested", "activation_request", String(result.rows[0]?.id ?? ""));
         return result.rows[0];
