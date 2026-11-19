@@ -60,6 +60,14 @@ test("activation intake generates technical identifiers from the institution nam
   assert.equal(normalized.campusCode, "UTAMA");
   assert.equal(normalized.campusName, "Kampus Utama");
   assert.equal(validateActivationRequest(normalized), null);
+  const nonLatin = normalizeActivationRequest({
+    contactEmail: valid.contactEmail,
+    contactName: valid.contactName,
+    organizationName: "المدرسة الإسلامية",
+    organizationType: "madrasah"
+  });
+  assert.match(nonLatin.organizationSlug, /^lembaga-[a-f0-9]{8}$/);
+  assert.equal(validateActivationRequest(nonLatin), null);
 });
 
 test("a normal authenticated user cannot access company approval endpoints", async () => {
