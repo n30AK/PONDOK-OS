@@ -319,7 +319,6 @@ export default function TenantAccessAdmin({ organizationId, permissions, institu
             })}</div></fieldset>)}{roles.some((role)=>!role.is_system)&&<fieldset key="tenant-custom-roles"><legend>Peran khusus lembaga</legend><div>{roles.filter((role)=>!role.is_system).map((role)=><label key={role.id}><input type="checkbox" checked={(drafts[member.membership_id]??member.roles).includes(role.role_key)} onChange={(event)=>toggleMemberRole(member.membership_id,role.role_key,event.target.checked)}/><span>{role.role_name}</span></label>)}</div></fieldset>}</div>
             <footer><small>{(drafts[member.membership_id]??member.roles).length} peran dipilih</small><button className="primary" type="button" disabled={Boolean(saving)||JSON.stringify([...(drafts[member.membership_id]??member.roles)].sort())===JSON.stringify([...member.roles].sort())} onClick={()=>void saveMember(member)}>{saving===member.membership_id?"Menyimpan…":"Simpan penugasan"}</button></footer>
           </>}
-            </div>
           </details>
         </article>)}
       </section>
