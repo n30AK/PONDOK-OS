@@ -50,6 +50,7 @@ The current feature branch:
 - Adds four audited rule-based review workers using existing `platform.agent_runs` records: intake, duplicate/security screening, regulatory checklist warning, and synthesis.
 - Allows only an authenticated company Super Admin to trigger a review.
 - Exposes the latest report to the Command Central activation queue.
+- Adds a scheduled, read-only Development API liveness/readiness monitor every 15 minutes; it opens or updates one incident issue on failure and never attempts repair.
 - Does not approve/reject, issue activation tokens, create tenants, grant roles, or change request status.
 
 Important: this slice is deterministic automation, **not an LLM-powered AI runtime**. It does not send personal or institution data to a model provider. The API reports `aiModelEnabled: false` honestly. A model adapter must remain disabled until a provider, model, budget, data-processing terms, redaction tests, and output-schema evaluations are explicitly configured.
