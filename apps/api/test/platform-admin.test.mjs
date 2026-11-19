@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { handlePlatformRequest, normalizeActivationRequest, validateActivationRequest } from "../dist/platform-admin.js";
+import { buildActivationReviewAgents, handlePlatformRequest, normalizeActivationRequest, validateActivationRequest } from "../dist/platform-admin.js";
 import { handleRequest } from "../dist/main.js";
 
 const userId = "123e4567-e89b-42d3-a456-426614174000";
@@ -156,6 +156,57 @@ test("a different Super Admin can reject a pending institution activation reques
   assert.equal(JSON.parse(res.body).data.status, "rejected");
   assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
   assert.ok(calls.some((call) => call.sql === "COMMIT"));
+});
+
+test("activation review agents flag duplicate candidates without auto-rejecting", () => {
+  const agents = buildActivationReviewAgents(
+    { id: requestId, organizationName: "Pondok Contoh", organizationSlug: "pondok-contoh", organizationType: "pesantren" },
+    [{ id: "323e4567-e89b-42d3-a456-426614174000", name: "Pondok Contoh", slug: "pondok-contoh", source: "tenant" }]
+  );
+  assert.equal(agents.length, 4);
+  assert.equal(agents.find((agent) => agent.key === "orchestrator").summary.includes("duplikasi"), true);
+  assert.equal(agents.find((agent) => agent.key === "orchestrator").findings[0].code, "POSSIBLE_EXISTING_TENANT");
+  assert.match(agents.find((agent) => agent.key === "orchestrator").proposedActions.join(" "), /Periksa kandidat duplikasi/);
+});
+
+test("activation review is Super Admin-only, stores four bounded agent runs and cannot approve", async () => {
+  const applicantUserId = "923e4567-e89b-42d3-a456-426614174000";
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: true }] };
+    if (sql.startsWith("SELECT id, requested_by, status, organization_name")) return { rows: [{
+      id: requestId, requested_by: applicantUserId, status: "pending",
+      organization_name: valid.organizationName, organization_slug: valid.organizationSlug,
+      organization_type: valid.organizationType
+    }] };
+    if (sql.startsWith("SELECT id, name, slug FROM core.organizations")) return { rows: [] };
+    if (sql.startsWith("SELECT id, organization_name AS name")) return { rows: [] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request(`/v1/platform/admin/activation-requests/${requestId}/review`, "POST"), res, pool, userId);
+  const body = JSON.parse(res.body);
+  assert.equal(res.status, 200);
+  assert.equal(body.data.aiModelEnabled, false);
+  assert.equal(body.data.agents.length, 4);
+  assert.equal(body.data.recommendation, "ready_for_admin_review");
+  const runs = calls.filter((call) => call.sql.startsWith("INSERT INTO platform.agent_runs"));
+  assert.equal(runs.length, 4);
+  assert.ok(runs.every((run) => run.values[4].includes('"aiModelEnabled":false')));
+  assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO platform.audit_events")));
+  assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO platform.activation_tokens")));
+  assert.ok(!calls.some((call) => call.sql.startsWith("UPDATE platform.activation_requests")));
+});
+
+test("non-admin cannot trigger activation review agents", async () => {
+  const { pool, calls } = poolWithClient(async (sql) => {
+    if (sql.startsWith("SELECT EXISTS")) return { rows: [{ allowed: false }] };
+    return { rows: [] };
+  });
+  const res = response();
+  await handlePlatformRequest(request(`/v1/platform/admin/activation-requests/${requestId}/review`, "POST"), res, pool, userId);
+  assert.equal(res.status, 403);
+  assert.equal(JSON.parse(res.body).error, "platform_super_admin_required");
+  assert.ok(!calls.some((call) => call.sql.startsWith("INSERT INTO platform.agent_runs")));
 });
 
 test("legacy public bootstrap endpoint is disabled by the centralized distribution model", async () => {
