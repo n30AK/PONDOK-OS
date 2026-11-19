@@ -39,7 +39,7 @@ async function readJson(req: IncomingMessage, maxBytes = 16_384): Promise<Json |
 export function normalizeActivationRequest(value: Json): Json {
   const organizationName = typeof value.organizationName === "string" ? value.organizationName.trim() : "";
   const generatedSlug = organizationName.toLowerCase().normalize("NFKD")
-    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70).replace(/-+$/g, "");
   const organizationSlug = typeof value.organizationSlug === "string" && value.organizationSlug.trim()
     ? value.organizationSlug.trim().toLowerCase() : (generatedSlug || "lembaga");
