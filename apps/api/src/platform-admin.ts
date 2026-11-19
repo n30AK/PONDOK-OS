@@ -722,12 +722,12 @@ export async function handlePlatformRequest(
       try {
         const scoped = await withPlatformScope(pool, userId, true, (client) =>
           client.query(
-            `SELECT id, requested_by AS "requestedBy", contact_email AS "contactEmail",
-                    contact_name AS "contactName", organization_name AS "organizationName",
-                    organization_slug AS "organizationSlug", organization_type AS "organizationType",
-                    campus_code AS "campusCode", campus_name AS "campusName", status,
-                    reviewed_by AS "reviewedBy", reviewed_at AS "reviewedAt",
-                    review_note AS "reviewNote", created_at AS "createdAt",
+            `SELECT r.id, r.requested_by AS "requestedBy", r.contact_email AS "contactEmail",
+                    r.contact_name AS "contactName", r.organization_name AS "organizationName",
+                    r.organization_slug AS "organizationSlug", r.organization_type AS "organizationType",
+                    r.campus_code AS "campusCode", r.campus_name AS "campusName", r.status,
+                    r.reviewed_by AS "reviewedBy", r.reviewed_at AS "reviewedAt",
+                    r.review_note AS "reviewNote", r.created_at AS "createdAt",
                     review.summary AS "agentReviewSummary",
                     review.recommendation AS "agentReviewRecommendation",
                     review.findings AS "agentReviewFindings"
