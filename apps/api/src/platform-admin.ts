@@ -42,7 +42,7 @@ export function normalizeActivationRequest(value: Json): Json {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70).replace(/-+$/g, "");
   const organizationSlug = typeof value.organizationSlug === "string" && value.organizationSlug.trim()
-    ? value.organizationSlug.trim().toLowerCase() : (generatedSlug || "lembaga");
+    ? value.organizationSlug.trim().toLowerCase() : (generatedSlug || `lembaga-${createHash("sha256").update(organizationName).digest("hex").slice(0, 8)}`);
   const campusCode = typeof value.campusCode === "string" && value.campusCode.trim()
     ? value.campusCode.trim().toUpperCase() : "UTAMA";
   const campusName = typeof value.campusName === "string" && value.campusName.trim()
