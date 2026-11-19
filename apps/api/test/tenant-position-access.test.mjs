@@ -46,10 +46,10 @@ test("tenant administrators have a permission-matrix workspace with custom roles
  const app=await read("apps/web/src/App.tsx");
  const ui=await read("apps/web/src/TenantAccessAdmin.tsx");
  assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
- assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Jabatan, Peran & Hak Akses"/);
+ assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Pengguna & Jabatan"/);
  assert.doesNotMatch(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
  assert.match(app,/TenantAccessAdmin organizationId=\{tenant\.organizationId\} permissions=\{tenant\.permissions\}/);
- assert.match(ui,/Jabatan, peran & hak akses/);
+ assert.match(ui,/Pengguna & Jabatan/);
  assert.match(ui,/Buat peran khusus/);
  assert.match(ui,/Simpan matriks izin/);
  assert.match(ui,/permissionKeys/);
@@ -69,7 +69,7 @@ test("tenant administrators can add only verified accounts and assign tenant cus
  assert.match(migration,/organization_id=v_org AND r\.is_system=false/);
  assert.match(api,/add_tenant_member_by_email/);
  assert.match(api,/validRoleKeys/);
- assert.match(ui,/Tambah anggota lembaga/);
+ assert.match(ui,/Tambah pengguna/);
  assert.match(ui,/newEmail/);
 });
 
@@ -102,7 +102,7 @@ test("institution owner and institution admin always receive tenant access-manag
  assert.match(access,/permissions\.add\("core\.members\.manage"\)/);
  assert.match(app,/const canManageTenantAccess = \(tenant: Tenant \| null\)/);
  assert.doesNotMatch(app,/screen === "access" && !canManageTenantAccess\(tenant\)/);
- assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Jabatan, Peran & Hak Akses"/);
+ assert.match(app,/tenant && <button[^]*canManageTenantAccess\(tenant\) \? "Pengguna & Jabatan"/);
 });
 
 
