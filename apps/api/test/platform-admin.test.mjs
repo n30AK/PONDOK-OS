@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { handlePlatformRequest, validateActivationRequest } from "../dist/platform-admin.js";
+import { handlePlatformRequest, normalizeActivationRequest, validateActivationRequest } from "../dist/platform-admin.js";
 import { handleRequest } from "../dist/main.js";
 
 const userId = "123e4567-e89b-42d3-a456-426614174000";
@@ -47,6 +47,19 @@ test("validates the institution application and rejects unsafe slugs or unsuppor
   assert.equal(validateActivationRequest({ ...valid, organizationSlug: "../other" }), "invalid_organization_slug");
   assert.equal(validateActivationRequest({ ...valid, organizationType: "bank" }), "invalid_organization_type");
   assert.equal(validateActivationRequest({ ...valid, campusCode: "x" }), "invalid_campus_code");
+});
+
+test("activation intake generates technical identifiers from the institution name", () => {
+  const normalized = normalizeActivationRequest({
+    contactEmail: valid.contactEmail,
+    contactName: valid.contactName,
+    organizationName: "Pondok Pesantren Al-Falah",
+    organizationType: "pesantren"
+  });
+  assert.equal(normalized.organizationSlug, "pondok-pesantren-al-falah");
+  assert.equal(normalized.campusCode, "UTAMA");
+  assert.equal(normalized.campusName, "Kampus Utama");
+  assert.equal(validateActivationRequest(normalized), null);
 });
 
 test("a normal authenticated user cannot access company approval endpoints", async () => {
