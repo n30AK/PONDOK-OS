@@ -43,10 +43,7 @@ export default function InstitutionActivation() {
   const [verificationCode, setVerificationCode] = useState("");
   const [contactName, setContactName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
-  const [organizationSlug, setOrganizationSlug] = useState("");
   const [organizationType, setOrganizationType] = useState("pesantren");
-  const [campusCode, setCampusCode] = useState("UTAMA");
-  const [campusName, setCampusName] = useState("Kampus Utama");
   const [activationToken, setActivationToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -106,7 +103,7 @@ export default function InstitutionActivation() {
     try {
       await activationRequest("/v1/platform/activation-requests", {
         method: "POST",
-        body: JSON.stringify({ contactEmail, contactName, organizationName, organizationSlug, organizationType, campusCode, campusName }),
+        body: JSON.stringify({ contactEmail, contactName, organizationName, organizationType }),
       });
       setNotice("Permohonan aktivasi berhasil dikirim dan menunggu persetujuan perusahaan.");
       await load();
@@ -159,11 +156,9 @@ export default function InstitutionActivation() {
             <button type="button" className="primary" onClick={() => void verifyAccountEmail()} disabled={busy || verificationCode.length < 6}>Verifikasi email</button>
           </div>
         </div>}
-        <label>Nama lembaga<input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} onBlur={() => setOrganizationSlug((value) => value || organizationName.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""))} required minLength={3} maxLength={180}/></label>
-        <label>Slug lembaga<input value={organizationSlug} onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} required maxLength={80}/></label>
+        <label>Nama lembaga<input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} required minLength={3} maxLength={180} placeholder="Contoh: Pondok Pesantren Al-Falah"/></label>
         <label>Jenis lembaga<select value={organizationType} onChange={(event) => setOrganizationType(event.target.value)}><option value="pesantren">Pesantren</option><option value="madrasah">Madrasah</option><option value="sekolah">Sekolah</option><option value="yayasan">Yayasan</option><option value="other">Lainnya</option></select></label>
-        <label>Kode kampus utama<input value={campusCode} onChange={(event) => setCampusCode(event.target.value.toUpperCase())} required maxLength={24}/></label>
-        <label>Nama kampus utama<input value={campusName} onChange={(event) => setCampusName(event.target.value)} required maxLength={120}/></label>
+        <p className="muted">Kode lembaga dan kampus utama akan disiapkan otomatis oleh sistem. Anda tidak perlu mengisi pengaturan teknis.</p>
         <button className="primary" disabled={busy || !emailVerified}>Kirim permohonan</button>
       </form>
     </div>

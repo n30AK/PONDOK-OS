@@ -36,6 +36,77 @@ async function readJson(req: IncomingMessage, maxBytes = 16_384): Promise<Json |
   } catch { return null; }
 }
 
+export function normalizeActivationRequest(value: Json): Json {
+  const organizationName = typeof value.organizationName === "string" ? value.organizationName.trim() : "";
+  const generatedSlug = organizationName.toLowerCase().normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70).replace(/-+$/g, "");
+  const organizationSlug = typeof value.organizationSlug === "string" && value.organizationSlug.trim()
+    ? value.organizationSlug.trim().toLowerCase() : (generatedSlug || `lembaga-${createHash("sha256").update(organizationName).digest("hex").slice(0, 8)}`);
+  const campusCode = typeof value.campusCode === "string" && value.campusCode.trim()
+    ? value.campusCode.trim().toUpperCase() : "UTAMA";
+  const campusName = typeof value.campusName === "string" && value.campusName.trim()
+    ? value.campusName.trim() : "Kampus Utama";
+  return { ...value, organizationSlug, campusCode, campusName };
+}
+
+type ActivationAgentFinding = {
+  code: string;
+  severity: "info" | "warning" | "high";
+  message: string;
+  action: string;
+};
+
+export function buildActivationReviewAgents(
+  request: { id: string; organizationName: string; organizationSlug: string; organizationType: string },
+  duplicateCandidates: Array<{ id: string; name: string; slug: string; source: "tenant" | "request" }>,
+): Array<{ key: string; summary: string; findings: ActivationAgentFinding[]; proposedActions: string[] }> {
+  const duplicateFindings: ActivationAgentFinding[] = duplicateCandidates.map((candidate) => ({
+    code: candidate.source === "tenant" ? "POSSIBLE_EXISTING_TENANT" : "POSSIBLE_DUPLICATE_REQUEST",
+    severity: "high",
+    message: `Ada data lembaga yang mirip: ${candidate.name} (${candidate.slug}). Ini kandidat duplikasi, bukan bukti penyalahgunaan.`,
+    action: "Petugas AKVISIO membandingkan identitas lembaga sebelum mengambil keputusan.",
+  }));
+  const intake = {
+    key: "customer_success",
+    summary: "Pemeriksaan awal data permohonan selesai.",
+    findings: [] as ActivationAgentFinding[],
+    proposedActions: ["Lanjutkan ke pemeriksaan identitas dan kelayakan oleh petugas."],
+  };
+  const identity = {
+    key: "security_sentinel",
+    summary: duplicateFindings.length
+      ? "Ditemukan kandidat kemiripan yang perlu diperiksa manusia."
+      : "Tidak ditemukan kecocokan nama atau slug pada data yang diperiksa.",
+    findings: duplicateFindings,
+    proposedActions: duplicateFindings.length ? ["Tinjau kandidat duplikasi sebelum menyetujui."] : [],
+  };
+  const compliance = {
+    key: "compliance_librarian",
+    summary: "Pemeriksaan legalitas dan regulasi belum dapat disimpulkan otomatis.",
+    findings: [{
+      code: "LEGAL_AND_REGULATORY_REVIEW_REQUIRED",
+      severity: "warning" as const,
+      message: `Jenis lembaga ${request.organizationType} memerlukan pemeriksaan dokumen dan sumber regulasi yang berlaku. Formulir aktivasi saat ini belum mengumpulkan bukti legalitas.`,
+      action: "Lakukan verifikasi administratif sesuai jenis lembaga sebelum memberikan klaim kepatuhan atau lisensi komersial.",
+    }],
+    proposedActions: ["Jangan menyatakan lembaga telah terverifikasi legal hanya berdasarkan formulir."],
+  };
+  const recommendation = duplicateFindings.length ? "high_risk_review" : "ready_for_admin_review";
+  const synthesis = {
+    key: "orchestrator",
+    summary: recommendation === "high_risk_review"
+      ? "Permohonan siap ditinjau dengan perhatian khusus pada kandidat duplikasi."
+      : "Pemeriksaan data dasar selesai. Permohonan dapat masuk antrean keputusan manusia; legalitas tetap perlu diverifikasi terpisah.",
+    findings: [...intake.findings, ...identity.findings, ...compliance.findings],
+    proposedActions: [
+      recommendation === "high_risk_review" ? "Periksa kandidat duplikasi." : "Tinjau permohonan dan identitas pemohon.",
+      "Persetujuan aktivasi tetap dilakukan oleh Super Admin yang bukan pemohon.",
+    ],
+  };
+  return [intake, identity, compliance, synthesis];
+}
+
 export function validateActivationRequest(value: Json): string | null {
   if (typeof value.contactEmail !== "string" || value.contactEmail.trim().length > 254
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.contactEmail.trim())) return "invalid_contact_email";
@@ -532,7 +603,8 @@ export async function handlePlatformRequest(
   if (path === "/v1/platform/activation-requests" && req.method === "POST") {
     const body = await readJson(req);
     if (!body) { reply(res, 400, { error: "invalid_json_or_body_too_large" }); return true; }
-    const validation = validateActivationRequest(body);
+    const normalizedBody = normalizeActivationRequest(body);
+    const validation = validateActivationRequest(normalizedBody);
     if (validation) { reply(res, 422, { error: validation }); return true; }
     try {
       const authUser = await pool.query<{ email: string }>(
@@ -541,7 +613,7 @@ export async function handlePlatformRequest(
       );
       const verifiedEmail = authUser.rows[0]?.email?.trim().toLowerCase();
       if (!verifiedEmail) { reply(res, 403, { error: "verified_email_required" }); return true; }
-      if ((body.contactEmail as string).trim().toLowerCase() !== verifiedEmail) {
+      if ((normalizedBody.contactEmail as string).trim().toLowerCase() !== verifiedEmail) {
         reply(res, 422, { error: "contact_email_must_match_verified_account" }); return true;
       }
     } catch {
@@ -555,9 +627,9 @@ export async function handlePlatformRequest(
              organization_type, campus_code, campus_name)
            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id, status, created_at AS "createdAt"`,
-          [userId, (body.contactEmail as string).trim().toLowerCase(), (body.contactName as string).trim(),
-            (body.organizationName as string).trim(), body.organizationSlug, body.organizationType,
-            body.campusCode, (body.campusName as string).trim()],
+          [userId, (normalizedBody.contactEmail as string).trim().toLowerCase(), (normalizedBody.contactName as string).trim(),
+            (normalizedBody.organizationName as string).trim(), normalizedBody.organizationSlug, normalizedBody.organizationType,
+            normalizedBody.campusCode, (normalizedBody.campusName as string).trim()],
         );
         await auditPlatform(client, userId, "activation.requested", "activation_request", String(result.rows[0]?.id ?? ""));
         return result.rows[0];
@@ -650,21 +722,101 @@ export async function handlePlatformRequest(
       try {
         const scoped = await withPlatformScope(pool, userId, true, (client) =>
           client.query(
-            `SELECT id, requested_by AS "requestedBy", contact_email AS "contactEmail",
-                    contact_name AS "contactName", organization_name AS "organizationName",
-                    organization_slug AS "organizationSlug", organization_type AS "organizationType",
-                    campus_code AS "campusCode", campus_name AS "campusName", status,
-                    reviewed_by AS "reviewedBy", reviewed_at AS "reviewedAt",
-                    review_note AS "reviewNote", created_at AS "createdAt"
-             FROM platform.activation_requests
-             WHERE ($1::text IS NULL OR status = $1)
-             ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at ASC
+            `SELECT r.id, r.requested_by AS "requestedBy", r.contact_email AS "contactEmail",
+                    r.contact_name AS "contactName", r.organization_name AS "organizationName",
+                    r.organization_slug AS "organizationSlug", r.organization_type AS "organizationType",
+                    r.campus_code AS "campusCode", r.campus_name AS "campusName", r.status,
+                    r.reviewed_by AS "reviewedBy", r.reviewed_at AS "reviewedAt",
+                    r.review_note AS "reviewNote", r.created_at AS "createdAt",
+                    review.summary AS "agentReviewSummary",
+                    review.recommendation AS "agentReviewRecommendation",
+                    review.findings AS "agentReviewFindings"
+             FROM platform.activation_requests r
+             LEFT JOIN LATERAL (
+               SELECT ar.summary, ar.model_metadata->>'recommendation' AS recommendation, ar.findings
+               FROM platform.agent_runs ar
+               WHERE ar.agent_key = 'orchestrator'
+                 AND ar.model_metadata->>'activationRequestId' = r.id::text
+               ORDER BY ar.created_at DESC LIMIT 1
+             ) review ON true
+             WHERE ($1::text IS NULL OR r.status = $1)
+             ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, r.created_at ASC
              LIMIT 200`,
             [validStatus],
           ));
         if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
         reply(res, 200, { data: scoped.value?.rows ?? [] });
       } catch { reply(res, 503, { error: "platform_control_plane_not_installed_or_unavailable" }); }
+      return true;
+    }
+
+    const review = path.match(/^\/v1\/platform\/admin\/activation-requests\/([0-9a-f-]{36})\/review$/i);
+    if (review && req.method === "POST") {
+      const requestId = review[1]!;
+      if (!UUID.test(requestId)) { reply(res, 400, { error: "invalid_activation_request_id" }); return true; }
+      try {
+        const scoped = await withPlatformScope(pool, userId, true, async (client) => {
+          const selected = await client.query<{
+            id: string; requested_by: string; status: string; organization_name: string;
+            organization_slug: string; organization_type: string;
+          }>(
+            "SELECT id, requested_by, status, organization_name, organization_slug, organization_type FROM platform.activation_requests WHERE id = $1::uuid FOR UPDATE",
+            [requestId],
+          );
+          const request = selected.rows[0];
+          if (!request) return { error: "activation_request_not_found" as const };
+          if (request.status !== "pending") return { error: "activation_request_not_pending" as const };
+          const [tenants, requests] = await Promise.all([
+            client.query<{ id: string; name: string; slug: string }>(
+              "SELECT id, name, slug FROM core.organizations WHERE lower(name) = lower($1) OR slug = $2 LIMIT 10",
+              [request.organization_name, request.organization_slug],
+            ),
+            client.query<{ id: string; name: string; slug: string }>(
+              "SELECT id, organization_name AS name, organization_slug AS slug FROM platform.activation_requests WHERE id <> $1::uuid AND status <> 'cancelled' AND (lower(organization_name) = lower($2) OR organization_slug = $3) LIMIT 10",
+              [requestId, request.organization_name, request.organization_slug],
+            ),
+          ]);
+          const candidates = [
+            ...tenants.rows.map((item) => ({ ...item, source: "tenant" as const })),
+            ...requests.rows.map((item) => ({ ...item, source: "request" as const })),
+          ];
+          const agents = buildActivationReviewAgents({
+            id: request.id, organizationName: request.organization_name,
+            organizationSlug: request.organization_slug, organizationType: request.organization_type,
+          }, candidates);
+          for (const agent of agents) {
+            await client.query(
+              `INSERT INTO platform.agent_runs
+                (agent_key, trigger_type, status, summary, findings, proposed_actions, model_metadata,
+                 estimated_cost, started_at, finished_at)
+               VALUES ($1, 'manual', 'succeeded', $2, $3::jsonb, $4::jsonb, $5::jsonb, 0, now(), now())`,
+              [agent.key, agent.summary, JSON.stringify(agent.findings), JSON.stringify(agent.proposedActions),
+                JSON.stringify({ activationRequestId: requestId, engine: "deterministic-rule-agents-v1", aiModelEnabled: false, recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review" })],
+            );
+          }
+          const report = agents.find((agent) => agent.key === "orchestrator");
+          await auditPlatform(client, userId, "activation.agent_review_completed", "activation_request", requestId, {
+            engine: "deterministic-rule-agents-v1", aiModelEnabled: false,
+            recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review",
+            agentCount: agents.length,
+          });
+          return {
+            recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review",
+            aiModelEnabled: false,
+            engine: "deterministic-rule-agents-v1",
+            agents,
+            summary: report?.summary ?? "Analisis tidak menghasilkan ringkasan.",
+          };
+        });
+        if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
+        if (scoped.value && "error" in scoped.value) {
+          reply(res, scoped.value.error === "activation_request_not_found" ? 404 : 409, { error: scoped.value.error });
+          return true;
+        }
+        reply(res, 200, { data: scoped.value });
+      } catch {
+        reply(res, 503, { error: "activation_review_unavailable" });
+      }
       return true;
     }
 
