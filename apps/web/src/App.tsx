@@ -166,6 +166,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(() => new URLSearchParams(window.location.search).has("error") ? "Tautan reset kata sandi tidak valid atau sudah kedaluwarsa. Minta tautan reset yang baru." : "");
   const [notice, setNotice] = useState("");
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -356,7 +358,34 @@ export default function App() {
       setPassword("");
       setNotice("Berhasil masuk. Memuat organisasi dan hak akses Anda…");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Login gagal.");
+      const message = reason instanceof Error ? reason.message : "Login gagal.";
+      setError(message);
+      setShowEmailVerification(/email verification required|verification required|email belum diverifikasi/i.test(message));
+      setVerificationCode("");
+    } finally { setBusy(false); }
+  };
+  const resendEmailVerification = async () => {
+    if (!authClient || !email.trim()) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.emailOtp.sendVerificationOtp({ email: email.trim(), type: "email-verification" });
+      if (result.error) throw new Error(result.error.message);
+      setShowEmailVerification(true);
+      setNotice("Kode verifikasi telah diminta. Periksa Inbox, Spam, dan Promotions, lalu masukkan kode di bawah.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Pengiriman kode verifikasi gagal. Coba lagi nanti.");
+    } finally { setBusy(false); }
+  };
+  const verifyLoginEmail = async () => {
+    if (!authClient || !email.trim() || verificationCode.trim().length < 6) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authClient.emailOtp.verifyEmail({ email: email.trim(), otp: verificationCode.trim() });
+      if (result.error) throw new Error(result.error.message);
+      setShowEmailVerification(false); setVerificationCode("");
+      setNotice("Email berhasil diverifikasi. Silakan masuk kembali menggunakan password Anda.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Kode verifikasi tidak valid atau kedaluwarsa.");
     } finally { setBusy(false); }
   };
   const requestPasswordReset = async (event: FormEvent) => {
@@ -513,11 +542,18 @@ export default function App() {
           <p className="muted">Masuk menggunakan email dan kata sandi akun PONDOK OS Anda.</p>
           <div className="trial-login-note"><strong>Uji coba gratis 14 hari untuk lembaga baru.</strong><span>Hitungan dimulai saat workspace pertama kali dibuka setelah aktivasi disetujui.</span></div>
           {!authClient && <div className="alert warning">Neon Auth belum dikonfigurasi. Salin <code>apps/web/.env.example</code> ke <code>.env.local</code> dan isi URL Auth development.</div>}
-          <label>Email institusi<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required /></label>
+          <label>Email institusi<input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setShowEmailVerification(false); setVerificationCode(""); }} autoComplete="username" required /></label>
           <label>Kata sandi<div className="password-field"><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /><button type="button" className="password-visibility" aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></label>
           <button type="button" className="text-button forgot-password-link" onClick={() => { setForgotPasswordMode(true); setError(""); setNotice(""); setPassword(""); }}>Lupa kata sandi?</button>
           {error && <div className="alert error">{error}</div>}
           {notice && <div className="alert success">{notice}</div>}
+          {showEmailVerification && <div className="login-note verification-recovery">
+            <strong>Email belum terverifikasi?</strong>
+            <span>Kirim ulang kode verifikasi ke alamat email di atas. Setelah menerima kode, masukkan di sini untuk menyelesaikan verifikasi.</span>
+            <button type="button" className="text-button" onClick={() => void resendEmailVerification()} disabled={busy || !authClient || !email.trim()}>{busy ? "Mengirim kode…" : "Kirim ulang kode verifikasi"}</button>
+            <label>Kode verifikasi email<input inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 8))} minLength={6} maxLength={8} /></label>
+            <button type="button" className="primary full" onClick={() => void verifyLoginEmail()} disabled={busy || verificationCode.trim().length < 6}>{busy ? "Memverifikasi…" : "Verifikasi email"}</button>
+          </div>}
           <button className="primary full" disabled={busy || !authClient}>{busy ? "Memverifikasi akun…" : "Masuk dan verifikasi hak akses"} <span>→</span></button>
           <button type="button" className="text-button auth-toggle" onClick={() => { setSelfSignUp(true); setAdminName(""); setError(""); setNotice(""); }}>Belum punya akun? Daftar akun</button>
           <div className="login-note access-guidance">
