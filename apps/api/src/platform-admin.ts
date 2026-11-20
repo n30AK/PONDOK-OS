@@ -812,15 +812,18 @@ export async function handlePlatformRequest(
                   })),
                   proposedActions: aiReview.manualChecks,
                 });
-                await client.query(
-                  `INSERT INTO platform.agent_runs
-                    (agent_key, trigger_type, status, summary, findings, proposed_actions, model_metadata,
-                     estimated_cost, started_at, finished_at)
-                   VALUES ('cloudflare_ai_activation_review', 'manual', 'succeeded', $1, $2::jsonb, $3::jsonb, $4::jsonb, 0, now(), now())`,
-                  [aiReview.summary, JSON.stringify(aiReview.observations), JSON.stringify(aiReview.manualChecks),
-                    JSON.stringify({ activationRequestId: requestId, provider: "cloudflare-workers-ai", model: aiReview.model, aiModelEnabled: true, dataMinimized: true, estimatedCost: 0 })],
-                );
               }
+              await client.query(
+                `INSERT INTO platform.agent_runs
+                  (agent_key, trigger_type, status, summary, findings, proposed_actions, model_metadata,
+                   estimated_cost, started_at, finished_at)
+                 VALUES ('cloudflare_ai_activation_review', 'manual', $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, 0, now(), now())`,
+                [aiReview.status === "succeeded" ? "succeeded" : "failed",
+                  aiReview.status === "succeeded" ? aiReview.summary : "Model tidak tersedia; hasil deterministik tetap berlaku.",
+                  JSON.stringify(aiReview.status === "succeeded" ? aiReview.observations : []),
+                  JSON.stringify(aiReview.status === "succeeded" ? aiReview.manualChecks : []),
+                  JSON.stringify({ activationRequestId: requestId, provider: "cloudflare-workers-ai", model: "@cf/zai-org/glm-4.7-flash", aiModelEnabled: aiReview.status === "succeeded", dataMinimized: true, estimatedCost: 0, providerStatus: aiReview.status })],
+              );
             } else {
               aiReview = { status: "quota_limited" };
             }
@@ -850,7 +853,7 @@ export async function handlePlatformRequest(
             aiProviderStatus: aiReview.status,
             engine: aiReview.status === "succeeded" ? "deterministic-plus-cloudflare-workers-ai" : "deterministic-rule-agents-v1",
             agents,
-            summary: report?.summary ?? "Analisis tidak menghasilkan ringkasan.",
+            summary: [report?.summary ?? "Analisis tidak menghasilkan ringkasan.", ...(aiReview.status === "succeeded" ? [aiReview.summary] : [])].join(" "),
             ...(aiReview.status === "succeeded" ? { aiSummary: aiReview.summary } : {}),
           };
         });
