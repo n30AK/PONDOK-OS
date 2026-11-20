@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { TenantDatabase } from "./tenant-db.js";
+import { runCloudflareActivationReview } from "./ai-provider.js";
 import {
   transitionModuleRequest,
   validateModuleManifest,
@@ -784,6 +785,50 @@ export async function handlePlatformRequest(
             id: request.id, organizationName: request.organization_name,
             organizationSlug: request.organization_slug, organizationType: request.organization_type,
           }, candidates);
+
+          // Model calls are optional and strictly supplemental. Reserve at most
+          // 10 calls per rolling 24h, then send only allowlisted metadata/codes.
+          let aiReview: Awaited<ReturnType<typeof runCloudflareActivationReview>> = { status: "disabled" };
+          if (process.env.PONDOK_AI_ENABLED === "true"
+            && process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN) {
+            await client.query("SELECT pg_advisory_xact_lock(hashtext('pondok-ai-activation-review-daily-cap'))");
+            const usage = await client.query<{ total: number }>(
+              "SELECT count(*)::int AS total FROM platform.agent_runs WHERE agent_key = 'cloudflare_ai_activation_review' AND started_at >= now() - interval '24 hours'",
+            );
+            if (Number(usage.rows[0]?.total ?? 0) < 10) {
+              aiReview = await runCloudflareActivationReview({
+                organizationType: request.organization_type,
+                duplicateCandidateCount: candidates.length,
+                deterministicRecommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review",
+                findingCodes: agents.flatMap((agent) => agent.findings.map((finding) => finding.code)),
+              });
+              if (aiReview.status === "succeeded") {
+                agents.push({
+                  key: "cloudflare_ai_review",
+                  summary: aiReview.summary,
+                  findings: aiReview.observations.map((message) => ({
+                    code: "MODEL_OBSERVATION", severity: "info" as const, message,
+                    action: "Gunakan sebagai bahan pertimbangan; verifikasi oleh petugas.",
+                  })),
+                  proposedActions: aiReview.manualChecks,
+                });
+              }
+              await client.query(
+                `INSERT INTO platform.agent_runs
+                  (agent_key, trigger_type, status, summary, findings, proposed_actions, model_metadata,
+                   estimated_cost, started_at, finished_at)
+                 VALUES ('cloudflare_ai_activation_review', 'manual', $1, $2, $3::jsonb, $4::jsonb, $5::jsonb, 0, now(), now())`,
+                [aiReview.status === "succeeded" ? "succeeded" : "failed",
+                  aiReview.status === "succeeded" ? aiReview.summary : "Model tidak tersedia; hasil deterministik tetap berlaku.",
+                  JSON.stringify(aiReview.status === "succeeded" ? aiReview.observations : []),
+                  JSON.stringify(aiReview.status === "succeeded" ? aiReview.manualChecks : []),
+                  JSON.stringify({ activationRequestId: requestId, provider: "cloudflare-workers-ai", model: "@cf/zai-org/glm-4.7-flash", aiModelEnabled: aiReview.status === "succeeded", dataMinimized: true, estimatedCost: 0, providerStatus: aiReview.status })],
+              );
+            } else {
+              aiReview = { status: "quota_limited" };
+            }
+          }
+
           for (const agent of agents) {
             await client.query(
               `INSERT INTO platform.agent_runs
@@ -791,21 +836,25 @@ export async function handlePlatformRequest(
                  estimated_cost, started_at, finished_at)
                VALUES ($1, 'manual', 'succeeded', $2, $3::jsonb, $4::jsonb, $5::jsonb, 0, now(), now())`,
               [agent.key, agent.summary, JSON.stringify(agent.findings), JSON.stringify(agent.proposedActions),
-                JSON.stringify({ activationRequestId: requestId, engine: "deterministic-rule-agents-v1", aiModelEnabled: false, recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review" })],
+                JSON.stringify({ activationRequestId: requestId, engine: "deterministic-rule-agents-v1", aiModelEnabled: aiReview.status === "succeeded", recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review" })],
             );
           }
           const report = agents.find((agent) => agent.key === "orchestrator");
           await auditPlatform(client, userId, "activation.agent_review_completed", "activation_request", requestId, {
-            engine: "deterministic-rule-agents-v1", aiModelEnabled: false,
+            engine: aiReview.status === "succeeded" ? "deterministic-plus-cloudflare-workers-ai" : "deterministic-rule-agents-v1",
+            aiModelEnabled: aiReview.status === "succeeded",
+            aiProviderStatus: aiReview.status,
             recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review",
             agentCount: agents.length,
           });
           return {
             recommendation: candidates.length ? "high_risk_review" : "ready_for_admin_review",
-            aiModelEnabled: false,
-            engine: "deterministic-rule-agents-v1",
+            aiModelEnabled: aiReview.status === "succeeded",
+            aiProviderStatus: aiReview.status,
+            engine: aiReview.status === "succeeded" ? "deterministic-plus-cloudflare-workers-ai" : "deterministic-rule-agents-v1",
             agents,
-            summary: report?.summary ?? "Analisis tidak menghasilkan ringkasan.",
+            summary: [report?.summary ?? "Analisis tidak menghasilkan ringkasan.", ...(aiReview.status === "succeeded" ? [aiReview.summary] : [])].join(" "),
+            ...(aiReview.status === "succeeded" ? { aiSummary: aiReview.summary } : {}),
           };
         });
         if (scoped.forbidden) { reply(res, 403, { error: "platform_super_admin_required" }); return true; }
