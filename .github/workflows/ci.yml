@@ -105,6 +105,19 @@ jobs:
           grep -q '/PONDOK-OS/assets/' apps/web/dist/index.html
           grep -q '/PONDOK-OS/manifest.webmanifest' apps/web/dist/index.html
           grep -Fq '"start_url": "./"' apps/web/dist/manifest.webmanifest
+      - name: Verify Cloudflare Pages monorepo artifact
+        run: |
+          node scripts/build-cloudflare-pages.mjs
+          test -f apps/web/dist/index.html
+          test -f apps/web/dist/command-center/index.html
+          test -f apps/web/dist/website/index.html
+          test -f apps/web/dist/_redirects
+          test -f apps/web/dist/_headers
+          grep -q '/command-center/assets/' apps/web/dist/command-center/index.html
+          grep -q './styles.css' apps/web/dist/website/index.html
+        env:
+          VITE_API_URL: https://pondok-api.invalid
+          VITE_NEON_AUTH_URL: https://pondok-auth.invalid
       - name: Bundle Neon Functions API
         run: pnpm --filter @pondok-os/api bundle:function
       - name: Upload Neon Functions API bundle
