@@ -1,6 +1,6 @@
 # PONDOK OS — Multi-Agent AI Operations Layer
 
-Status: governed implementation foundation in review; not a live autonomous AI service.
+Status: governed deterministic foundation with an optional, disabled-by-default Cloudflare Workers AI activation-review pilot.
 
 ## Product intent
 
@@ -93,6 +93,21 @@ All actions require an authenticated actor or service identity, scoped tool allo
 - Validate model output against strict schemas; treat unsupported legal/security claims as manual verification.
 - Keep tenant data inside its tenant boundary. Command Central receives only consented, minimized operational telemetry.
 - Keep model/provider credentials server-side.
+
+## Hosted model pilot — Cloudflare Workers AI (guarded, optional)
+
+The first hosted-model pilot uses Cloudflare Workers AI only:
+- Model: `@cf/zai-org/glm-4.7-flash`, documented as available on Workers Free.
+- Provider: direct Workers AI OpenAI-compatible Chat Completions endpoint; do not route through third-party AI Gateway providers or prepaid credits.
+- Free allocation: 10,000 Neurons/day. Keep the Cloudflare account on Workers Free; do not upgrade to Workers Paid, attach paid AI Gateway credits, or configure any paid fallback. Provider quota exhaustion must return a non-AI result.
+- Application guard: maximum 10 model attempts per rolling 24 hours, counted in existing `platform.agent_runs` records under a transaction-scoped advisory lock. Estimated cost is always recorded as zero.
+- Enablement requires server-side `PONDOK_AI_ENABLED=true`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_AI_TOKEN`. Without all three, the adapter stays disabled. The token must be narrowly scoped to Workers AI and stored only in the Neon Development Function's secret/environment configuration; never commit it or expose it to the browser.
+- Prompt data is allowlisted: institution type, duplicate-candidate count, deterministic recommendation, and finding codes only. Institution name, slug, contact name/email, user IDs, candidate identities, tenant records, documents, and all santri/guardian/financial/health data are excluded.
+- Model output is schema-checked and length-limited. It may add observations and manual-check suggestions only; deterministic recommendation remains authoritative. It cannot approve/reject activation, issue tokens, create tenants, grant permissions, execute SQL, or deploy.
+- The four deterministic agents continue to run when the model is disabled, unavailable, invalid, or quota-limited. Failed model attempts are recorded with zero estimated cost. No model response is trusted as an instruction.
+- Cloudflare documents zero retention for standard Workers AI inference content and no use of that content for model training. Operational metadata may still be retained; review the current Cloudflare terms before production use.
+
+This is an optional pilot, not production authorization. The code is disabled until the required Development secret values are configured. Validate on Development with a synthetic activation request, inspect outbound payload redaction and provider quota behavior, and confirm that no Cloudflare paid plan/credits are enabled. Production must remain untouched.
 
 ## Delivery gates
 
